@@ -1,0 +1,350 @@
+// Prisma schema for hospital management system
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  
+}
+
+// patient model with extended fields
+model Patient {
+  id                    String   @id @default(uuid())
+  patientId             String   @unique
+  title                 String?
+  cardNo                String?
+  surname               String
+  firstName             String
+  otherName             String?
+  dob                   DateTime
+  gender                String
+  maritalStatus         String
+  nationality           String
+  stateOfOrigin         String
+  lga                   String
+  town                  String
+  permanentAddress      String
+  religion              String?
+  email                 String?  @unique
+  preferredLanguage     String?
+  phoneNumber           String?
+  addressOfResidence    String?
+  profession            String?
+  nextOfKinName         String?
+  nextOfKinPhone        String?
+  nextOfKinAddress      String?
+  nextOfKinRelationship String?
+  hmo                   String?
+  fingerprintData       String?
+
+  appointments     Appointment[]
+  admissions       Admission[]
+  payments         Payment[]
+  medicalHistories MedicalHistory[]
+  doctorReports    DoctorReport[]
+  labReports       LabReport[]
+  radiologyReports RadiologyReport[]
+  prescriptions    Prescription[]
+  patientServices  PatientService[]
+  bills            Bill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Appointment {
+  id        String   @id @default(uuid())
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  patientId String
+  date      DateTime
+  status    String
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model Admission {
+  id            String    @id @default(uuid())
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  patientId     String
+  admissionDate DateTime
+  dischargeDate DateTime?
+  ward          String?
+  room          String?
+  reason        String?
+  bills         Bill[]
+  createdAt     DateTime  @default(now())
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  patientId   String
+  amount      Float
+  method      String
+  description String?
+  date        DateTime @default(now())
+}
+
+model MedicalHistory {
+  id        String   @id @default(uuid())
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  patientId String
+  details   String
+  createdAt DateTime @default(now())
+}
+
+model DoctorReport {
+  id        String   @id @default(uuid())
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  patientId String
+  doctorId  String?
+  report    String
+  createdAt DateTime @default(now())
+}
+
+model LabReport {
+  id         String   @id @default(uuid())
+  patient    Patient  @relation(fields: [patientId], references: [id])
+  patientId  String
+  reportType String
+  results    String
+  date       DateTime @default(now())
+}
+
+model RadiologyReport {
+  id         String   @id @default(uuid())
+  patient    Patient  @relation(fields: [patientId], references: [id])
+  patientId  String
+  reportType String
+  results    String
+  date       DateTime @default(now())
+}
+
+model Prescription {
+  id        String    @id @default(uuid())
+  patient   Patient   @relation(fields: [patientId], references: [id])
+  patientId String
+  drug      String
+  dosage    String
+  startDate DateTime
+  endDate   DateTime?
+  notes     String?
+}
+
+model Service {
+  id              String           @id @default(uuid())
+  name            String
+  description     String?
+  price           Float
+  patientServices PatientService[]
+}
+
+model PatientService {
+  id        String   @id @default(uuid())
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  patientId String
+  service   Service  @relation(fields: [serviceId], references: [id])
+  serviceId String
+  date      DateTime @default(now())
+  quantity  Int      @default(1)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BILLING MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum BillStatus {
+  DRAFT
+  ACTIVE
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum BillItemSource {
+  LAB
+  PHARMACY
+  CONSULTATION
+  ADMISSION
+  RADIOLOGY
+  OTHER
+}
+
+enum BillPaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  INSURANCE
+  WAIVER
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum BillAuditAction {
+  BILL_CREATED
+  ITEM_ADDED
+  ITEM_EDITED
+  DISCOUNT_APPLIED
+  PAYMENT_RECEIVED
+  BILL_CANCELLED
+  REFUND_ISSUED
+  INSURANCE_APPLIED
+  BILL_REOPENED
+}
+
+// Staff: any user who performs actions (cashier, doctor, admin, etc.)
+model Staff {
+  id         String  @id @default(uuid())
+  staffId    String  @unique
+  firstName  String
+  lastName   String
+  role       String
+  department String?
+  email      String? @unique
+  phone      String?
+  isActive   Boolean @default(true)
+
+  billsCreated     Bill[]         @relation("BillCreatedBy")
+  billsCancelled   Bill[]         @relation("BillCancelledBy")
+  itemsAdded       BillItem[]     @relation("ItemAddedBy")
+  itemPriceEdits   BillItem[]     @relation("ItemPriceEditedBy")
+  paymentsReceived BillPayment[]  @relation("PaymentReceivedBy")
+  discountsGranted BillDiscount[] @relation("DiscountGrantedBy")
+  refundsProcessed BillRefund[]   @relation("RefundProcessedBy")
+  auditLogs        BillAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Bill: master bill for a patient encounter (outpatient or inpatient)
+model Bill {
+  id          String     @id @default(uuid())
+  billNumber  String     @unique
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  patientId   String
+  admission   Admission? @relation(fields: [admissionId], references: [id])
+  admissionId String?
+  status      BillStatus @default(DRAFT)
+
+  // financial summary (kept in sync by service layer)
+  totalAmount      Decimal @default(0) @db.Decimal(12, 2)
+  discountAmount   Decimal @default(0) @db.Decimal(12, 2)
+  insuranceCovered Decimal @default(0) @db.Decimal(12, 2)
+  amountPaid       Decimal @default(0) @db.Decimal(12, 2)
+
+  notes              String?
+  createdBy          Staff     @relation("BillCreatedBy", fields: [createdById], references: [id])
+  createdById        String
+  cancelledBy        Staff?    @relation("BillCancelledBy", fields: [cancelledById], references: [id])
+  cancelledById      String?
+  cancelledAt        DateTime?
+  cancellationReason String?
+
+  items           BillItem[]
+  payments        BillPayment[]
+  discounts       BillDiscount[]
+  insuranceClaims InsuranceClaim[]
+  refunds         BillRefund[]
+  auditLogs       BillAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// BillItem: a single charge line on a bill
+model BillItem {
+  id          String         @id @default(uuid())
+  bill        Bill           @relation(fields: [billId], references: [id])
+  billId      String
+  description String
+  source      BillItemSource
+  referenceId String?
+  quantity    Int            @default(1)
+  unitPrice   Decimal        @db.Decimal(12, 2)
+  totalPrice  Decimal        @db.Decimal(12, 2)
+
+  addedBy         Staff     @relation("ItemAddedBy", fields: [addedById], references: [id])
+  addedById       String
+  priceEditedBy   Staff?    @relation("ItemPriceEditedBy", fields: [priceEditedById], references: [id])
+  priceEditedById String?
+  priceEditedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// BillPayment: a single payment transaction (partial or full)
+model BillPayment {
+  id           String            @id @default(uuid())
+  bill         Bill              @relation(fields: [billId], references: [id])
+  billId       String
+  amount       Decimal           @db.Decimal(12, 2)
+  method       BillPaymentMethod
+  reference    String?
+  notes        String?
+  receivedBy   Staff             @relation("PaymentReceivedBy", fields: [receivedById], references: [id])
+  receivedById String
+  paidAt       DateTime          @default(now())
+  createdAt    DateTime          @default(now())
+}
+
+// BillDiscount: a discount or waiver applied to a bill
+model BillDiscount {
+  id             String       @id @default(uuid())
+  bill           Bill         @relation(fields: [billId], references: [id])
+  billId         String
+  type           DiscountType
+  value          Decimal      @db.Decimal(12, 2)
+  computedAmount Decimal      @db.Decimal(12, 2)
+  reason         String
+  grantedBy      Staff        @relation("DiscountGrantedBy", fields: [grantedById], references: [id])
+  grantedById    String
+  createdAt      DateTime     @default(now())
+}
+
+// InsuranceClaim: insurance coverage applied to a bill
+model InsuranceClaim {
+  id            String   @id @default(uuid())
+  bill          Bill     @relation(fields: [billId], references: [id])
+  billId        String
+  provider      String
+  policyNumber  String?
+  coveredAmount Decimal  @db.Decimal(12, 2)
+  status        String   @default("PENDING")
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// BillRefund: a refund issued on a bill
+model BillRefund {
+  id            String   @id @default(uuid())
+  bill          Bill     @relation(fields: [billId], references: [id])
+  billId        String
+  amount        Decimal  @db.Decimal(12, 2)
+  reason        String
+  processedBy   Staff    @relation("RefundProcessedBy", fields: [processedById], references: [id])
+  processedById String
+  refundedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+}
+
+// BillAuditLog: immutable record of every action on a bill
+model BillAuditLog {
+  id            String          @id @default(uuid())
+  bill          Bill            @relation(fields: [billId], references: [id])
+  billId        String
+  action        BillAuditAction
+  description   String
+  performedBy   Staff           @relation(fields: [performedById], references: [id])
+  performedById String
+  metadata      Json?
+  createdAt     DateTime        @default(now())
+}
