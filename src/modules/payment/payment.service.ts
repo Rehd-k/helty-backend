@@ -13,6 +13,7 @@ export class PaymentService {
         amount: createPaymentDto.amount,
         method: createPaymentDto.method,
         description: createPaymentDto.description,
+        createdById : '',
       },
     });
   }

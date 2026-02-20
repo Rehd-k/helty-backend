@@ -9,22 +9,26 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Logger,
+  Req,
 } from '@nestjs/common';
+import { Public, Roles } from '../../common/decorators';
 import { PatientService } from './patient.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { PinoLogger } from 'nestjs-pino';
+
 
 @ApiTags('Patient')
 @Controller('patients')
 export class PatientController {
   constructor(
     private readonly patientService: PatientService,
-    private readonly logger: PinoLogger,
+    // private readonly logger: Logger,
   ) {
-    this.logger.setContext(PatientController.name);
+    // this.logger.setContext(PatientController.name);
   }
 
+  @Roles('admin', 'doctor', 'nurse', 'frontdesk')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new patient' })
@@ -32,12 +36,12 @@ export class PatientController {
     status: 201,
     description: 'Patient created successfully',
   })
-  create(@Body() createPatientDto: CreatePatientDto) {
-    // avoid using console.log when pino is the app logger
-    this.logger.debug('Creating patient with data', createPatientDto);
-    return this.patientService.create(createPatientDto);
+  create(@Body() createPatientDto: CreatePatientDto, @Req() req: any) {
+   
+    return this.patientService.create(createPatientDto, req);
   }
 
+  @Public()
   @Get()
   @ApiOperation({ summary: 'Get all patients with pagination' })
   @ApiResponse({

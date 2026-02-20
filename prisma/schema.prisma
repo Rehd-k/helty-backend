@@ -6,7 +6,6 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
-  
 }
 
 // patient model with extended fields
@@ -52,6 +51,11 @@ model Patient {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  createdBy   Staff   @relation("PatientCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("PatientUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model Appointment {
@@ -62,6 +66,13 @@ model Appointment {
   status    String
   notes     String?
   createdAt DateTime @default(now())
+  staffId   String?
+  staff     Staff?   @relation(fields: [staffId], references: [id])
+
+  createdBy   Staff   @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("AppointmentUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model Admission {
@@ -75,6 +86,11 @@ model Admission {
   reason        String?
   bills         Bill[]
   createdAt     DateTime  @default(now())
+
+  createdBy   Staff   @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("AdmissionUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model Payment {
@@ -85,6 +101,11 @@ model Payment {
   method      String
   description String?
   date        DateTime @default(now())
+
+  createdBy   Staff   @relation("PaymentCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("PaymentUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model MedicalHistory {
@@ -93,6 +114,11 @@ model MedicalHistory {
   patientId String
   details   String
   createdAt DateTime @default(now())
+
+  createdBy   Staff   @relation("MedicalHistoryCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("MedicalHistoryUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model DoctorReport {
@@ -102,6 +128,11 @@ model DoctorReport {
   doctorId  String?
   report    String
   createdAt DateTime @default(now())
+
+  createdBy   Staff   @relation("DoctorReportCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("DoctorReportUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model LabReport {
@@ -111,6 +142,11 @@ model LabReport {
   reportType String
   results    String
   date       DateTime @default(now())
+
+  createdBy   Staff   @relation("LabReportCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("LabReportUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model RadiologyReport {
@@ -120,6 +156,11 @@ model RadiologyReport {
   reportType String
   results    String
   date       DateTime @default(now())
+
+  createdBy   Staff   @relation("RadiologyReportCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("RadiologyReportUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model Prescription {
@@ -131,14 +172,45 @@ model Prescription {
   startDate DateTime
   endDate   DateTime?
   notes     String?
+
+  createdBy   Staff   @relation("PrescriptionCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("PrescriptionUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+}
+
+model ServiceCategory {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  location    String?
+
+  services Service[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   Staff   @relation("ServiceCategoryCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("ServiceCategoryUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model Service {
   id              String           @id @default(uuid())
   name            String
   description     String?
-  price           Float
+  cost            Decimal          @db.Decimal(12, 2)
+  category        ServiceCategory? @relation(fields: [categoryId], references: [id])
+  categoryId      String?
+  department      Department?      @relation(fields: [departmentId], references: [id])
+  departmentId    String?
   patientServices PatientService[]
+
+  createdBy   Staff   @relation("ServiceCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("ServiceUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 model PatientService {
@@ -149,6 +221,11 @@ model PatientService {
   serviceId String
   date      DateTime @default(now())
   quantity  Int      @default(1)
+
+  createdBy   Staff   @relation("PatientServiceCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("PatientServiceUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,16 +276,47 @@ enum BillAuditAction {
 }
 
 // Staff: any user who performs actions (cashier, doctor, admin, etc.)
+enum AccountType {
+  STORE
+  DISPENSARY
+  OTHER
+}
+
+model Department {
+  id     String  @id @default(uuid())
+  name   String  @unique
+  head   Staff?  @relation("DepartmentHead", fields: [headId], references: [id])
+  headId String? @unique
+  staff  Staff[]
+
+  from String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   Staff     @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?    @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+  services    Service[]
+}
+
 model Staff {
-  id         String  @id @default(uuid())
-  staffId    String  @unique
-  firstName  String
-  lastName   String
-  role       String
-  department String?
-  email      String? @unique
-  phone      String?
-  isActive   Boolean @default(true)
+  id           String       @id @default(uuid())
+  staffId      String       @unique
+  firstName    String
+  lastName     String
+  role         String
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  departmentId String?
+  accountType  AccountType?
+  email        String?      @unique
+  phone        String?
+  password     String?
+  isActive     Boolean      @default(true)
+
+  // one-to-one relation for department head
+  headedDepartment Department? @relation("DepartmentHead")
 
   billsCreated     Bill[]         @relation("BillCreatedBy")
   billsCancelled   Bill[]         @relation("BillCancelledBy")
@@ -219,8 +327,57 @@ model Staff {
   refundsProcessed BillRefund[]   @relation("RefundProcessedBy")
   auditLogs        BillAuditLog[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy   Staff?  @relation("StaffCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("StaffUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+
+  patientsCreated         Patient[]         @relation("PatientCreatedBy")
+  patientsUpdated         Patient[]         @relation("PatientUpdatedBy")
+  appointmentsCreated     Appointment[]     @relation("AppointmentCreatedBy")
+  appointmentsUpdated     Appointment[]     @relation("AppointmentUpdatedBy")
+  admissionsCreated       Admission[]       @relation("AdmissionCreatedBy")
+  admissionsUpdated       Admission[]       @relation("AdmissionUpdatedBy")
+  paymentsCreated         Payment[]         @relation("PaymentCreatedBy")
+  paymentsUpdated         Payment[]         @relation("PaymentUpdatedBy")
+  medicalHistoriesCreated MedicalHistory[]  @relation("MedicalHistoryCreatedBy")
+  medicalHistoriesUpdated MedicalHistory[]  @relation("MedicalHistoryUpdatedBy")
+  doctorReportsCreated    DoctorReport[]    @relation("DoctorReportCreatedBy")
+  doctorReportsUpdated    DoctorReport[]    @relation("DoctorReportUpdatedBy")
+  labReportsCreated       LabReport[]       @relation("LabReportCreatedBy")
+  labReportsUpdated       LabReport[]       @relation("LabReportUpdatedBy")
+  radiologyReportsCreated RadiologyReport[] @relation("RadiologyReportCreatedBy")
+  radiologyReportsUpdated RadiologyReport[] @relation("RadiologyReportUpdatedBy")
+  prescriptionsCreated    Prescription[]    @relation("PrescriptionCreatedBy")
+  prescriptionsUpdated    Prescription[]    @relation("PrescriptionUpdatedBy")
+  servicesCreated         Service[]         @relation("ServiceCreatedBy")
+  servicesUpdated         Service[]         @relation("ServiceUpdatedBy")
+  serviceCategoriesCreated ServiceCategory[] @relation("ServiceCategoryCreatedBy")
+  serviceCategoriesUpdated ServiceCategory[] @relation("ServiceCategoryUpdatedBy")
+  patientServicesCreated  PatientService[]  @relation("PatientServiceCreatedBy")
+  patientServicesUpdated  PatientService[]  @relation("PatientServiceUpdatedBy")
+  departmentsCreated      Department[]      @relation("DepartmentCreatedBy")
+  departmentsUpdated      Department[]      @relation("DepartmentUpdatedBy")
+  staffCreated            Staff[]           @relation("StaffCreatedBy")
+  staffUpdated            Staff[]           @relation("StaffUpdatedBy")
+
+  billsUpdated           Bill[]           @relation("BillUpdatedBy")
+  billItemsCreated       BillItem[]       @relation("BillItemCreatedBy")
+  billItemsUpdated       BillItem[]       @relation("BillItemUpdatedBy")
+  billPaymentsCreated    BillPayment[]    @relation("BillPaymentCreatedBy")
+  billPaymentsUpdated    BillPayment[]    @relation("BillPaymentUpdatedBy")
+  billDiscountsCreated   BillDiscount[]   @relation("BillDiscountCreatedBy")
+  billDiscountsUpdated   BillDiscount[]   @relation("BillDiscountUpdatedBy")
+  insuranceClaimsCreated InsuranceClaim[] @relation("InsuranceClaimCreatedBy")
+  insuranceClaimsUpdated InsuranceClaim[] @relation("InsuranceClaimUpdatedBy")
+  billRefundsCreated     BillRefund[]     @relation("BillRefundCreatedBy")
+  billRefundsUpdated     BillRefund[]     @relation("BillRefundUpdatedBy")
+  billAuditLogsCreated   BillAuditLog[]   @relation("BillAuditLogCreatedBy")
+  billAuditLogsUpdated   BillAuditLog[]   @relation("BillAuditLogUpdatedBy")
 }
 
 // Bill: master bill for a patient encounter (outpatient or inpatient)
@@ -242,6 +399,8 @@ model Bill {
   notes              String?
   createdBy          Staff     @relation("BillCreatedBy", fields: [createdById], references: [id])
   createdById        String
+  updatedBy          Staff?    @relation("BillUpdatedBy", fields: [updatedById], references: [id])
+  updatedById        String?
   cancelledBy        Staff?    @relation("BillCancelledBy", fields: [cancelledById], references: [id])
   cancelledById      String?
   cancelledAt        DateTime?
@@ -276,6 +435,11 @@ model BillItem {
   priceEditedById String?
   priceEditedAt   DateTime?
 
+  createdBy   Staff   @relation("BillItemCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("BillItemUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -293,6 +457,11 @@ model BillPayment {
   receivedById String
   paidAt       DateTime          @default(now())
   createdAt    DateTime          @default(now())
+
+  createdBy   Staff?  @relation("BillPaymentCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("BillPaymentUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 // BillDiscount: a discount or waiver applied to a bill
@@ -307,6 +476,11 @@ model BillDiscount {
   grantedBy      Staff        @relation("DiscountGrantedBy", fields: [grantedById], references: [id])
   grantedById    String
   createdAt      DateTime     @default(now())
+
+  createdBy   Staff?  @relation("BillDiscountCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("BillDiscountUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 // InsuranceClaim: insurance coverage applied to a bill
@@ -321,6 +495,11 @@ model InsuranceClaim {
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  createdBy   Staff?  @relation("InsuranceClaimCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("InsuranceClaimUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 // BillRefund: a refund issued on a bill
@@ -334,6 +513,11 @@ model BillRefund {
   processedById String
   refundedAt    DateTime @default(now())
   createdAt     DateTime @default(now())
+
+  createdBy   Staff?  @relation("BillRefundCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("BillRefundUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }
 
 // BillAuditLog: immutable record of every action on a bill
@@ -347,4 +531,9 @@ model BillAuditLog {
   performedById String
   metadata      Json?
   createdAt     DateTime        @default(now())
+
+  createdBy   Staff?  @relation("BillAuditLogCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("BillAuditLogUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 }

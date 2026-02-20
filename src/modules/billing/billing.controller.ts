@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
+import { StaffService } from '../staff/staff.service';
 import {
     AddBillItemDto,
     ApplyDiscountDto,
@@ -25,7 +26,10 @@ import {
 @ApiTags('Billing')
 @Controller('billing')
 export class BillingController {
-    constructor(private readonly billingService: BillingService) { }
+    constructor(
+        private readonly billingService: BillingService,
+        private readonly staffService: StaffService,
+    ) { }
 
     // ─── Bills ──────────────────────────────────────────────────────────────────
 
@@ -158,12 +162,13 @@ export class BillingController {
             phone?: string;
         },
     ) {
-        return this.billingService.createStaff(dto);
+        // forward to central staff service
+        return this.staffService.create(dto as any);
     }
 
     @Get('staff/all')
     @ApiOperation({ summary: 'List all staff members' })
     findAllStaff() {
-        return this.billingService.findAllStaff();
+        return this.staffService.findAll();
     }
 }

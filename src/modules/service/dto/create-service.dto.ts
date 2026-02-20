@@ -15,7 +15,15 @@ export class CreateServiceDto {
 
   @IsNumber()
   @Min(0)
-  price: number;
+  cost: number;
+
+  @IsString()
+  @IsOptional()
+  categoryId?: string;
+
+  @IsString()
+  @IsOptional()
+  departmentId?: string;
 }
 
 export class UpdateServiceDto {
@@ -30,5 +38,13 @@ export class UpdateServiceDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
-  price?: number;
+  cost?: number;
+
+  @IsString()
+  @IsOptional()
+  categoryId?: string;
+
+  @IsString()
+  @IsOptional()
+  departmentId?: string;
 }

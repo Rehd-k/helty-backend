@@ -4,11 +4,11 @@ import { CreateRadiologyReportDto, UpdateRadiologyReportDto } from './dto/create
 
 @Injectable()
 export class RadiologyReportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createRadiologyReportDto: CreateRadiologyReportDto) {
     return this.prisma.radiologyReport.create({
-      data: createRadiologyReportDto,
+      data: { ...createRadiologyReportDto, createdById: '', },
     });
   }
 

@@ -4,11 +4,11 @@ import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 
 @Injectable()
 export class ServiceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createServiceDto: CreateServiceDto) {
     return this.prisma.service.create({
-      data: createServiceDto,
+      data: { ...createServiceDto, createdById: '', },
     });
   }
 
@@ -30,6 +30,8 @@ export class ServiceService {
               },
             },
           },
+          category: true,
+          department: true,
         },
       }),
       this.prisma.service.count(),
@@ -47,6 +49,8 @@ export class ServiceService {
             patient: true,
           },
         },
+        category: true,
+        department: true,
       },
     });
   }
@@ -70,6 +74,7 @@ export class ServiceService {
         patientId,
         serviceId,
         quantity,
+        createdById: '',
       },
       include: {
         service: true,

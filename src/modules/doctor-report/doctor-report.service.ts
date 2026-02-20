@@ -8,7 +8,7 @@ export class DoctorReportService {
 
   async create(createDoctorReportDto: CreateDoctorReportDto) {
     return this.prisma.doctorReport.create({
-      data: createDoctorReportDto,
+      data: {...createDoctorReportDto, createdById: ''},
     });
   }
 

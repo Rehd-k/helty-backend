@@ -13,8 +13,10 @@ import {
 import { LabReportService } from './lab-report.service';
 import { CreateLabReportDto, UpdateLabReportDto } from './dto/create-lab-report.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Departments } from '../../common/decorators';
 
 @ApiTags('Lab Report')
+@Departments('laboratory')
 @Controller('lab-reports')
 export class LabReportController {
   constructor(private readonly labReportService: LabReportService) {}

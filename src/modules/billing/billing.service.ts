@@ -18,7 +18,7 @@ import {
 
 @Injectable()
 export class BillingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -244,6 +244,7 @@ export class BillingService {
         totalPrice,
         addedById: dto.staffId,
         referenceId: dto.referenceId,
+        createdById: '',
       },
       include: {
         addedBy: { select: { id: true, firstName: true, lastName: true } },
@@ -569,7 +570,16 @@ export class BillingService {
     email?: string;
     phone?: string;
   }) {
-    return this.prisma.staff.create({ data });
+    const createData = {
+      staffId: data.staffId,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      role: data.role,
+      email: data.email,
+      phone: data.phone,
+      ...(data.department && { department: { connect: { id: data.department } } }),
+    };
+    return this.prisma.staff.create({ data: createData });
   }
 
   async findAllStaff() {

@@ -13,12 +13,14 @@ import {
 import { ServiceService } from './service.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { AccountTypes } from '../../common/decorators';
 
 @ApiTags('Service')
 @Controller('services')
 export class ServiceController {
   constructor(private readonly serviceService: ServiceService) {}
 
+  @AccountTypes('STORE','DISPENSARY')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new hospital service' })

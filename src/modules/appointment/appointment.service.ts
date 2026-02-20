@@ -4,7 +4,7 @@ import { CreateAppointmentDto, UpdateAppointmentDto } from './dto/create-appoint
 
 @Injectable()
 export class AppointmentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createAppointmentDto: CreateAppointmentDto) {
     return this.prisma.appointment.create({
@@ -13,6 +13,7 @@ export class AppointmentService {
         date: new Date(createAppointmentDto.date),
         status: createAppointmentDto.status,
         notes: createAppointmentDto.notes,
+        createdById: '',
       },
     });
   }

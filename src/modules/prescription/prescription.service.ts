@@ -4,7 +4,7 @@ import { CreatePrescriptionDto, UpdatePrescriptionDto } from './dto/create-presc
 
 @Injectable()
 export class PrescriptionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createPrescriptionDto: CreatePrescriptionDto) {
     return this.prisma.prescription.create({
@@ -17,6 +17,7 @@ export class PrescriptionService {
           ? new Date(createPrescriptionDto.endDate)
           : null,
         notes: createPrescriptionDto.notes,
+        createdById: '',
       },
     });
   }

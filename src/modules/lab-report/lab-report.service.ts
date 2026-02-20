@@ -4,11 +4,12 @@ import { CreateLabReportDto, UpdateLabReportDto } from './dto/create-lab-report.
 
 @Injectable()
 export class LabReportService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createLabReportDto: CreateLabReportDto) {
     return this.prisma.labReport.create({
-      data: createLabReportDto,
+      data: { ...createLabReportDto, createdById: '' },
+
     });
   }
 

@@ -4,7 +4,7 @@ import { CreateAdmissionDto, UpdateAdmissionDto } from './dto/create-admission.d
 
 @Injectable()
 export class AdmissionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createAdmissionDto: CreateAdmissionDto) {
     return this.prisma.admission.create({
@@ -17,6 +17,7 @@ export class AdmissionService {
         ward: createAdmissionDto.ward,
         room: createAdmissionDto.room,
         reason: createAdmissionDto.reason,
+        createdById: '',
       },
     });
   }

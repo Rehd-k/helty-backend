@@ -4,11 +4,11 @@ import { CreateMedicalHistoryDto, UpdateMedicalHistoryDto } from './dto/create-m
 
 @Injectable()
 export class MedicalHistoryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createMedicalHistoryDto: CreateMedicalHistoryDto) {
     return this.prisma.medicalHistory.create({
-      data: createMedicalHistoryDto,
+      data: { ...createMedicalHistoryDto, createdById: '', },
     });
   }
 

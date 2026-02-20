@@ -1,19 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { customAlphabet } from 'nanoid';
-import { Logger } from 'nestjs-pino';
+// import { Logger } from 'nestjs-pino';
+// import { create } from 'domain';
 
 @Injectable()
 export class PatientService {
   private nanoid = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
 
-  constructor(private prisma: PrismaService, private readonly logger: Logger) { }
+  constructor(private prisma: PrismaService,
 
-  async create(createPatientDto: CreatePatientDto) {
+    // private readonly logger: Logger
 
-    this.logger.log('Creating patient with data:');
-    const patientId = `PAT-${this.nanoid()}`;
+  ) { }
+
+  async create(createPatientDto: CreatePatientDto, req: any) {
+    const patientId = `${this.nanoid()}`;
     const data: any = {
       patientId,
       title: createPatientDto.title,
@@ -27,6 +30,8 @@ export class PatientService {
       lga: createPatientDto.lga || '',
       town: createPatientDto.town || '',
       permanentAddress: createPatientDto.permanentAddress || '',
+      createdById: req.user.sub,
+      updatedById: req.user.sub,
     };
 
     if (createPatientDto.otherName) data.otherName = createPatientDto.otherName;
@@ -43,6 +48,8 @@ export class PatientService {
     if (createPatientDto.hmo) data.hmo = createPatientDto.hmo;
     if (createPatientDto.fingerprintData) data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
+    if (createPatientDto.createdBy) data.createdBy = { connect: { id: req.user.sub } };
+    if (createPatientDto.updateBy) data.updatedBy = { connect: { id: req.user.sub } };
 
 
     return this.prisma.patient.create({

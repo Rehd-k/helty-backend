@@ -13,8 +13,10 @@ import {
 import { RadiologyReportService } from './radiology-report.service';
 import { CreateRadiologyReportDto, UpdateRadiologyReportDto } from './dto/create-radiology-report.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Departments } from '../../common/decorators';
 
 @ApiTags('Radiology Report')
+@Departments('radiology')
 @Controller('radiology-reports')
 export class RadiologyReportController {
   constructor(private readonly radiologyReportService: RadiologyReportService) {}
