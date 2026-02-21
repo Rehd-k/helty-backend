@@ -285,6 +285,7 @@ enum AccountType {
 model Department {
   id     String  @id @default(uuid())
   name   String  @unique
+  
   head   Staff?  @relation("DepartmentHead", fields: [headId], references: [id])
   headId String? @unique
   staff  Staff[]

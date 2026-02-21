@@ -1,17 +1,21 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { CreateDepartmentDto } from './dto/create-department.dto';
 
 @Injectable()
 export class DepartmentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
-  async create(data: Prisma.DepartmentCreateInput) {
-    return this.prisma.department.create({ data });
+  async create(data: CreateDepartmentDto, req) {
+    data.createdById = req.user.sub
+    return this.prisma.department.create({ data: data as Prisma.DepartmentCreateInput });
   }
 
   async findAll() {
-    return this.prisma.department.findMany({ orderBy: { name: 'asc' } });
+    const departments = await this.prisma.department.findMany({ orderBy: { name: 'asc' } });
+
+    return departments;
   }
 
   async findOne(id: string) {

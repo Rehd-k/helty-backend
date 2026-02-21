@@ -48,13 +48,12 @@ export class PatientService {
     if (createPatientDto.hmo) data.hmo = createPatientDto.hmo;
     if (createPatientDto.fingerprintData) data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
-    if (createPatientDto.createdBy) data.createdBy = { connect: { id: req.user.sub } };
-    if (createPatientDto.updateBy) data.updatedBy = { connect: { id: req.user.sub } };
 
 
-    return this.prisma.patient.create({
+    const newPatient = this.prisma.patient.create({
       data,
     });
+    return newPatient;
   }
 
   async findAll(skip = 0, take = 10) {
@@ -76,7 +75,6 @@ export class PatientService {
       }),
       this.prisma.patient.count(),
     ]);
-
     return { patients, total, skip, take };
   }
 

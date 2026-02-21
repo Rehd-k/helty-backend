@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { ServiceService } from './service.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
@@ -18,14 +19,14 @@ import { AccountTypes } from '../../common/decorators';
 @ApiTags('Service')
 @Controller('services')
 export class ServiceController {
-  constructor(private readonly serviceService: ServiceService) {}
+  constructor(private readonly serviceService: ServiceService) { }
 
-  @AccountTypes('STORE','DISPENSARY')
+  @AccountTypes('STORE', 'DISPENSARY')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new hospital service' })
-  create(@Body() createServiceDto: CreateServiceDto) {
-    return this.serviceService.create(createServiceDto);
+  create(@Body() createServiceDto: CreateServiceDto, @Req() req: any) {
+    return this.serviceService.create(createServiceDto, req);
   }
 
   @Get()

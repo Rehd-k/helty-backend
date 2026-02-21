@@ -6,9 +6,9 @@ import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 export class ServiceService {
   constructor(private prisma: PrismaService) { }
 
-  async create(createServiceDto: CreateServiceDto) {
+  async create(createServiceDto: CreateServiceDto, req) {
     return this.prisma.service.create({
-      data: { ...createServiceDto, createdById: '', },
+      data: { ...createServiceDto, createdById: req.user.sub, },
     });
   }
 

@@ -10,4 +10,9 @@ export class CreateDepartmentDto {
   @IsOptional()
   @IsString()
   headId?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-staff' })
+  @IsOptional()
+  @IsString()
+  createdById?: string;
 }

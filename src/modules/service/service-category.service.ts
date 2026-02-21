@@ -4,10 +4,10 @@ import { CreateServiceCategoryDto, UpdateServiceCategoryDto } from './dto/create
 
 @Injectable()
 export class ServiceCategoryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
-  async create(dto: CreateServiceCategoryDto) {
-    return this.prisma.serviceCategory.create({ data: { ...dto, createdById: '' } });
+  async create(dto: CreateServiceCategoryDto, req) {
+    return this.prisma.serviceCategory.create({ data: { ...dto, createdById: req.user.sub } });
   }
 
   async findAll(skip = 0, take = 10) {
