@@ -4,33 +4,33 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { BillAuditAction, BillStatus, Prisma } from '@prisma/client';
+import { TransactionAuditAction, TransactionStatus, Prisma } from '@prisma/client';
 import {
-  AddBillItemDto,
+  AddTransactionItemDto,
   ApplyDiscountDto,
   ApplyInsuranceDto,
-  CancelBillDto,
-  CreateBillDto,
+  CancelTransactionDto,
+  CreateTransactionDto,
   CreateRefundDto,
-  EditBillItemDto,
+  EditTransactionItemDto,
   RecordPaymentDto,
 } from './dto/create-bill.dto';
 
 @Injectable()
-export class BillingService {
+export class TransactionService {
   constructor(private readonly prisma: PrismaService) { }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
-  private async generateBillNumber(): Promise<string> {
+  private async generateTransactionNumber(): Promise<string> {
     const year = new Date().getFullYear();
-    const count = await this.prisma.bill.count();
+    const count = await this.prisma.transaction.count();
     const seq = String(count + 1).padStart(5, '0');
     return `BILL-${year}-${seq}`;
   }
 
-  private async getBillOrThrow(id: string) {
-    const bill = await this.prisma.bill.findUnique({
+  private async getTransactionOrThrow(id: string) {
+    const transaction = await this.prisma.transaction.findUnique({
       where: { id },
       include: {
         items: true,
@@ -40,59 +40,59 @@ export class BillingService {
         refunds: true,
       },
     });
-    if (!bill) throw new NotFoundException(`Bill ${id} not found`);
-    return bill;
+    if (!transaction) throw new NotFoundException(`Transaction ${id} not found`);
+    return transaction;
   }
 
-  private assertNotCancelled(bill: { status: BillStatus }) {
-    if (bill.status === BillStatus.CANCELLED) {
-      throw new BadRequestException('Cannot modify a cancelled bill');
+  private assertNotCancelled(transaction: { status: TransactionStatus }) {
+    if (transaction.status === TransactionStatus.CANCELLED) {
+      throw new BadRequestException('Cannot modify a cancelled transaction');
     }
   }
 
-  /** Recalculate totalAmount from items and update the bill */
-  private async recalculateTotals(billId: string) {
-    const items = await this.prisma.billItem.findMany({ where: { billId } });
+  /** Recalculate totalAmount from items and update the transaction */
+  private async recalculateTotals(transactionId: string) {
+    const items = await this.prisma.transactionItem.findMany({ where: { transactionId } });
     const totalAmount = items.reduce(
       (sum, item) => sum.add(item.totalPrice),
       new Prisma.Decimal(0),
     );
 
-    const bill = await this.prisma.bill.findUnique({ where: { id: billId } });
-    if (!bill) return;
+    const transaction = await this.prisma.transaction.findUnique({ where: { id: transactionId } });
+    if (!transaction) return;
 
     const outstanding = totalAmount
-      .sub(bill.discountAmount)
-      .sub(bill.insuranceCovered)
-      .sub(bill.amountPaid);
+      .sub(transaction.discountAmount)
+      .sub(transaction.insuranceCovered)
+      .sub(transaction.amountPaid);
 
-    let status: BillStatus = bill.status;
-    if (bill.status !== BillStatus.CANCELLED) {
+    let status: TransactionStatus = transaction.status;
+    if (transaction.status !== TransactionStatus.CANCELLED) {
       if (outstanding.lte(0) && totalAmount.gt(0)) {
-        status = BillStatus.PAID;
-      } else if (bill.amountPaid.gt(0)) {
-        status = BillStatus.PARTIALLY_PAID;
+        status = TransactionStatus.PAID;
+      } else if (transaction.amountPaid.gt(0)) {
+        status = TransactionStatus.PARTIALLY_PAID;
       } else {
-        status = BillStatus.ACTIVE;
+        status = TransactionStatus.ACTIVE;
       }
     }
 
-    await this.prisma.bill.update({
-      where: { id: billId },
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
       data: { totalAmount, status },
     });
   }
 
   private async log(
-    billId: string,
-    action: BillAuditAction,
+    transactionId: string,
+    action: TransactionAuditAction,
     description: string,
     performedById: string,
     metadata?: object,
   ) {
-    await this.prisma.billAuditLog.create({
+    await this.prisma.transactionAuditLog.create({
       data: {
-        billId,
+        transactionId,
         action,
         description,
         performedById,
@@ -101,39 +101,39 @@ export class BillingService {
     });
   }
 
-  // ─── Create Bill ───────────────────────────────────────────────────────────
+  // ─── Create Transaction ───────────────────────────────────────────────────────────
 
-  async createBill(dto: CreateBillDto) {
-    const billNumber = await this.generateBillNumber();
+  async createTransaction(dto: CreateTransactionDto) {
+    const transactionNumber = await this.generateTransactionNumber();
 
-    const bill = await this.prisma.bill.create({
+    const transaction = await this.prisma.transaction.create({
       data: {
-        billNumber,
+        transactionNumber,
         patientId: dto.patientId,
         createdById: dto.staffId,
         admissionId: dto.admissionId,
         notes: dto.notes,
-        status: BillStatus.ACTIVE,
+        status: TransactionStatus.ACTIVE,
       },
       include: { patient: true, createdBy: true },
     });
 
     await this.log(
-      bill.id,
-      BillAuditAction.BILL_CREATED,
-      `Bill ${billNumber} created for patient ${dto.patientId}`,
+      transaction.id,
+      TransactionAuditAction.BILL_CREATED,
+      `Transaction ${transactionNumber} created for patient ${dto.patientId}`,
       dto.staffId,
-      { billNumber },
+      { transactionNumber },
     );
 
-    return bill;
+    return transaction;
   }
 
-  // ─── Get Bills ─────────────────────────────────────────────────────────────
+  // ─── Get Transactions ─────────────────────────────────────────────────────────────
 
   async findAll(skip = 0, take = 20) {
-    const [bills, total] = await Promise.all([
-      this.prisma.bill.findMany({
+    const [transactions, total] = await Promise.all([
+      this.prisma.transaction.findMany({
         skip,
         take,
         orderBy: { createdAt: 'desc' },
@@ -152,13 +152,13 @@ export class BillingService {
           _count: { select: { items: true, payments: true } },
         },
       }),
-      this.prisma.bill.count(),
+      this.prisma.transaction.count(),
     ]);
-    return { bills, total, skip, take };
+    return { transactions, total, skip, take };
   }
 
   async findOne(id: string) {
-    const bill = await this.prisma.bill.findUnique({
+    const transaction = await this.prisma.transaction.findUnique({
       where: { id },
       include: {
         patient: true,
@@ -203,19 +203,19 @@ export class BillingService {
         },
       },
     });
-    if (!bill) throw new NotFoundException(`Bill ${id} not found`);
+    if (!transaction) throw new NotFoundException(`Transaction ${id} not found`);
 
     // Compute outstanding balance
-    const outstanding = bill.totalAmount
-      .sub(bill.discountAmount)
-      .sub(bill.insuranceCovered)
-      .sub(bill.amountPaid);
+    const outstanding = transaction.totalAmount
+      .sub(transaction.discountAmount)
+      .sub(transaction.insuranceCovered)
+      .sub(transaction.amountPaid);
 
-    return { ...bill, outstandingBalance: outstanding };
+    return { ...transaction, outstandingBalance: outstanding };
   }
 
   findByPatient(patientId: string) {
-    return this.prisma.bill.findMany({
+    return this.prisma.transaction.findMany({
       where: { patientId },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -227,16 +227,16 @@ export class BillingService {
 
   // ─── Add Item ──────────────────────────────────────────────────────────────
 
-  async addItem(billId: string, dto: AddBillItemDto) {
-    const bill = await this.getBillOrThrow(billId);
-    this.assertNotCancelled(bill);
+  async addItem(transactionId: string, dto: AddTransactionItemDto) {
+    const transaction = await this.getTransactionOrThrow(transactionId);
+    this.assertNotCancelled(transaction);
 
     const unitPrice = new Prisma.Decimal(dto.unitPrice);
     const totalPrice = unitPrice.mul(dto.quantity);
 
-    const item = await this.prisma.billItem.create({
+    const item = await this.prisma.transactionItem.create({
       data: {
-        billId,
+        transactionId,
         description: dto.description,
         source: dto.source,
         quantity: dto.quantity,
@@ -251,10 +251,10 @@ export class BillingService {
       },
     });
 
-    await this.recalculateTotals(billId);
+    await this.recalculateTotals(transactionId);
     await this.log(
-      billId,
-      BillAuditAction.ITEM_ADDED,
+      transactionId,
+      TransactionAuditAction.ITEM_ADDED,
       `Item "${dto.description}" (${dto.source}) added — qty: ${dto.quantity}, unit: ${dto.unitPrice}`,
       dto.staffId,
       {
@@ -270,20 +270,20 @@ export class BillingService {
 
   // ─── Edit Item Price ───────────────────────────────────────────────────────
 
-  async editItemPrice(billId: string, itemId: string, dto: EditBillItemDto) {
-    const bill = await this.getBillOrThrow(billId);
-    this.assertNotCancelled(bill);
+  async editItemPrice(transactionId: string, itemId: string, dto: EditTransactionItemDto) {
+    const transaction = await this.getTransactionOrThrow(transactionId);
+    this.assertNotCancelled(transaction);
 
-    const existing = await this.prisma.billItem.findFirst({
-      where: { id: itemId, billId },
+    const existing = await this.prisma.transactionItem.findFirst({
+      where: { id: itemId, transactionId },
     });
     if (!existing)
-      throw new NotFoundException(`Item ${itemId} not found on bill ${billId}`);
+      throw new NotFoundException(`Item ${itemId} not found on transaction ${transactionId}`);
 
     const newUnitPrice = new Prisma.Decimal(dto.unitPrice);
     const newTotalPrice = newUnitPrice.mul(existing.quantity);
 
-    const updated = await this.prisma.billItem.update({
+    const updated = await this.prisma.transactionItem.update({
       where: { id: itemId },
       data: {
         unitPrice: newUnitPrice,
@@ -293,10 +293,10 @@ export class BillingService {
       },
     });
 
-    await this.recalculateTotals(billId);
+    await this.recalculateTotals(transactionId);
     await this.log(
-      billId,
-      BillAuditAction.ITEM_EDITED,
+      transactionId,
+      TransactionAuditAction.ITEM_EDITED,
       `Item "${existing.description}" price changed from ${existing.unitPrice.toString()} to ${dto.unitPrice.toString()}`,
       dto.staffId,
       { itemId, oldUnitPrice: existing.unitPrice, newUnitPrice: dto.unitPrice },
@@ -307,18 +307,18 @@ export class BillingService {
 
   // ─── Record Payment ────────────────────────────────────────────────────────
 
-  async recordPayment(billId: string, dto: RecordPaymentDto) {
-    const bill = await this.getBillOrThrow(billId);
-    this.assertNotCancelled(bill);
+  async recordPayment(transactionId: string, dto: RecordPaymentDto) {
+    const transaction = await this.getTransactionOrThrow(transactionId);
+    this.assertNotCancelled(transaction);
 
-    if (bill.status === BillStatus.PAID) {
-      throw new BadRequestException('Bill is already fully paid');
+    if (transaction.status === TransactionStatus.PAID) {
+      throw new BadRequestException('Transaction is already fully paid');
     }
 
-    const outstanding = bill.totalAmount
-      .sub(bill.discountAmount)
-      .sub(bill.insuranceCovered)
-      .sub(bill.amountPaid);
+    const outstanding = transaction.totalAmount
+      .sub(transaction.discountAmount)
+      .sub(transaction.insuranceCovered)
+      .sub(transaction.amountPaid);
 
     const paymentAmount = new Prisma.Decimal(dto.amount);
     if (paymentAmount.gt(outstanding)) {
@@ -327,9 +327,9 @@ export class BillingService {
       );
     }
 
-    const payment = await this.prisma.billPayment.create({
+    const payment = await this.prisma.transactionPayment.create({
       data: {
-        billId,
+        transactionId,
         amount: paymentAmount,
         method: dto.method,
         reference: dto.reference,
@@ -341,20 +341,20 @@ export class BillingService {
       },
     });
 
-    const newAmountPaid = bill.amountPaid.add(paymentAmount);
+    const newAmountPaid = transaction.amountPaid.add(paymentAmount);
     const newOutstanding = outstanding.sub(paymentAmount);
     const newStatus = newOutstanding.lte(0)
-      ? BillStatus.PAID
-      : BillStatus.PARTIALLY_PAID;
+      ? TransactionStatus.PAID
+      : TransactionStatus.PARTIALLY_PAID;
 
-    await this.prisma.bill.update({
-      where: { id: billId },
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
       data: { amountPaid: newAmountPaid, status: newStatus },
     });
 
     await this.log(
-      billId,
-      BillAuditAction.PAYMENT_RECEIVED,
+      transactionId,
+      TransactionAuditAction.PAYMENT_RECEIVED,
       `Payment of ${dto.amount} received via ${dto.method}. Outstanding: ${newOutstanding.toString()}`,
       dto.staffId,
       {
@@ -370,20 +370,20 @@ export class BillingService {
 
   // ─── Apply Discount ────────────────────────────────────────────────────────
 
-  async applyDiscount(billId: string, dto: ApplyDiscountDto) {
-    const bill = await this.getBillOrThrow(billId);
-    this.assertNotCancelled(bill);
+  async applyDiscount(transactionId: string, dto: ApplyDiscountDto) {
+    const transaction = await this.getTransactionOrThrow(transactionId);
+    this.assertNotCancelled(transaction);
 
     let computedAmount: Prisma.Decimal;
     if (dto.type === 'PERCENTAGE') {
-      computedAmount = bill.totalAmount.mul(dto.value).div(100);
+      computedAmount = transaction.totalAmount.mul(dto.value).div(100);
     } else {
       computedAmount = new Prisma.Decimal(dto.value);
     }
 
-    const discount = await this.prisma.billDiscount.create({
+    const discount = await this.prisma.transactionDiscount.create({
       data: {
-        billId,
+        transactionId,
         type: dto.type,
         value: new Prisma.Decimal(dto.value),
         computedAmount,
@@ -395,15 +395,15 @@ export class BillingService {
       },
     });
 
-    const newDiscountAmount = bill.discountAmount.add(computedAmount);
-    await this.prisma.bill.update({
-      where: { id: billId },
+    const newDiscountAmount = transaction.discountAmount.add(computedAmount);
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
       data: { discountAmount: newDiscountAmount },
     });
 
     await this.log(
-      billId,
-      BillAuditAction.DISCOUNT_APPLIED,
+      transactionId,
+      TransactionAuditAction.DISCOUNT_APPLIED,
       `Discount applied: ${dto.type === 'PERCENTAGE' ? dto.value + '%' : dto.value + ' fixed'} — ${dto.reason}. Computed: ${computedAmount.toString()}`,
       dto.staffId,
       {
@@ -419,15 +419,15 @@ export class BillingService {
 
   // ─── Apply Insurance ───────────────────────────────────────────────────────
 
-  async applyInsurance(billId: string, dto: ApplyInsuranceDto) {
-    const bill = await this.getBillOrThrow(billId);
-    this.assertNotCancelled(bill);
+  async applyInsurance(transactionId: string, dto: ApplyInsuranceDto) {
+    const transaction = await this.getTransactionOrThrow(transactionId);
+    this.assertNotCancelled(transaction);
 
     const coveredAmount = new Prisma.Decimal(dto.coveredAmount);
 
     const claim = await this.prisma.insuranceClaim.create({
       data: {
-        billId,
+        transactionId,
         provider: dto.provider,
         policyNumber: dto.policyNumber,
         coveredAmount,
@@ -435,19 +435,19 @@ export class BillingService {
       },
     });
 
-    const newInsuranceCovered = bill.insuranceCovered.add(coveredAmount);
-    await this.prisma.bill.update({
-      where: { id: billId },
+    const newInsuranceCovered = transaction.insuranceCovered.add(coveredAmount);
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
       data: { insuranceCovered: newInsuranceCovered },
     });
 
     // Insurance claims don't have a staffId in the DTO — log with a system note
-    // We use the bill's createdById as the performer for the audit log
+    // We use the transaction's createdById as the performer for the audit log
     await this.log(
-      billId,
-      BillAuditAction.INSURANCE_APPLIED,
+      transactionId,
+      TransactionAuditAction.INSURANCE_APPLIED,
       `Insurance claim applied: ${dto.provider}, covered: ${dto.coveredAmount}`,
-      bill.createdById,
+      transaction.createdById,
       {
         claimId: claim.id,
         provider: dto.provider,
@@ -460,19 +460,19 @@ export class BillingService {
 
   // ─── Issue Refund ──────────────────────────────────────────────────────────
 
-  async issueRefund(billId: string, dto: CreateRefundDto) {
-    const bill = await this.getBillOrThrow(billId);
+  async issueRefund(transactionId: string, dto: CreateRefundDto) {
+    const transaction = await this.getTransactionOrThrow(transactionId);
 
     const refundAmount = new Prisma.Decimal(dto.amount);
-    if (refundAmount.gt(bill.amountPaid)) {
+    if (refundAmount.gt(transaction.amountPaid)) {
       throw new BadRequestException(
-        `Refund amount (${dto.amount}) exceeds amount paid (${bill.amountPaid.toString()})`,
+        `Refund amount (${dto.amount}) exceeds amount paid (${transaction.amountPaid.toString()})`,
       );
     }
 
-    const refund = await this.prisma.billRefund.create({
+    const refund = await this.prisma.transactionRefund.create({
       data: {
-        billId,
+        transactionId,
         amount: refundAmount,
         reason: dto.reason,
         processedById: dto.staffId,
@@ -482,26 +482,26 @@ export class BillingService {
       },
     });
 
-    const newAmountPaid = bill.amountPaid.sub(refundAmount);
-    const outstanding = bill.totalAmount
-      .sub(bill.discountAmount)
-      .sub(bill.insuranceCovered)
+    const newAmountPaid = transaction.amountPaid.sub(refundAmount);
+    const outstanding = transaction.totalAmount
+      .sub(transaction.discountAmount)
+      .sub(transaction.insuranceCovered)
       .sub(newAmountPaid);
 
     const newStatus = newAmountPaid.lte(0)
-      ? BillStatus.REFUNDED
+      ? TransactionStatus.REFUNDED
       : outstanding.lte(0)
-        ? BillStatus.PAID
-        : BillStatus.PARTIALLY_PAID;
+        ? TransactionStatus.PAID
+        : TransactionStatus.PARTIALLY_PAID;
 
-    await this.prisma.bill.update({
-      where: { id: billId },
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
       data: { amountPaid: newAmountPaid, status: newStatus },
     });
 
     await this.log(
-      billId,
-      BillAuditAction.REFUND_ISSUED,
+      transactionId,
+      TransactionAuditAction.REFUND_ISSUED,
       `Refund of ${dto.amount} issued. Reason: ${dto.reason}`,
       dto.staffId,
       { refundId: refund.id, amount: dto.amount, reason: dto.reason },
@@ -510,22 +510,22 @@ export class BillingService {
     return refund;
   }
 
-  // ─── Cancel Bill ───────────────────────────────────────────────────────────
+  // ─── Cancel Transaction ───────────────────────────────────────────────────────────
 
-  async cancelBill(billId: string, dto: CancelBillDto) {
-    const bill = await this.getBillOrThrow(billId);
-    this.assertNotCancelled(bill);
+  async cancelTransaction(transactionId: string, dto: CancelTransactionDto) {
+    const transaction = await this.getTransactionOrThrow(transactionId);
+    this.assertNotCancelled(transaction);
 
-    if (bill.amountPaid.gt(0)) {
+    if (transaction.amountPaid.gt(0)) {
       throw new BadRequestException(
-        'Cannot cancel a bill that has received payments. Issue a refund first.',
+        'Cannot cancel a transaction that has received payments. Issue a refund first.',
       );
     }
 
-    const updated = await this.prisma.bill.update({
-      where: { id: billId },
+    const updated = await this.prisma.transaction.update({
+      where: { id: transactionId },
       data: {
-        status: BillStatus.CANCELLED,
+        status: TransactionStatus.CANCELLED,
         cancelledById: dto.staffId,
         cancelledAt: new Date(),
         cancellationReason: dto.reason,
@@ -533,9 +533,9 @@ export class BillingService {
     });
 
     await this.log(
-      billId,
-      BillAuditAction.BILL_CANCELLED,
-      `Bill cancelled. Reason: ${dto.reason}`,
+      transactionId,
+      TransactionAuditAction.BILL_CANCELLED,
+      `Transaction cancelled. Reason: ${dto.reason}`,
       dto.staffId,
       { reason: dto.reason },
     );
@@ -545,11 +545,11 @@ export class BillingService {
 
   // ─── Audit Log ─────────────────────────────────────────────────────────────
 
-  async getAuditLog(billId: string) {
-    await this.getBillOrThrow(billId);
+  async getAuditLog(transactionId: string) {
+    await this.getTransactionOrThrow(transactionId);
 
-    return this.prisma.billAuditLog.findMany({
-      where: { billId },
+    return this.prisma.transactionAuditLog.findMany({
+      where: { transactionId },
       orderBy: { createdAt: 'asc' },
       include: {
         performedBy: {

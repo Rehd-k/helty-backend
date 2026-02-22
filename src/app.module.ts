@@ -12,7 +12,7 @@ import { LabReportModule } from './modules/lab-report/lab-report.module';
 import { RadiologyReportModule } from './modules/radiology-report/radiology-report.module';
 import { PrescriptionModule } from './modules/prescription/prescription.module';
 import { ServiceModule } from './modules/service/service.module';
-import { BillingModule } from './modules/billing/billing.module';
+import { TransactionModule } from './modules/billing/billing.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DepartmentModule } from './modules/department/department.module';
@@ -20,6 +20,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard, AccessGuard } from './common/guards';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { InvoiceModule } from './modules/invoice/invoice.module';
 
 @Module({
   imports: [
@@ -50,10 +51,11 @@ import { AppService } from './app.service';
     RadiologyReportModule,
     PrescriptionModule,
     ServiceModule,
-    BillingModule,
+    TransactionModule,
     StaffModule,
     AuthModule,
     DepartmentModule,
+    InvoiceModule,
   ],
   controllers: [AppController],
   providers: [

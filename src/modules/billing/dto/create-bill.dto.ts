@@ -9,11 +9,11 @@ import {
     IsUUID,
     Min,
 } from 'class-validator';
-import { BillItemSource, BillPaymentMethod, DiscountType } from '@prisma/client';
+import { TransactionItemSource, TransactionPaymentMethod, DiscountType } from '@prisma/client';
 
-// ─── Create Bill ─────────────────────────────────────────────────────────────
+// ─── Create Transaction ─────────────────────────────────────────────────────────────
 
-export class CreateBillDto {
+export class CreateTransactionDto {
     @ApiProperty({ description: 'Patient ID (UUID)' })
     @IsUUID()
     @IsNotEmpty()
@@ -35,17 +35,17 @@ export class CreateBillDto {
     notes?: string;
 }
 
-// ─── Add Bill Item ────────────────────────────────────────────────────────────
+// ─── Add Transaction Item ────────────────────────────────────────────────────────────
 
-export class AddBillItemDto {
+export class AddTransactionItemDto {
     @ApiProperty({ description: 'Description of the charge' })
     @IsString()
     @IsNotEmpty()
     description: string;
 
-    @ApiProperty({ enum: BillItemSource, description: 'Department source of the charge' })
-    @IsEnum(BillItemSource)
-    source: BillItemSource;
+    @ApiProperty({ enum: TransactionItemSource, description: 'Department source of the charge' })
+    @IsEnum(TransactionItemSource)
+    source: TransactionItemSource;
 
     @ApiProperty({ description: 'Quantity of the item', example: 1 })
     @IsNumber()
@@ -68,9 +68,9 @@ export class AddBillItemDto {
     referenceId?: string;
 }
 
-// ─── Edit Bill Item Price ─────────────────────────────────────────────────────
+// ─── Edit Transaction Item Price ─────────────────────────────────────────────────────
 
-export class EditBillItemDto {
+export class EditTransactionItemDto {
     @ApiProperty({ description: 'New unit price for the item', example: 4500 })
     @IsNumber()
     @Min(0)
@@ -90,9 +90,9 @@ export class RecordPaymentDto {
     @IsPositive()
     amount: number;
 
-    @ApiProperty({ enum: BillPaymentMethod, description: 'Payment method' })
-    @IsEnum(BillPaymentMethod)
-    method: BillPaymentMethod;
+    @ApiProperty({ enum: TransactionPaymentMethod, description: 'Payment method' })
+    @IsEnum(TransactionPaymentMethod)
+    method: TransactionPaymentMethod;
 
     @ApiProperty({ description: 'Staff ID of the cashier receiving this payment' })
     @IsUUID()
@@ -176,9 +176,9 @@ export class CreateRefundDto {
     staffId: string;
 }
 
-// ─── Cancel Bill ──────────────────────────────────────────────────────────────
+// ─── Cancel Transaction ──────────────────────────────────────────────────────────────
 
-export class CancelBillDto {
+export class CancelTransactionDto {
     @ApiProperty({ description: 'Staff ID of the person cancelling the bill' })
     @IsUUID()
     @IsNotEmpty()

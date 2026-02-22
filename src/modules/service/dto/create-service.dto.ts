@@ -2,49 +2,39 @@ import {
   IsString,
   IsNumber,
   IsOptional,
+  IsUUID,
+  IsNotEmpty,
   Min,
 } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+
+// ─── Service DTOs ──────────────────────────────────────────────────────────────
 
 export class CreateServiceDto {
+  @ApiProperty({ description: 'Name of the hospital service', example: 'Blood Test' })
   @IsString()
+  @IsNotEmpty()
   name: string;
 
+  @ApiPropertyOptional({ description: 'Brief description of the service', example: 'Full blood count (FBC)' })
   @IsString()
   @IsOptional()
   description?: string;
 
+  @ApiProperty({ description: 'Cost of the service in naira', example: 3500 })
   @IsNumber()
   @Min(0)
   cost: number;
 
-  @IsString()
+  @ApiPropertyOptional({ description: 'UUID of the service category' })
+  @IsUUID()
   @IsOptional()
   categoryId?: string;
 
-  @IsString()
+  @ApiPropertyOptional({ description: 'UUID of the department offering this service' })
+  @IsUUID()
   @IsOptional()
   departmentId?: string;
 }
 
-export class UpdateServiceDto {
-  @IsString()
-  @IsOptional()
-  name?: string;
-
-  @IsString()
-  @IsOptional()
-  description?: string;
-
-  @IsNumber()
-  @IsOptional()
-  @Min(0)
-  cost?: number;
-
-  @IsString()
-  @IsOptional()
-  categoryId?: string;
-
-  @IsString()
-  @IsOptional()
-  departmentId?: string;
-}
+export class UpdateServiceDto extends PartialType(CreateServiceDto) { }

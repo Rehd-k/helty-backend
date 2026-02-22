@@ -106,11 +106,9 @@ export class PatientService {
         prescriptions: {
           orderBy: { startDate: 'desc' },
         },
-        patientServices: {
-          include: {
-            service: true,
-          },
-          orderBy: { date: 'desc' },
+        invoice: {
+
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -128,7 +126,7 @@ export class PatientService {
         labReports: true,
         radiologyReports: true,
         prescriptions: true,
-        patientServices: true,
+        invoice: true,
       },
     });
   }

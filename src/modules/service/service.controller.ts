@@ -11,79 +11,94 @@ import {
   HttpStatus,
   Req,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiNoContentResponse,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+} from '@nestjs/swagger';
 import { ServiceService } from './service.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { AccountTypes } from '../../common/decorators';
 
-@ApiTags('Service')
+@ApiTags('Services')
 @Controller('services')
 export class ServiceController {
   constructor(private readonly serviceService: ServiceService) { }
 
-  @AccountTypes('STORE', 'DISPENSARY')
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new hospital service' })
-  create(@Body() createServiceDto: CreateServiceDto, @Req() req: any) {
-    return this.serviceService.create(createServiceDto, req);
+  @ApiOperation({
+    summary: 'Create a new hospital service',
+    description:
+      'Creates a hospital service (e.g. Blood Test, X-Ray). Optionally links it to a category and department. The authenticated staff member is recorded as `createdBy`.',
+  })
+  @ApiCreatedResponse({ description: 'Service created successfully' })
+  @ApiBadRequestResponse({ description: 'Validation error in request body' })
+  create(@Body() dto: CreateServiceDto, @Req() req: any) {
+    return this.serviceService.create(dto, req);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all hospital services' })
+  @ApiOperation({
+    summary: 'List all hospital services (paginated)',
+    description: 'Returns a paginated list of all services ordered by name, with category and department info.',
+  })
+  @ApiQuery({ name: 'skip', required: false, type: Number, description: 'Records to skip', example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Records to return', example: 10 })
+  @ApiOkResponse({ description: 'Paginated list of services' })
   findAll(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '10',
+    @Query('skip') skip = '0',
+    @Query('take') take = '10',
   ) {
-    return this.serviceService.findAll(parseInt(skip), parseInt(take));
+    return this.serviceService.findAll(+skip, +take);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get service by ID' })
+  @ApiOperation({
+    summary: 'Get a single service by ID',
+    description: 'Returns full service details including category, department, and related invoice items.',
+  })
+  @ApiParam({ name: 'id', description: 'Service UUID' })
+  @ApiOkResponse({ description: 'Service found' })
+  @ApiNotFoundResponse({ description: 'Service not found' })
   findOne(@Param('id') id: string) {
     return this.serviceService.findOne(id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update service information' })
+  @ApiOperation({
+    summary: 'Update a service',
+    description:
+      'Updates name, description, cost, category, or department. The authenticated staff member is recorded as `updatedBy`.',
+  })
+  @ApiParam({ name: 'id', description: 'Service UUID' })
+  @ApiOkResponse({ description: 'Service updated' })
+  @ApiNotFoundResponse({ description: 'Service not found' })
   update(
     @Param('id') id: string,
-    @Body() updateServiceDto: UpdateServiceDto,
+    @Body() dto: UpdateServiceDto,
+    @Req() req: any,
   ) {
-    return this.serviceService.update(id, updateServiceDto);
+    return this.serviceService.update(id, dto, req);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a service' })
+  @ApiOperation({
+    summary: 'Delete a service',
+    description:
+      'Permanently deletes a service. **Fails** if the service is referenced by any invoice items.',
+  })
+  @ApiParam({ name: 'id', description: 'Service UUID' })
+  @ApiNoContentResponse({ description: 'Service deleted' })
+  @ApiNotFoundResponse({ description: 'Service not found' })
+  @ApiBadRequestResponse({ description: 'Service is still referenced by invoice items' })
   remove(@Param('id') id: string) {
     return this.serviceService.remove(id);
-  }
-
-  @Post('patient/:patientId/service/:serviceId')
-  @ApiOperation({ summary: 'Assign a service to a patient' })
-  addServiceToPatient(
-    @Param('patientId') patientId: string,
-    @Param('serviceId') serviceId: string,
-    @Body() body: { quantity?: number },
-  ) {
-    return this.serviceService.addServiceToPatient(
-      patientId,
-      serviceId,
-      body.quantity || 1,
-    );
-  }
-
-  @Get('patient/:patientId/services')
-  @ApiOperation({ summary: 'Get all services assigned to a patient' })
-  getPatientServices(@Param('patientId') patientId: string) {
-    return this.serviceService.getPatientServices(patientId);
-  }
-
-  @Delete('patient-service/:patientServiceId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove a service from a patient' })
-  removePatientService(@Param('patientServiceId') patientServiceId: string) {
-    return this.serviceService.removePatientService(patientServiceId);
   }
 }
