@@ -10,6 +10,7 @@ import {
     HttpStatus,
     UseGuards,
     NotFoundException,
+    Req,
 } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
@@ -18,34 +19,33 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards';
 import { Public } from '../../common/decorators';
 
-@Public()
+@UseGuards(JwtAuthGuard)
 @ApiTags('Staff')
 @Controller('staff')
 export class StaffController {
     constructor(private readonly staffService: StaffService) { }
 
-    @Public()
+
     @Post()
     @HttpCode(HttpStatus.CREATED)
     @ApiOperation({ summary: 'Register a new staff member' })
     @ApiResponse({ status: 201, description: 'Staff created' })
-    //   @UseGuards(JwtAuthGuard)
 
-    create(@Body() dto: CreateStaffDto) {
+    create(@Body() dto: CreateStaffDto, @Req() req: any) {
         const { departmentId, ...rest } = dto as any;
         const data: any = { ...rest };
         if (departmentId) {
             data.department = { connect: { id: departmentId } };
         }
+        data.createdById = req.user.sub
         return this.staffService.create(data);
     }
 
-    @Public()
     @Get()
     @ApiOperation({ summary: 'List all staff' })
     @ApiResponse({ status: 200, description: 'Staff list returned' })
-    // @UseGuards(JwtAuthGuard)
     findAll() {
+        console.log('looking at stuaff')
         return this.staffService.findAll();
     }
 

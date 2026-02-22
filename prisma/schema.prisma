@@ -297,6 +297,17 @@ enum AccountType {
   STORE
   DISPENSARY
   OTHER
+  FRONTDESK
+  CONSULTANT
+  NURSE
+  LAB
+  RADIOLOGY
+  ACCOUNTS
+  BILLS
+  PHARMACY
+  THEATERE
+  ONG
+  DIALYSIS
 }
 
 model Department {
