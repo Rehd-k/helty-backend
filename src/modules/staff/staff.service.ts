@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class StaffService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(data: Prisma.StaffCreateInput) {
     // hash password if provided
@@ -14,8 +14,10 @@ export class StaffService {
     }
 
     // cast to any because of relation union types
-    return this.prisma.staff.create({ data: data as any });
-  }
+    const newStaff = await this.prisma.staff.create({ data: data as any });
+
+    return newStaff;
+  } 
 
   async findAll() {
     return this.prisma.staff.findMany({ orderBy: { createdAt: 'desc' } });

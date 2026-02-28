@@ -11,24 +11,25 @@ import {
   HttpStatus,
   Logger,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { Public, Roles } from '../../common/decorators';
 import { PatientService } from './patient.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { JwtAuthGuard } from 'src/common/guards';
 
 
 @ApiTags('Patient')
 @Controller('patients')
 export class PatientController {
+  private readonly log = new Logger(PatientController.name);
   constructor(
-    private readonly patientService: PatientService,
-    // private readonly logger: Logger,
+    private readonly patientService: PatientService
   ) {
-    // this.logger.setContext(PatientController.name);
   }
 
-  @Roles('admin', 'doctor', 'nurse', 'frontdesk')
+  @UseGuards(JwtAuthGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new patient' })
@@ -37,7 +38,8 @@ export class PatientController {
     description: 'Patient created successfully',
   })
   create(@Body() createPatientDto: CreatePatientDto, @Req() req: any) {
-   
+    this.log.log('GET / called');
+    // this.loggerService.info('req.user')s
     return this.patientService.create(createPatientDto, req);
   }
 
@@ -51,8 +53,14 @@ export class PatientController {
   findAll(
     @Query('skip') skip: string = '0',
     @Query('take') take: string = '10',
+    @Query('q') search: string = '',
+    @Query('filterCategory') filterCategory: string = '',
+    @Query('fromDate') fromDate: string = '',
+    @Query('toDate') toDate: string = '',
+    @Query('sortBy') sortBy: string = '',
+    @Query('isAscending') isAscending: boolean = true,
   ) {
-    return this.patientService.findAll(parseInt(skip), parseInt(take));
+    return this.patientService.findAll(parseInt(skip), parseInt(take), search, filterCategory, fromDate, toDate, sortBy, isAscending);
   }
 
   @Get('search')

@@ -30,7 +30,7 @@ export class AccessGuard implements CanActivate {
     }
 
     // default admin-only
-    if (user.role === 'admin' || user.role === 'ADMIN') {
+    if (user.role === 'admin' || user.role === 'ADMIN' || user.role == 'RECEPTIONIST') {
       return true;
     }
 

@@ -17,15 +17,17 @@ import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards';
-import { Public } from '../../common/decorators';
+import { Public } from 'src/common/decorators';
 
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 @ApiTags('Staff')
 @Controller('staff')
 export class StaffController {
     constructor(private readonly staffService: StaffService) { }
 
 
+
+    @Public()
     @Post()
     @HttpCode(HttpStatus.CREATED)
     @ApiOperation({ summary: 'Register a new staff member' })
@@ -37,7 +39,10 @@ export class StaffController {
         if (departmentId) {
             data.department = { connect: { id: departmentId } };
         }
-        data.createdById = req.user.sub
+        if (req.user.sub) {
+            data.createdById = req.user.sub
+        }
+
         return this.staffService.create(data);
     }
 
@@ -45,7 +50,7 @@ export class StaffController {
     @ApiOperation({ summary: 'List all staff' })
     @ApiResponse({ status: 200, description: 'Staff list returned' })
     findAll() {
-        console.log('looking at stuaff')
+
         return this.staffService.findAll();
     }
 

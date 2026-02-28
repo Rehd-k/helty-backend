@@ -139,15 +139,15 @@ export class CreatePatientDto {
   @IsOptional()
   cardNo?: string;
 
-  @IsString()
-  @MinLength(2)
-  @MaxLength(50)
-  createdBy: string;
+  // @IsString()
+  // @MinLength(2)
+  // @MaxLength(50)
+  // createdBy: string;
 
-  @IsString()
-  @MinLength(2)
-  @MaxLength(50)
-  updateBy: string;
+  // @IsString()
+  // @MinLength(2)
+  // @MaxLength(50)
+  // updateBy: string;
 }
 
 export class UpdatePatientDto {

@@ -2,20 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { customAlphabet } from 'nanoid';
-// import { Logger } from 'nestjs-pino';
-// import { create } from 'domain';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PatientService {
   private nanoid = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
+  private readonly logger = new Logger(PatientService.name);
 
-  constructor(private prisma: PrismaService,
-
-    // private readonly logger: Logger
-
-  ) { }
+  constructor(private prisma: PrismaService) { }
 
   async create(createPatientDto: CreatePatientDto, req: any) {
+
     const patientId = `${this.nanoid()}`;
     const data: any = {
       patientId,
@@ -49,33 +46,183 @@ export class PatientService {
     if (createPatientDto.fingerprintData) data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
 
-
     const newPatient = this.prisma.patient.create({
       data,
     });
     return newPatient;
   }
 
-  async findAll(skip = 0, take = 10) {
+  private readonly ALLOWED_FILTER_FIELDS = new Set([
+    'patientId', 'firstName', 'surname', 'otherName', 'email',
+    'phoneNumber', 'gender', 'maritalStatus', 'nationality',
+    'stateOfOrigin', 'lga', 'town', 'permanentAddress', 'profession',
+    'nextOfKinName', 'nextOfKinPhone', 'nextOfKinRelationship',
+  ]);
+
+  private readonly ALLOWED_SORT_FIELDS = new Set([
+    'patientId', 'firstName', 'surname', 'otherName', 'email',
+    'phoneNumber', 'gender', 'maritalStatus', 'nationality',
+    'stateOfOrigin', 'lga', 'town', 'permanentAddress', 'profession',
+    'nextOfKinName', 'nextOfKinPhone', 'nextOfKinRelationship',
+  ]);
+
+
+
+  async findAll(
+    skip = 0,
+    take = 10,
+    search?: string,
+    filterCategory?: string,
+    fromDate?: string,
+    toDate?: string,
+    sortBy?: string,
+    isAscending = false,
+  ) {
+
+
+    const where: Prisma.PatientWhereInput = {}
+
+    if (search && search.trim() !== '') {
+      const trimmedSearch = search.trim()
+
+      if (filterCategory === 'patientId') {
+        where.patientId = {
+          contains: trimmedSearch.toUpperCase(),
+          mode: 'insensitive',
+        }
+      }
+
+      else if (filterCategory === 'fullName') {
+        where.OR = [
+          {
+            firstName: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+          {
+            surname: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+        ]
+      }
+
+
+      else if (filterCategory === 'nameIdPhonenumber') {
+        console.log(trimmedSearch)
+        where.OR = [
+          {
+            phoneNumber: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+          {
+            patientId: {
+              contains: trimmedSearch.toUpperCase(),
+              mode: 'insensitive',
+            },
+          },
+          {
+            firstName: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+          {
+            surname: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+        ]
+      }
+
+      else if (
+        filterCategory &&
+        this.ALLOWED_FILTER_FIELDS.has(filterCategory)
+      ) {
+        where[filterCategory] = {
+          contains: trimmedSearch,
+          mode: 'insensitive',
+        }
+      }
+    }
+
+
+    if (fromDate && toDate) {
+      where.createdAt = {
+        gte: new Date(fromDate),
+        lte: new Date(toDate),
+      }
+    }
+
+    let orderBy: Prisma.PatientOrderByWithRelationInput = {
+      createdAt: Prisma.SortOrder.desc,
+    }
+
+    if (
+      sortBy &&
+      sortBy.trim() !== '' &&
+      this.ALLOWED_SORT_FIELDS.has(sortBy)
+    ) {
+      orderBy = {
+        [sortBy]: isAscending
+          ? Prisma.SortOrder.asc
+          : Prisma.SortOrder.desc,
+      }
+    }
+
     const [patients, total] = await Promise.all([
       this.prisma.patient.findMany({
+        where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
+          createdBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true
+            },
+          },
+          updatedBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true
+            },
+          },
           appointments: {
             take: 5,
-            orderBy: { date: 'desc' },
+            orderBy: { createdAt: 'desc' },
           },
           admissions: {
             take: 3,
-            orderBy: { admissionDate: 'desc' },
+            orderBy: { createdAt: 'desc' },
+          },
+          transactions: {
+            take: 3,
+            orderBy: { createdAt: 'desc' },
           },
         },
       }),
-      this.prisma.patient.count(),
-    ]);
-    return { patients, total, skip, take };
+
+      this.prisma.patient.count({
+        where,
+      }),
+    ])
+
+
+    return {
+      patients,
+      total,
+      skip,
+      take,
+    }
   }
 
   async findOne(id: string) {

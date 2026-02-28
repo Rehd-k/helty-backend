@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-// import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './prisma/prisma.module';
 import { PatientModule } from './modules/patient/patient.module';
 import { AppointmentModule } from './modules/appointment/appointment.module';
@@ -21,22 +20,51 @@ import { JwtAuthGuard, AccessGuard } from './common/guards';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { InvoiceModule } from './modules/invoice/invoice.module';
+import { NoIdPatientModule } from './modules/no-id-patient/no-id-patient.module';
+import { LoggerModule } from 'nestjs-pino';
+
+const isDev = process.env.NODE_ENV !== 'production';
 
 @Module({
   imports: [
-    // pino-http logger (nestjs-pino) will attach request/response info
+    // ─── HTTP Request / Response Logger ───────────────────────────────────────
+    // pino-http automatically logs every incoming request and outgoing response.
+    // In dev: pretty-printed with colours. In prod: raw JSON for log aggregators.
     // LoggerModule.forRoot({
     //   pinoHttp: {
-    //     level: process.env.NODE_ENV !== 'production' ? 'debug' : 'info',
-    //     transport:
-    //       process.env.NODE_ENV !== 'production'
-    //         ? {
-    //             target: 'pino-pretty',
-    //             options: { colorize: true, translateTime: true },
-    //           }
-    //         : undefined,
+    //     level: isDev ? 'debug' : 'info',
+    //     // Log request body (careful with sensitive data in prod)
+    //     serializers: {
+    //       req(req) {
+    //         return {
+    //           id: req.id,
+    //           method: req.method,
+    //           url: req.url,
+    //           query: req.query,
+    //           // Uncomment below to log request body (dev only recommended):
+    //           // body: req.raw.body,
+    //         };
+    //       },
+    //       res(res) {
+    //         return { statusCode: res.statusCode };
+    //       },
+    //     },
+    //     transport: isDev
+    //       ? {
+    //         target: 'pino-pretty',
+    //         options: {
+    //           colorize: true,
+    //           translateTime: 'SYS:HH:MM:ss.l',
+    //           ignore: 'pid,hostname',
+    //           // No messageFormat — let each log show its own message.
+    //           // HTTP logs show method/url/status/responseTime as fields below.
+    //           singleLine: false,
+    //         },
+    //       }
+    //       : undefined,
     //   },
     // }),
+    // ──────────────────────────────────────────────────────────────────────────
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -56,6 +84,19 @@ import { InvoiceModule } from './modules/invoice/invoice.module';
     AuthModule,
     DepartmentModule,
     InvoiceModule,
+    NoIdPatientModule,
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: 'info', // Set log level
+        transport: process.env.NODE_ENV !== 'production' ? {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'HH:MM:ss',
+          },
+        } : undefined, // Pretty logs in development
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [
@@ -63,6 +104,5 @@ import { InvoiceModule } from './modules/invoice/invoice.module';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: AccessGuard },
   ],
-
 })
 export class AppModule { }
