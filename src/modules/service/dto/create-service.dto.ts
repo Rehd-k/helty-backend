@@ -16,6 +16,11 @@ export class CreateServiceDto {
   @IsNotEmpty()
   name: string;
 
+  @ApiProperty({ description: 'The Service Code', example: 'CE90XXXXXXX' })
+  @IsString()
+  @IsNotEmpty()
+  searviceCode: string
+
   @ApiPropertyOptional({ description: 'Brief description of the service', example: 'Full blood count (FBC)' })
   @IsString()
   @IsOptional()

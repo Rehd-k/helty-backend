@@ -10,13 +10,9 @@ export class ServiceCategoryService {
     return this.prisma.serviceCategory.create({ data: { ...dto, createdById: req.user.sub } });
   }
 
-  async findAll(skip = 0, take = 10) {
-    const [categories, total] = await Promise.all([
-      this.prisma.serviceCategory.findMany({ skip, take, include: { services: true } }),
-      this.prisma.serviceCategory.count(),
-    ]);
-
-    return { categories, total, skip, take };
+  async findAll() {
+    const categories = await this.prisma.serviceCategory.findMany();
+    return { categories };
   }
 
   async findOne(id: string) {

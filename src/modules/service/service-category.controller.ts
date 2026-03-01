@@ -17,8 +17,8 @@ export class ServiceCategoryController {
 
   @Get()
   @ApiOperation({ summary: 'Get all service categories' })
-  findAll(@Query('skip') skip: string = '0', @Query('take') take: string = '10') {
-    return this.serviceCategoryService.findAll(parseInt(skip), parseInt(take));
+  findAll() {
+    return this.serviceCategoryService.findAll();
   }
 
   @Get(':id')

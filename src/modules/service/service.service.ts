@@ -16,22 +16,26 @@ export class ServiceService {
    * Create a new hospital service.
    * The authenticated staff member is recorded as `createdBy`.
    */
-  async create(dto: CreateServiceDto, req: any) {
-    return this.prisma.service.create({
-      data: {
-        name: dto.name,
-        description: dto.description,
-        cost: dto.cost,
-        categoryId: dto.categoryId,
-        departmentId: dto.departmentId,
-        createdById: req.user.sub,
-      },
-      include: {
-        category: true,
-        department: { select: { id: true, name: true } },
-        createdBy: { select: { id: true, firstName: true, lastName: true } },
-      },
-    });
+
+  async create(dto: any, userId: string) {
+    try {
+      return await this.prisma.service.create({
+        data: {
+          ...dto,
+          createdById: userId,
+        },
+        include: {
+          category: true,
+          department: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+    } catch (error) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException('A service with this name already exists');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -40,8 +44,8 @@ export class ServiceService {
   async findAll(skip = 0, take = 10) {
     const [services, total] = await Promise.all([
       this.prisma.service.findMany({
-        skip,
-        take,
+        skip: 0,
+        take: 1,
         orderBy: { name: 'asc' },
         include: {
           category: true,
@@ -51,6 +55,7 @@ export class ServiceService {
       }),
       this.prisma.service.count(),
     ]);
+    console.log(services)
     return { services, total, skip, take };
   }
 

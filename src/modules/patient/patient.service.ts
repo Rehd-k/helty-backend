@@ -111,7 +111,7 @@ export class PatientService {
 
 
       else if (filterCategory === 'nameIdPhonenumber') {
-        console.log(trimmedSearch)
+
         where.OR = [
           {
             phoneNumber: {

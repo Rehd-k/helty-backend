@@ -13,9 +13,14 @@ export class DepartmentService {
   }
 
   async findAll() {
-    const departments = await this.prisma.department.findMany({ orderBy: { name: 'asc' } });
+    const [departments, total] = await Promise.all([
+      this.prisma.department.findMany({
+        orderBy: { name: 'asc' }
+      }),
+      this.prisma.department.count(),
+    ]);
 
-    return departments;
+    return { departments, total };
   }
 
   async findOne(id: string) {

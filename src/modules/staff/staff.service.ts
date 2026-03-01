@@ -17,10 +17,15 @@ export class StaffService {
     const newStaff = await this.prisma.staff.create({ data: data as any });
 
     return newStaff;
-  } 
+  }
 
   async findAll() {
-    return this.prisma.staff.findMany({ orderBy: { createdAt: 'desc' } });
+    const staffs = await this.prisma.staff.findMany({
+
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return staffs;
   }
 
   async findById(id: string) {

@@ -210,6 +210,7 @@ model Service {
   id           String           @id @default(uuid())
   name         String
   description  String?
+  searviceCode String
   cost         Float // or Decimal if you really need precision
   category     ServiceCategory? @relation(fields: [categoryId], references: [id])
   categoryId   String?

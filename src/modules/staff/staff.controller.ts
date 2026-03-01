@@ -11,6 +11,7 @@ import {
     UseGuards,
     NotFoundException,
     Req,
+    Query,
 } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
@@ -49,7 +50,9 @@ export class StaffController {
     @Get()
     @ApiOperation({ summary: 'List all staff' })
     @ApiResponse({ status: 200, description: 'Staff list returned' })
-    findAll() {
+    findAll(
+
+    ) {
 
         return this.staffService.findAll();
     }
