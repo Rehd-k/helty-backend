@@ -26,6 +26,7 @@ import {
     ApplyDiscountDto,
     ApplyInsuranceDto,
     CancelTransactionDto,
+    CreateQuickTransactionDto,
     CreateRefundDto,
     CreateTransactionDto,
     EditTransactionItemDto,
@@ -39,6 +40,45 @@ import {
 @Controller('transaction')
 export class TransactionController {
     constructor(private readonly transactionService: TransactionService) { }
+
+    // ─── Quick (one-shot) Transaction ────────────────────────────────────────────
+
+    @Post('quick')
+    @HttpCode(HttpStatus.CREATED)
+    @ApiOperation({
+        summary: 'Create a fully-calculated one-shot transaction (items + discount + insurance + payment)',
+        description:
+            'Use this for walk-in patients or any scenario where all charges are known upfront.\n\n' +
+            '**One request does all of the following atomically:**\n' +
+            '1. Opens a new transaction\n' +
+            '2. Inserts all provided charge items\n' +
+            '3. Computes `totalAmount = Σ(unitPrice × quantity)` for each item\n' +
+            '4. Applies optional **discount** (PERCENTAGE or FIXED naira)\n' +
+            '5. Applies optional **insurance/HMO** coverage\n' +
+            '6. Records optional **payment** (partial or full)\n' +
+            '7. Sets final status: DRAFT / ACTIVE / PARTIALLY_PAID / PAID\n' +
+            '8. Writes one consolidated audit log entry\n' +
+            '9. Returns the fully-hydrated transaction with `outstandingBalance`\n\n' +
+            '**`payFull: true`** — auto-calculates and pays the exact outstanding balance. ' +
+            'Still requires `payment.method` to be provided.\n\n' +
+            '**No payment** — omit `payment` entirely; the transaction is saved as ACTIVE ' +
+            'and the cashier can call `POST /transaction/:id/payments` to collect later.',
+    })
+    @ApiCreatedResponse({
+        description:
+            'Fully-hydrated transaction — same shape as GET /transaction/:id — ' +
+            'with all items, payments, discounts, insurance claims, and `outstandingBalance`.',
+    })
+    @ApiNotFoundResponse({ description: 'Patient, Staff, or Admission not found.' })
+    @ApiBadRequestResponse({
+        description:
+            'Validation failed: invalid quantity/price, discount exceeds total, ' +
+            'insurance exceeds billable amount, payment exceeds outstanding balance, ' +
+            'or payment method missing when payFull is true.',
+    })
+    createQuickTransaction(@Body() dto: CreateQuickTransactionDto) {
+        return this.transactionService.createQuickTransaction(dto);
+    }
 
     // ─── Create Transaction ─────────────────────────────────────────────────────
 

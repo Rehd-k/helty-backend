@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+    ArrayMinSize,
+    IsDateString,
     IsEnum,
+    IsIn,
+    IsInt,
     IsNotEmpty,
     IsNumber,
     IsOptional,
@@ -8,11 +12,9 @@ import {
     IsString,
     IsUUID,
     Min,
-    IsDateString,
-    IsInt,
-    IsIn,
+    ValidateNested,
 } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
     TransactionItemSource,
     TransactionPaymentMethod,
@@ -376,4 +378,175 @@ export class CancelTransactionDto {
     @IsString()
     @IsNotEmpty()
     reason: string;
+}
+
+// ─── Quick Transaction — inner DTOs ──────────────────────────────────────────
+
+export class QuickTransactionItemDto {
+    @ApiProperty({ description: 'Description of the charge item', example: 'Full Blood Count' })
+    @IsString()
+    @IsNotEmpty()
+    description: string;
+
+    @ApiProperty({
+        enum: TransactionItemSource,
+        description: 'Department source of this charge',
+        example: TransactionItemSource.LAB,
+    })
+    @IsEnum(TransactionItemSource)
+    source: TransactionItemSource;
+
+    @ApiProperty({ description: 'Quantity', example: 1 })
+    @IsNumber()
+    @IsPositive()
+    quantity: number;
+
+    @ApiProperty({ description: 'Unit price in naira', example: 5000 })
+    @IsNumber()
+    @Min(0)
+    unitPrice: number;
+
+    @ApiPropertyOptional({ description: 'Reference ID (e.g. lab report UUID, prescription UUID)' })
+    @IsString()
+    @IsOptional()
+    referenceId?: string;
+}
+
+export class QuickTransactionDiscountDto {
+    @ApiProperty({ enum: DiscountType, description: 'PERCENTAGE or FIXED' })
+    @IsEnum(DiscountType)
+    type: DiscountType;
+
+    @ApiProperty({ description: 'Percentage (e.g. 10 for 10%) or fixed naira amount', example: 10 })
+    @IsNumber()
+    @Min(0)
+    value: number;
+
+    @ApiProperty({ description: 'Reason for discount / waiver', example: 'Staff benefit' })
+    @IsString()
+    @IsNotEmpty()
+    reason: string;
+}
+
+export class QuickTransactionInsuranceDto {
+    @ApiProperty({ description: 'Insurance provider name', example: 'NHIS' })
+    @IsString()
+    @IsNotEmpty()
+    provider: string;
+
+    @ApiPropertyOptional({ description: 'Policy / HMO number' })
+    @IsString()
+    @IsOptional()
+    policyNumber?: string;
+
+    @ApiProperty({ description: 'Amount covered by insurance', example: 10000 })
+    @IsNumber()
+    @Min(0)
+    coveredAmount: number;
+
+    @ApiPropertyOptional({ description: 'Additional notes' })
+    @IsString()
+    @IsOptional()
+    notes?: string;
+}
+
+export class QuickTransactionPaymentDto {
+    @ApiProperty({ description: 'Amount paid', example: 15000 })
+    @IsNumber()
+    @IsPositive()
+    amount: number;
+
+    @ApiProperty({ enum: TransactionPaymentMethod, description: 'Payment method' })
+    @IsEnum(TransactionPaymentMethod)
+    method: TransactionPaymentMethod;
+
+    @ApiPropertyOptional({ description: 'Reference (POS receipt, bank transfer ref, etc.)' })
+    @IsString()
+    @IsOptional()
+    reference?: string;
+
+    @ApiPropertyOptional({ description: 'Payment notes' })
+    @IsString()
+    @IsOptional()
+    notes?: string;
+}
+
+// ─── Quick Transaction — main DTO ─────────────────────────────────────────────
+
+export class CreateQuickTransactionDto {
+    @ApiProperty({ description: 'Patient UUID — the patient being billed' })
+    @IsUUID()
+    @IsNotEmpty()
+    patientId: string;
+
+    @ApiProperty({
+        description: 'Staff UUID of the person creating and receiving this transaction (cashier / frontdesk)',
+    })
+    @IsUUID()
+    @IsNotEmpty()
+    staffId: string;
+
+    @ApiPropertyOptional({ description: 'Admission UUID — if this is an inpatient bill' })
+    @IsUUID()
+    @IsOptional()
+    admissionId?: string;
+
+    @ApiPropertyOptional({ description: 'NoIdPatient UUID — for patients without a formal ID' })
+    @IsUUID()
+    @IsOptional()
+    noIdPatientId?: string;
+
+    @ApiPropertyOptional({ description: 'Optional notes for this transaction' })
+    @IsString()
+    @IsOptional()
+    notes?: string;
+
+    @ApiProperty({
+        type: [QuickTransactionItemDto],
+        description: 'One or more charge items to add to the transaction. At least one is required.',
+    })
+    @ValidateNested({ each: true })
+    @Type(() => QuickTransactionItemDto)
+    @ArrayMinSize(1, { message: 'At least one charge item is required.' })
+    items: QuickTransactionItemDto[];
+
+    @ApiPropertyOptional({
+        type: QuickTransactionDiscountDto,
+        description: 'Optional discount to apply after items are totalled.',
+    })
+    @ValidateNested()
+    @Type(() => QuickTransactionDiscountDto)
+    @IsOptional()
+    discount?: QuickTransactionDiscountDto;
+
+    @ApiPropertyOptional({
+        type: QuickTransactionInsuranceDto,
+        description: 'Optional insurance/HMO coverage to apply.',
+    })
+    @ValidateNested()
+    @Type(() => QuickTransactionInsuranceDto)
+    @IsOptional()
+    insurance?: QuickTransactionInsuranceDto;
+
+    @ApiPropertyOptional({
+        type: QuickTransactionPaymentDto,
+        description:
+            'Optional immediate payment. If omitted the transaction is left as ACTIVE ' +
+            'and can be paid later. If provided, it must not exceed the outstanding balance ' +
+            'after discounts and insurance are applied.',
+    })
+    @ValidateNested()
+    @Type(() => QuickTransactionPaymentDto)
+    @IsOptional()
+    payment?: QuickTransactionPaymentDto;
+
+    @ApiPropertyOptional({
+        description:
+            'Set to true to automatically pay the full outstanding balance in one shot. ' +
+            'When true, `payment.amount` is ignored and the system will set it to the exact ' +
+            'outstanding amount. Requires `payment.method` to still be provided.',
+        example: false,
+    })
+    @IsOptional()
+    payFull?: boolean;
 }

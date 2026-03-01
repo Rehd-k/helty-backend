@@ -21,15 +21,21 @@
             color: white;
         }
 
-        /* ========================= */
-        /* 3D MEDICAL CROSS */
-        /* ========================= */
+        /* ================= PARTICLES ================= */
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
 
+        /* ================= 3D CROSS ================= */
         .scene {
             width: 200px;
             height: 200px;
             perspective: 800px;
             margin-bottom: 50px;
+            z-index: 2;
         }
 
         .cross {
@@ -37,7 +43,7 @@
             height: 100%;
             position: relative;
             transform-style: preserve-3d;
-            animation: rotate 8s infinite linear;
+            animation: rotate 10s infinite linear;
         }
 
         @keyframes rotate {
@@ -57,7 +63,6 @@
             border-radius: 10px;
         }
 
-        /* vertical bar */
         .bar.vertical {
             width: 50px;
             height: 180px;
@@ -65,7 +70,6 @@
             top: 10px;
         }
 
-        /* horizontal bar */
         .bar.horizontal {
             width: 180px;
             height: 50px;
@@ -73,44 +77,14 @@
             left: 10px;
         }
 
-        /* fake 3D depth */
-        .bar::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateZ(-20px);
-            border-radius: 10px;
-        }
-
-        /* floating effect */
-        .cross {
-            animation: rotate 8s infinite linear, float 4s ease-in-out infinite;
-        }
-
-        @keyframes float {
-
-            0%,
-            100% {
-                transform: translateY(0px) rotateX(0deg) rotateY(0deg);
-            }
-
-            50% {
-                transform: translateY(-15px) rotateX(180deg) rotateY(180deg);
-            }
-        }
-
-        /* ========================= */
-        /* VESSEL LOGO */
-        /* ========================= */
-
+        /* ================= LOGO ================= */
         .logo {
             font-size: 4rem;
             font-weight: 800;
             letter-spacing: 8px;
-            position: relative;
             color: #00ff9d;
             animation: glow 2s ease-in-out infinite alternate;
+            z-index: 2;
         }
 
         @keyframes glow {
@@ -127,52 +101,30 @@
             }
         }
 
-        /* animated underline wave */
-        .logo::after {
-            content: "";
-            position: absolute;
-            left: 0;
-            bottom: -15px;
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, transparent, #00ff9d, transparent);
-            animation: slide 2s linear infinite;
-        }
-
-        @keyframes slide {
-            0% {
-                transform: translateX(-100%);
-            }
-
-            100% {
-                transform: translateX(100%);
-            }
-        }
-
-        /* tagline */
         .tagline {
             margin-top: 20px;
             font-size: 1.2rem;
             opacity: 0.85;
             color: #b6ffe5;
-            animation: fadeIn 2s ease forwards;
+            z-index: 2;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            to {
-                opacity: 0.85;
-                transform: translateY(0);
-            }
+        /* ================= RUNNER BALL ================= */
+        #runner {
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            background: #00ff9d;
+            border-radius: 50%;
+            box-shadow: 0 0 20px #00ff9d;
+            z-index: 3;
         }
     </style>
 </head>
 
 <body>
+
+    <canvas id="particles"></canvas>
 
     <div class="scene">
         <div class="cross">
@@ -183,8 +135,88 @@
 
     <div class="logo">VESSEL</div>
     <div class="tagline">
-        HELTY • Hospital Management Systems
+        HELTY • Best in Healthcare & Hospital Management Systems
     </div>
+
+    <div id="runner"></div>
+
+    <script>
+        /* ================= PARTICLE SYSTEM ================= */
+        const canvas = document.getElementById("particles");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        let particles = [];
+        for (let i = 0; i < 80; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2 + 1,
+                speedX: (Math.random() - 0.5) * 0.5,
+                speedY: (Math.random() - 0.5) * 0.5
+            });
+        }
+
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "rgba(0,255,150,0.6)";
+            for (let p of particles) {
+                p.x += p.speedX;
+                p.y += p.speedY;
+
+                if (p.x < 0 || p.x > canvas.width) p.speedX *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.speedY *= -1;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
+        /* ================= RUNNER BALL PHYSICS ================= */
+        const runner = document.getElementById("runner");
+
+        let x = window.innerWidth / 2;
+        let y = window.innerHeight / 2;
+        let vx = 0;
+        let vy = 0;
+
+        function updateRunner() {
+            x += vx;
+            y += vy;
+
+            // friction
+            vx *= 0.95;
+            vy *= 0.95;
+
+            // keep inside screen
+            const radius = 11;
+            if (x < radius) { x = radius; vx *= -1; }
+            if (x > window.innerWidth - radius) { x = window.innerWidth - radius; vx *= -1; }
+            if (y < radius) { y = radius; vy *= -1; }
+            if (y > window.innerHeight - radius) { y = window.innerHeight - radius; vy *= -1; }
+
+            runner.style.left = x - radius + "px";
+            runner.style.top = y - radius + "px";
+
+            requestAnimationFrame(updateRunner);
+        }
+        updateRunner();
+
+        document.addEventListener("mousemove", (e) => {
+            const dx = x - e.clientX;
+            const dy = y - e.clientY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < 150) {
+                vx += dx / distance * 2;
+                vy += dy / distance * 2;
+            }
+        });
+    </script>
 
 </body>
 

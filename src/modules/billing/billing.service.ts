@@ -17,6 +17,7 @@ import {
   ApplyDiscountDto,
   ApplyInsuranceDto,
   CancelTransactionDto,
+  CreateQuickTransactionDto,
   CreateTransactionDto,
   CreateRefundDto,
   EditTransactionItemDto,
@@ -1093,5 +1094,278 @@ export class TransactionService {
     ]);
 
     return { logs, total, skip, take };
+  }
+
+  // ─── Quick / Immediate Transaction ───────────────────────────────────────────
+  /**
+   * Creates a transaction, adds ALL items, applies optional discount + insurance,
+   * and optionally records an immediate payment — all in one call.
+   * Returns the fully-hydrated transaction (same shape as findOne).
+   */
+  async createQuickTransaction(dto: CreateQuickTransactionDto) {
+    // ── 1. Validate entities ────────────────────────────────────────────────────
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: dto.patientId },
+      select: { id: true, firstName: true, surname: true, patientId: true },
+    });
+    if (!patient) {
+      throw new NotFoundException(`Patient "${dto.patientId}" does not exist.`);
+    }
+
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    if (!staff) {
+      throw new NotFoundException(`Staff "${dto.staffId}" does not exist.`);
+    }
+
+    if (dto.admissionId) {
+      const admission = await this.prisma.admission.findUnique({
+        where: { id: dto.admissionId },
+      });
+      if (!admission) {
+        throw new NotFoundException(`Admission "${dto.admissionId}" does not exist.`);
+      }
+      if (admission.patientId !== dto.patientId) {
+        throw new BadRequestException(
+          `Admission "${dto.admissionId}" does not belong to patient "${dto.patientId}".`,
+        );
+      }
+    }
+
+    // ── 2. Validate all items upfront before any DB writes ──────────────────────
+    for (const [i, item] of dto.items.entries()) {
+      if (item.quantity < 1) {
+        throw new BadRequestException(
+          `items[${i}] "${item.description}": quantity must be at least 1.`,
+        );
+      }
+      if (item.unitPrice < 0) {
+        throw new BadRequestException(
+          `items[${i}] "${item.description}": unit price cannot be negative.`,
+        );
+      }
+    }
+
+    // ── 3. Create the transaction header ───────────────────────────────────────
+    const transactionID = await this.generateTransactionNumber();
+
+    const transaction = await this.prisma.transaction.create({
+      data: {
+        transactionID,
+        patientId: dto.patientId,
+        createdById: dto.staffId,
+        updatedById: dto.staffId,
+        admissionId: dto.admissionId,
+        noIdPatientid: dto.noIdPatientId,
+        notes: dto.notes,
+        status: TransactionStatus.DRAFT,
+      },
+    });
+
+    // ── 4. Insert all items and compute running total ───────────────────────────
+    let totalAmount = new Prisma.Decimal(0);
+    const itemSnapshots: {
+      description: string;
+      unitPrice: number;
+      quantity: number;
+      total: string;
+    }[] = [];
+
+    for (const item of dto.items) {
+      const unitPrice = new Prisma.Decimal(item.unitPrice);
+      const totalPrice = unitPrice.mul(item.quantity);
+      totalAmount = totalAmount.add(totalPrice);
+
+      await this.prisma.transactionItem.create({
+        data: {
+          transactionId: transaction.id,
+          description: item.description,
+          source: item.source,
+          quantity: item.quantity,
+          unitPrice,
+          totalPrice,
+          addedById: dto.staffId,
+          referenceId: item.referenceId,
+          createdById: dto.staffId,
+          updatedById: dto.staffId,
+        },
+      });
+
+      itemSnapshots.push({
+        description: item.description,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        total: totalPrice.toFixed(2),
+      });
+    }
+
+    // ── 5. Apply discount ───────────────────────────────────────────────────────
+    let discountAmount = new Prisma.Decimal(0);
+
+    if (dto.discount) {
+      const d = dto.discount;
+
+      if (d.type === 'PERCENTAGE') {
+        if (d.value > 100) {
+          throw new BadRequestException('Percentage discount cannot exceed 100%.');
+        }
+        discountAmount = totalAmount.mul(d.value).div(100);
+      } else {
+        discountAmount = new Prisma.Decimal(d.value);
+      }
+
+      if (discountAmount.gt(totalAmount)) {
+        throw new BadRequestException(
+          `Discount ₦${discountAmount.toFixed(2)} would exceed the total ₦${totalAmount.toFixed(2)}.`,
+        );
+      }
+
+      await this.prisma.transactionDiscount.create({
+        data: {
+          transactionId: transaction.id,
+          type: d.type,
+          value: new Prisma.Decimal(d.value),
+          computedAmount: discountAmount,
+          reason: d.reason,
+          grantedById: dto.staffId,
+          createdById: dto.staffId,
+        },
+      });
+    }
+
+    // ── 6. Apply insurance ──────────────────────────────────────────────────────
+    let insuranceCovered = new Prisma.Decimal(0);
+
+    if (dto.insurance) {
+      const ins = dto.insurance;
+      insuranceCovered = new Prisma.Decimal(ins.coveredAmount);
+
+      const billableAfterDiscount = totalAmount.sub(discountAmount);
+      if (insuranceCovered.gt(billableAfterDiscount)) {
+        throw new BadRequestException(
+          `Insurance coverage ₦${ins.coveredAmount} exceeds the billable amount after discounts (₦${billableAfterDiscount.toFixed(2)}).`,
+        );
+      }
+
+      await this.prisma.insuranceClaim.create({
+        data: {
+          transactionId: transaction.id,
+          provider: ins.provider,
+          policyNumber: ins.policyNumber,
+          coveredAmount: insuranceCovered,
+          notes: ins.notes,
+          createdById: dto.staffId,
+        },
+      });
+    }
+
+    // ── 7. Record payment ───────────────────────────────────────────────────────
+    const outstanding = totalAmount.sub(discountAmount).sub(insuranceCovered);
+    let amountPaid = new Prisma.Decimal(0);
+
+    if (dto.payment || dto.payFull) {
+      if (!dto.payment?.method) {
+        throw new BadRequestException(
+          'A payment method is required. Provide `payment.method` ' +
+          '(CASH, CARD, TRANSFER, INSURANCE, or WAIVER).',
+        );
+      }
+
+      // payFull auto-calculates exact outstanding; otherwise use the provided amount
+      const payAmount = dto.payFull
+        ? outstanding
+        : new Prisma.Decimal(dto.payment!.amount);
+
+      if (payAmount.lte(0)) {
+        throw new BadRequestException('Payment amount must be greater than zero.');
+      }
+      if (payAmount.gt(outstanding)) {
+        throw new BadRequestException(
+          `Payment ₦${payAmount.toFixed(2)} exceeds the outstanding balance ₦${outstanding.toFixed(2)}.`,
+        );
+      }
+
+      await this.prisma.transactionPayment.create({
+        data: {
+          transactionId: transaction.id,
+          amount: payAmount,
+          method: dto.payment!.method,
+          reference: dto.payment?.reference,
+          notes: dto.payment?.notes,
+          receivedById: dto.staffId,
+          createdById: dto.staffId,
+        },
+      });
+
+      amountPaid = payAmount;
+    }
+
+    // ── 8. Determine final status ───────────────────────────────────────────────
+    const remainingBalance = outstanding.sub(amountPaid);
+    let finalStatus: TransactionStatus;
+
+    if (totalAmount.lte(0)) {
+      finalStatus = TransactionStatus.DRAFT;
+    } else if (remainingBalance.lte(0)) {
+      finalStatus = TransactionStatus.PAID;
+    } else if (amountPaid.gt(0)) {
+      finalStatus = TransactionStatus.PARTIALLY_PAID;
+    } else {
+      finalStatus = TransactionStatus.ACTIVE;
+    }
+
+    // ── 9. Persist the final financial totals ───────────────────────────────────
+    await this.prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        totalAmount,
+        discountAmount,
+        insuranceCovered,
+        amountPaid,
+        status: finalStatus,
+        updatedById: dto.staffId,
+      },
+    });
+
+    // ── 10. Single consolidated audit log ───────────────────────────────────────
+    const payLine =
+      amountPaid.gt(0)
+        ? `Payment of ₦${amountPaid.toFixed(2)} via ${dto.payment!.method} received. ` +
+        `Balance remaining: ₦${remainingBalance.toFixed(2)}.`
+        : 'No payment — bill is ACTIVE and awaiting cashier.';
+
+    await this.log(
+      transaction.id,
+      TransactionAuditAction.BILL_CREATED,
+      `Quick transaction ${transactionID} created for ` +
+      `${patient.firstName} ${patient.surname} (${patient.patientId}) ` +
+      `by ${staff.firstName} ${staff.lastName}. ` +
+      `${dto.items.length} item(s) — total ₦${totalAmount.toFixed(2)}` +
+      (discountAmount.gt(0) ? `, discount ₦${discountAmount.toFixed(2)}` : '') +
+      (insuranceCovered.gt(0) ? `, insurance ₦${insuranceCovered.toFixed(2)}` : '') +
+      `. ${payLine}`,
+      dto.staffId,
+      {
+        transactionID,
+        patientId: dto.patientId,
+        items: itemSnapshots,
+        totalAmount: totalAmount.toFixed(2),
+        discountAmount: discountAmount.toFixed(2),
+        insuranceCovered: insuranceCovered.toFixed(2),
+        amountPaid: amountPaid.toFixed(2),
+        remainingBalance: remainingBalance.toFixed(2),
+        finalStatus,
+      },
+    );
+
+    this.logger.log(
+      `Quick transaction ${transactionID} → status: ${finalStatus}, ` +
+      `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
+    );
+
+    // ── 11. Return fully-hydrated transaction ───────────────────────────────────
+    return this.findOne(transaction.id);
   }
 }
