@@ -11,12 +11,12 @@ export class AppController {
     private readonly appService: AppService
   ) { }
 
-  @Public()
-  @Get()
-  getHello(): string {
-    this.log.log('GET / called');
-    return this.appService.getHello();
-  }
+  // @Public()
+  // @Get()
+  // getHello(): string {
+  //   this.log.log('GET / called');
+  //   return this.appService.getHello();
+  // }
 
   @Public()
   @Post()

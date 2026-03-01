@@ -424,13 +424,13 @@ model Staff {
 
 // Transaction: master transaction for a patient encounter (outpatient or inpatient)
 model Transaction {
-  id                String            @id @default(uuid())
-  transactionNumber String            @unique
-  patient           Patient           @relation(fields: [patientId], references: [id])
-  patientId         String
-  admission         Admission?        @relation(fields: [admissionId], references: [id])
-  admissionId       String?
-  status            TransactionStatus @default(DRAFT)
+  id            String            @id @default(uuid())
+  transactionID String            @unique
+  patient       Patient           @relation(fields: [patientId], references: [id])
+  patientId     String
+  admission     Admission?        @relation(fields: [admissionId], references: [id])
+  admissionId   String?
+  status        TransactionStatus @default(DRAFT)
 
   // financial summary (kept in sync by service layer)
   totalAmount      Decimal @default(0) @db.Decimal(12, 2)

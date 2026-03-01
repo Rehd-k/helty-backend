@@ -16,7 +16,7 @@ export class NoIdPatientService {
         return this.prisma.noIdPatient.create({
             data: {
                 firstName: dto.firstName,
-                lastname: dto.lastname,
+                surname: dto.surname,
                 age: dto.age,
                 gender: dto.gender,
             },
@@ -55,7 +55,7 @@ export class NoIdPatientService {
                 transactions: {
                     select: {
                         id: true,
-                        transactionNumber: true,
+                        transactionID: true,
                         status: true,
                         totalAmount: true,
                         amountPaid: true,

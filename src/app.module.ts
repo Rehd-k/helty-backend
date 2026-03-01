@@ -22,49 +22,14 @@ import { AppService } from './app.service';
 import { InvoiceModule } from './modules/invoice/invoice.module';
 import { NoIdPatientModule } from './modules/no-id-patient/no-id-patient.module';
 import { LoggerModule } from 'nestjs-pino';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
-const isDev = process.env.NODE_ENV !== 'production';
+
 
 @Module({
   imports: [
-    // ─── HTTP Request / Response Logger ───────────────────────────────────────
-    // pino-http automatically logs every incoming request and outgoing response.
-    // In dev: pretty-printed with colours. In prod: raw JSON for log aggregators.
-    // LoggerModule.forRoot({
-    //   pinoHttp: {
-    //     level: isDev ? 'debug' : 'info',
-    //     // Log request body (careful with sensitive data in prod)
-    //     serializers: {
-    //       req(req) {
-    //         return {
-    //           id: req.id,
-    //           method: req.method,
-    //           url: req.url,
-    //           query: req.query,
-    //           // Uncomment below to log request body (dev only recommended):
-    //           // body: req.raw.body,
-    //         };
-    //       },
-    //       res(res) {
-    //         return { statusCode: res.statusCode };
-    //       },
-    //     },
-    //     transport: isDev
-    //       ? {
-    //         target: 'pino-pretty',
-    //         options: {
-    //           colorize: true,
-    //           translateTime: 'SYS:HH:MM:ss.l',
-    //           ignore: 'pid,hostname',
-    //           // No messageFormat — let each log show its own message.
-    //           // HTTP logs show method/url/status/responseTime as fields below.
-    //           singleLine: false,
-    //         },
-    //       }
-    //       : undefined,
-    //   },
-    // }),
-    // ──────────────────────────────────────────────────────────────────────────
+
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -85,6 +50,9 @@ const isDev = process.env.NODE_ENV !== 'production';
     DepartmentModule,
     InvoiceModule,
     NoIdPatientModule,
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public'),
+    }),
     LoggerModule.forRoot({
       pinoHttp: {
         level: 'info', // Set log level

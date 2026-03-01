@@ -6,9 +6,9 @@ export class CreateNoIdPatientDto {
     @IsString()
     firstName: string;
 
-    @ApiProperty({ example: 'Doe', description: 'Last name of the patient' })
+    @ApiProperty({ example: 'Doe', description: 'Surname of the patient' })
     @IsString()
-    lastname: string;
+    surname: string;
 
     @ApiProperty({ example: '35', description: 'Age of the patient' })
     @IsString()
