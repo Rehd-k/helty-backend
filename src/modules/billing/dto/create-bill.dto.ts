@@ -16,7 +16,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
-    TransactionItemSource,
+
     TransactionPaymentMethod,
     DiscountType,
     TransactionStatus,
@@ -26,22 +26,22 @@ import {
 
 export class CreateTransactionDto {
     @ApiProperty({ description: 'Patient UUID' })
-    @IsUUID()
+
     @IsNotEmpty()
     patientId: string;
 
     @ApiProperty({ description: 'Staff UUID of the person creating the bill' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
     @ApiPropertyOptional({ description: 'Admission UUID — if this is an inpatient bill' })
-    @IsUUID()
+
     @IsOptional()
     admissionId?: string;
 
     @ApiPropertyOptional({ description: 'NoIdPatient UUID — if patient has no ID' })
-    @IsUUID()
+
     @IsOptional()
     noIdPatientId?: string;
 
@@ -55,7 +55,7 @@ export class CreateTransactionDto {
 
 export class UpdateTransactionDto {
     @ApiProperty({ description: 'Staff UUID of the person making this change' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
@@ -94,7 +94,7 @@ export class QueryTransactionDto {
     transactionID?: string;
 
     @ApiPropertyOptional({ description: 'Patient UUID — filter all transactions for this patient' })
-    @IsUUID()
+
     @IsOptional()
     patientId?: string;
 
@@ -117,7 +117,7 @@ export class QueryTransactionDto {
     @ApiPropertyOptional({
         description: 'Staff UUID who created the transaction (createdBy)',
     })
-    @IsUUID()
+
     @IsOptional()
     createdById?: string;
 
@@ -186,9 +186,9 @@ export class AddTransactionItemDto {
     @IsNotEmpty()
     description: string;
 
-    @ApiProperty({ enum: TransactionItemSource, description: 'Department source of the charge' })
-    @IsEnum(TransactionItemSource)
-    source: TransactionItemSource;
+    @ApiProperty({ description: 'Department source of the charge' })
+    @IsString()
+    source: string;
 
     @ApiProperty({ description: 'Quantity of the item', example: 1 })
     @IsNumber()
@@ -201,7 +201,7 @@ export class AddTransactionItemDto {
     unitPrice: number;
 
     @ApiProperty({ description: 'Staff UUID of the person adding this item' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
@@ -231,7 +231,7 @@ export class EditTransactionItemDto {
     description?: string;
 
     @ApiProperty({ description: 'Staff UUID of the person editing the item' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 }
@@ -249,7 +249,7 @@ export class RecordPaymentDto {
     method: TransactionPaymentMethod;
 
     @ApiProperty({ description: 'Staff UUID of the cashier receiving this payment' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
@@ -285,7 +285,7 @@ export class ApplyDiscountDto {
     reason: string;
 
     @ApiProperty({ description: 'Staff UUID of the person granting the discount' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 }
@@ -309,7 +309,7 @@ export class ApplyInsuranceDto {
     coveredAmount: number;
 
     @ApiProperty({ description: 'Staff UUID of the person applying the insurance claim' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
@@ -323,7 +323,7 @@ export class ApplyInsuranceDto {
 
 export class UpdateInsuranceClaimDto {
     @ApiProperty({ description: 'Staff UUID of the person making this change' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
@@ -361,7 +361,7 @@ export class CreateRefundDto {
     reason: string;
 
     @ApiProperty({ description: 'Staff UUID of the person processing the refund' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 }
@@ -370,7 +370,7 @@ export class CreateRefundDto {
 
 export class CancelTransactionDto {
     @ApiProperty({ description: 'Staff UUID of the person cancelling the bill' })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
@@ -389,12 +389,11 @@ export class QuickTransactionItemDto {
     description: string;
 
     @ApiProperty({
-        enum: TransactionItemSource,
         description: 'Department source of this charge',
-        example: TransactionItemSource.LAB,
+        example: 'LAB',
     })
-    @IsEnum(TransactionItemSource)
-    source: TransactionItemSource;
+    @IsString()
+    source: string;
 
     @ApiProperty({ description: 'Quantity', example: 1 })
     @IsNumber()
@@ -475,24 +474,24 @@ export class QuickTransactionPaymentDto {
 
 export class CreateQuickTransactionDto {
     @ApiProperty({ description: 'Patient UUID — the patient being billed' })
-    @IsUUID()
+
     @IsNotEmpty()
     patientId: string;
 
     @ApiProperty({
         description: 'Staff UUID of the person creating and receiving this transaction (cashier / frontdesk)',
     })
-    @IsUUID()
+
     @IsNotEmpty()
     staffId: string;
 
     @ApiPropertyOptional({ description: 'Admission UUID — if this is an inpatient bill' })
-    @IsUUID()
+
     @IsOptional()
     admissionId?: string;
 
     @ApiPropertyOptional({ description: 'NoIdPatient UUID — for patients without a formal ID' })
-    @IsUUID()
+
     @IsOptional()
     noIdPatientId?: string;
 

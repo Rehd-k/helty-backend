@@ -76,7 +76,7 @@ export class TransactionController {
             'insurance exceeds billable amount, payment exceeds outstanding balance, ' +
             'or payment method missing when payFull is true.',
     })
-    createQuickTransaction(@Body() dto: CreateQuickTransactionDto) {
+    createQuickTransaction(@Body() dto: any) {
         return this.transactionService.createQuickTransaction(dto);
     }
 
@@ -109,6 +109,7 @@ export class TransactionController {
             'The `search` param does a cross-field search across transaction ID, patient name, phone, and staff name. ' +
             'Response includes total count and pageCount for pagination.',
     })
+
     @ApiQuery({ name: 'search', required: false, description: 'Free-text search (transactionID, patient name/phone, staff name)' })
     @ApiQuery({ name: 'transactionID', required: false, description: 'Partial match on Transaction ID (e.g. BILL-2025)' })
     @ApiQuery({ name: 'patientId', required: false, description: 'Filter by Patient UUID' })

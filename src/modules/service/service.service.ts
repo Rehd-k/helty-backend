@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ServiceService {
@@ -41,21 +42,52 @@ export class ServiceService {
   /**
    * Paginated list of all services with category and department info.
    */
-  async findAll(skip = 0, take = 10) {
+  async findAll(skip = 0, take = 10, search: string = '', filterCategory: string = '', departmentId: string = '', categoryId: string = '') {
+
+    const where: Prisma.ServiceWhereInput = {}
+
+    if (search && search.trim() !== '') {
+      where.name = {
+        contains: search,
+        mode: 'insensitive',
+      }
+    }
+
+    if (filterCategory && filterCategory.trim() !== '') {
+      where.category = {
+        name: {
+          contains: filterCategory,
+          mode: 'insensitive',
+        },
+      }
+    }
+
+    if (departmentId && departmentId.trim() !== '') {
+      where.department = {
+        id: departmentId,
+      }
+    }
+
+    if (categoryId && categoryId.trim() !== '') {
+      where.categoryId = categoryId
+    }
+
     const [services, total] = await Promise.all([
       this.prisma.service.findMany({
-        skip: 0,
-        take: 1,
+        skip,
+        take,
         orderBy: { name: 'asc' },
         include: {
           category: true,
           department: { select: { id: true, name: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } },
         },
+        where,
       }),
-      this.prisma.service.count(),
+      this.prisma.service.count({
+        where
+      }),
     ]);
-    console.log(services)
     return { services, total, skip, take };
   }
 

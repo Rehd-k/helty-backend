@@ -50,12 +50,18 @@ export class ServiceController {
   })
   @ApiQuery({ name: 'skip', required: false, type: Number, description: 'Records to skip', example: 0 })
   @ApiQuery({ name: 'take', required: false, type: Number, description: 'Records to return', example: 10 })
+  @ApiQuery({ name: 'q', required: false, type: String, description: 'Search query', example: 'Blood Test' })
+  @ApiQuery({ name: 'filterCategory', required: false, type: String, description: 'Category filter', example: 'Lab Tests' })
   @ApiOkResponse({ description: 'Paginated list of services' })
   findAll(
     @Query('skip') skip = '0',
     @Query('take') take = '10',
+    @Query('q') search: string = '',
+    @Query('filterCategory') filterCategory: string = '',
+    @Query('departmentId') departmentId: string = '',
+    @Query('categoryId') categoryId: string = '',
   ) {
-    return this.serviceService.findAll(+skip, +take);
+    return this.serviceService.findAll(+skip, +take, search, filterCategory, departmentId, categoryId);
   }
 
   @Get(':id')

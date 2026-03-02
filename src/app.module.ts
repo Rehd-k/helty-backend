@@ -11,6 +11,7 @@ import { LabReportModule } from './modules/lab-report/lab-report.module';
 import { RadiologyReportModule } from './modules/radiology-report/radiology-report.module';
 import { PrescriptionModule } from './modules/prescription/prescription.module';
 import { ServiceModule } from './modules/service/service.module';
+import { TransactionModule } from './modules/billing/billing.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DepartmentModule } from './modules/department/department.module';
@@ -23,7 +24,7 @@ import { NoIdPatientModule } from './modules/no-id-patient/no-id-patient.module'
 import { LoggerModule } from 'nestjs-pino';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
-import { TransactionModule } from './modules/transaction/transaction.module';
+import { BankModule } from './bank/bank.module';
 
 
 
@@ -42,9 +43,9 @@ import { TransactionModule } from './modules/transaction/transaction.module';
     DoctorReportModule,
     LabReportModule,
     RadiologyReportModule,
+    TransactionModule,
     PrescriptionModule,
     ServiceModule,
-    TransactionModule,
     StaffModule,
     AuthModule,
     DepartmentModule,
@@ -65,6 +66,7 @@ import { TransactionModule } from './modules/transaction/transaction.module';
         } : undefined, // Pretty logs in development
       },
     }),
+    BankModule,
   ],
   controllers: [AppController],
   providers: [
