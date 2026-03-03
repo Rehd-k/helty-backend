@@ -8,7 +8,6 @@ import {
     Delete,
     HttpCode,
     HttpStatus,
-    UseGuards,
     NotFoundException,
     Req,
     Query,
@@ -17,10 +16,8 @@ import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards';
-import { Public } from 'src/common/decorators';
+import { Public } from '../../common/decorators';
 
-// @UseGuards(JwtAuthGuard)
 @ApiTags('Staff')
 @Controller('staff')
 export class StaffController {
@@ -60,7 +57,6 @@ export class StaffController {
     @Get(':id')
     @ApiOperation({ summary: 'Get a staff member by ID' })
     @ApiResponse({ status: 200, description: 'Staff member returned' })
-    @UseGuards(JwtAuthGuard)
     async findOne(@Param('id') id: string) {
         const staff = await this.staffService.findById(id);
         if (!staff) {
@@ -71,7 +67,6 @@ export class StaffController {
 
     @Patch(':id')
     @ApiOperation({ summary: 'Update a staff member' })
-    @UseGuards(JwtAuthGuard)
     update(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
         const { departmentId, ...rest } = dto as any;
         const data: any = { ...rest };
@@ -84,7 +79,6 @@ export class StaffController {
     @Delete(':id')
     @HttpCode(HttpStatus.NO_CONTENT)
     @ApiOperation({ summary: 'Delete a staff member' })
-    @UseGuards(JwtAuthGuard)
     remove(@Param('id') id: string) {
         return this.staffService.remove(id);
     }

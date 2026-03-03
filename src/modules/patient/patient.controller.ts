@@ -11,14 +11,11 @@ import {
   HttpStatus,
   Logger,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { Public, Roles } from '../../common/decorators';
 import { PatientService } from './patient.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { JwtAuthGuard } from 'src/common/guards';
-
 
 @ApiTags('Patient')
 @Controller('patients')
@@ -29,7 +26,6 @@ export class PatientController {
   ) {
   }
 
-  @UseGuards(JwtAuthGuard)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new patient' })
