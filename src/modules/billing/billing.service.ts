@@ -733,6 +733,21 @@ export class TransactionService {
       );
     }
 
+    // Resolve bank (if caller provided one)
+    let bankId: string | undefined;
+    if (dto.bankAccountNumber) {
+      const bank = await this.prisma.bank.findUnique({
+        where: { accountNumber: dto.bankAccountNumber },
+      });
+      if (!bank) {
+        throw new NotFoundException(
+          `No bank found with account number "${dto.bankAccountNumber}". ` +
+          `Register the bank first at POST /bank.`,
+        );
+      }
+      bankId = bank.id;
+    }
+
     const payment = await this.prisma.transactionPayment.create({
       data: {
         transactionId: transaction.id,
@@ -742,9 +757,11 @@ export class TransactionService {
         notes: dto.notes,
         receivedById: dto.staffId,
         createdById: dto.staffId,
+        ...(bankId && { bankId }),
       },
       include: {
         receivedBy: { select: { id: true, firstName: true, lastName: true } },
+        bank: { select: { id: true, name: true, accountNumber: true } },
       },
     });
 
@@ -1299,6 +1316,21 @@ export class TransactionService {
             );
           }
 
+          // Resolve bank inside the TX (so a bad bank rolls back everything)
+          let bankId: string | undefined;
+          if (dto.payment?.bankAccountNumber) {
+            const bank = await tx.bank.findUnique({
+              where: { accountNumber: dto.payment.bankAccountNumber },
+            });
+            if (!bank) {
+              throw new NotFoundException(
+                `No bank found with account number "${dto.payment.bankAccountNumber}". ` +
+                `Register the bank first at POST /bank.`,
+              );
+            }
+            bankId = bank.id;
+          }
+
           await tx.transactionPayment.create({
             data: {
               transactionId: transaction.id,
@@ -1308,6 +1340,7 @@ export class TransactionService {
               notes: dto.payment?.notes,
               receivedById: dto.staffId,
               createdById: dto.staffId,
+              ...(bankId && { bankId }),
             },
           });
 

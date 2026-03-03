@@ -40,7 +40,7 @@ export class StaffController {
         if (departmentId) {
             data.department = { connect: { id: departmentId } };
         }
-        if (req.user.sub) {
+        if (req && req.user && req.user.sub) {
             data.createdById = req.user.sub
         }
 

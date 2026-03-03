@@ -58,14 +58,16 @@ model Patient {
   prescriptions    Prescription[]
   invoice          Invoice[]
   transactions     Transaction[]
+  patientVitals    PatientVitals[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  createdBy   Staff   @relation("PatientCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  updatedBy   Staff?  @relation("PatientUpdatedBy", fields: [updatedById], references: [id])
-  updatedById String?
+  createdBy       Staff            @relation("PatientCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  updatedBy       Staff?           @relation("PatientUpdatedBy", fields: [updatedById], references: [id])
+  updatedById     String?
+  waitingPatients WaitingPatient[]
 }
 
 model Appointment {
@@ -116,6 +118,8 @@ model Payment {
   createdById String
   updatedBy   Staff?  @relation("PaymentUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+  bank        Bank?   @relation(fields: [bankId], references: [id])
+  bankId      String?
 }
 
 model MedicalHistory {
@@ -412,6 +416,15 @@ model Staff {
   transactionAuditLogsCreated TransactionAuditLog[] @relation("TransactionAuditLogCreatedBy")
   transactionAuditLogsUpdated TransactionAuditLog[] @relation("TransactionAuditLogUpdatedBy")
   invoices                    Invoice[]
+  banksCreated                Bank[]                @relation("BankCreatedBy")
+  banksUpdated                Bank[]                @relation("BankUpdatedBy")
+  banks                       Bank[]
+  consultingRooms             ConsultingRoom[]
+  waitingPatients             WaitingPatient[]
+  consultingRoomsCreated      ConsultingRoom[]      @relation("ConsultingRoomCreatedBy")
+  consultingRoomsUpdated      ConsultingRoom[]      @relation("ConsultingRoomUpdatedBy")
+  waitingPatientsCreated      WaitingPatient[]      @relation("WaitingPatientCreatedBy")
+  waitingPatientsUpdated      WaitingPatient[]      @relation("WaitingPatientUpdatedBy")
 }
 
 // Transaction: master transaction for a patient encounter (outpatient or inpatient)
@@ -495,6 +508,10 @@ model TransactionPayment {
   paidAt        DateTime                 @default(now())
   createdAt     DateTime                 @default(now())
 
+  // optional link to the bank account that received this payment
+  bank   Bank?   @relation(fields: [bankId], references: [id])
+  bankId String?
+
   createdBy   Staff?  @relation("TransactionPaymentCreatedBy", fields: [createdById], references: [id])
   createdById String?
   updatedBy   Staff?  @relation("TransactionPaymentUpdatedBy", fields: [updatedById], references: [id])
@@ -573,4 +590,77 @@ model TransactionAuditLog {
   createdById String?
   updatedBy   Staff?  @relation("TransactionAuditLogUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+}
+
+// Bank: hospital bank accounts that can receive payments
+model Bank {
+  id            String @id @default(uuid())
+  name          String
+  accountNumber String @unique
+
+  transactionPayments TransactionPayment[]
+
+  createdBy   Staff?  @relation("BankCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("BankUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  payments  Payment[]
+  staff     Staff?    @relation(fields: [staffId], references: [id])
+  staffId   String?
+}
+
+model PatientVitals {
+  id        String  @id @default(uuid())
+  patient   Patient @relation(fields: [patientId], references: [id])
+  patientId String
+
+  systolic    Int?
+  diastolic   Int?
+  temperature Float?
+  height      Float?
+  weight      Float?
+  bmi         Float?
+  pulseRate   Int?
+  spo2        Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ConsultingRoom {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  location    String?
+  capacity    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy       Staff?           @relation("ConsultingRoomCreatedBy", fields: [createdById], references: [id])
+  createdById     String?
+  updatedBy       Staff?           @relation("ConsultingRoomUpdatedBy", fields: [updatedById], references: [id])
+  updatedById     String?
+  staff           Staff?           @relation(fields: [staffId], references: [id])
+  staffId         String?
+  waitingPatients WaitingPatient[]
+}
+
+model WaitingPatient {
+  id               String          @id @default(uuid())
+  patient          Patient         @relation(fields: [patientId], references: [id])
+  patientId        String
+  consultingRoom   ConsultingRoom? @relation(fields: [consultingRoomId], references: [id])
+  consultingRoomId String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  createdBy   Staff?  @relation("WaitingPatientCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("WaitingPatientUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+  staff       Staff?  @relation(fields: [staffId], references: [id])
+  staffId     String?
 }

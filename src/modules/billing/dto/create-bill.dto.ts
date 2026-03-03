@@ -262,6 +262,16 @@ export class RecordPaymentDto {
     @IsString()
     @IsOptional()
     notes?: string;
+
+    @ApiPropertyOptional({
+        description:
+            'Bank account number to link this payment to. ' +
+            'The account number must have been registered via POST /bank.',
+        example: '0123456789',
+    })
+    @IsString()
+    @IsOptional()
+    bankAccountNumber?: string;
 }
 
 // ─── Apply Discount ───────────────────────────────────────────────────────────
@@ -468,6 +478,16 @@ export class QuickTransactionPaymentDto {
     @IsString()
     @IsOptional()
     notes?: string;
+
+    @ApiPropertyOptional({
+        description:
+            'Bank account number to link this payment to. ' +
+            'The account number must have been registered via POST /bank.',
+        example: '0123456789',
+    })
+    @IsString()
+    @IsOptional()
+    bankAccountNumber?: string;
 }
 
 // ─── Quick Transaction — main DTO ─────────────────────────────────────────────

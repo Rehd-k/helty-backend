@@ -24,10 +24,10 @@ import { NoIdPatientModule } from './modules/no-id-patient/no-id-patient.module'
 import { LoggerModule } from 'nestjs-pino';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
-import { BankModule } from './bank/bank.module';
-
-
-
+import { BankModule } from './modules/bank/bank.module';
+import { PatientVitalsModule } from './modules/patient-vitals/patient-vitals.module';
+import { ConsultingRoomModule } from './modules/consulting-room/consulting-room.module';
+import { WaitingPatientModule } from './modules/waiting-patient/waiting-patient.module';
 @Module({
   imports: [
 
@@ -67,6 +67,9 @@ import { BankModule } from './bank/bank.module';
       },
     }),
     BankModule,
+    PatientVitalsModule,
+    ConsultingRoomModule,
+    WaitingPatientModule,
   ],
   controllers: [AppController],
   providers: [
