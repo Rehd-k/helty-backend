@@ -229,9 +229,10 @@ model Service {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  invoiceItems  InvoiceItem[]
-  noIdPatient   NoIdPatient?  @relation(fields: [noIdPatientId], references: [id])
-  noIdPatientId String?
+  invoiceItems    InvoiceItem[]
+  noIdPatient     NoIdPatient?     @relation(fields: [noIdPatientId], references: [id])
+  noIdPatientId   String?
+  waitingPatients WaitingPatient[]
 }
 
 model Invoice {
@@ -656,6 +657,9 @@ model WaitingPatient {
   consultingRoomId String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
+  service          Service?        @relation(fields: [serviceId], references: [id])
+  serviceId        String?
+  seen             Boolean         @default(false)
 
   createdBy   Staff?  @relation("WaitingPatientCreatedBy", fields: [createdById], references: [id])
   createdById String?
