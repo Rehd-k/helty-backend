@@ -408,6 +408,172 @@ export class TransactionService {
     };
   }
 
+  /**
+   * List transactions whose linked patient has a NULL hospital `patientId`.
+   * This is used to find bills for patients that are in the system but have
+   * not yet been assigned an official patientId so they can be properly
+   * completed/registered.
+   *
+   * Requires at least one of fromDate / toDate so the query is always scoped
+   * to a date range.
+   */
+  async findUnregisteredPatientTransactions(query: QueryTransactionDto) {
+    const {
+      search,
+      transactionID,
+      patientName,
+      phoneNumber,
+      createdById,
+      status,
+      fromDate,
+      toDate,
+      skip = 0,
+      take = 20,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
+
+    if (!fromDate && !toDate) {
+      throw new BadRequestException(
+        'fromDate or toDate is required when querying unregistered patient transactions.',
+      );
+    }
+
+    const andConditions: Prisma.TransactionWhereInput[] = [
+      {
+        patient: {
+          patientId: null,
+        },
+      },
+    ];
+
+    if (transactionID?.trim()) {
+      andConditions.push({
+        transactionID: { contains: transactionID.trim(), mode: 'insensitive' },
+      });
+    }
+
+    if (status) {
+      andConditions.push({ status });
+    }
+
+    if (createdById?.trim()) {
+      andConditions.push({ createdById: createdById.trim() });
+    }
+
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (fromDate) dateFilter.gte = new Date(fromDate);
+    if (toDate) {
+      const endDate = new Date(toDate);
+      endDate.setHours(23, 59, 59, 999);
+      dateFilter.lte = endDate;
+    }
+    andConditions.push({ createdAt: dateFilter });
+
+    if (patientName?.trim() || phoneNumber?.trim()) {
+      const patientConditions: Prisma.PatientWhereInput[] = [];
+      if (patientName?.trim()) {
+        patientConditions.push(
+          { firstName: { contains: patientName.trim(), mode: 'insensitive' } },
+          { surname: { contains: patientName.trim(), mode: 'insensitive' } },
+          { otherName: { contains: patientName.trim(), mode: 'insensitive' } },
+        );
+      }
+      if (phoneNumber?.trim()) {
+        patientConditions.push({
+          phoneNumber: { contains: phoneNumber.trim(), mode: 'insensitive' },
+        });
+      }
+      andConditions.push({ patient: { OR: patientConditions } });
+    }
+
+    let searchCondition: Prisma.TransactionWhereInput | undefined;
+    if (search?.trim()) {
+      const term = search.trim();
+      searchCondition = {
+        OR: [
+          { transactionID: { contains: term, mode: 'insensitive' } },
+          {
+            patient: {
+              OR: [
+                { firstName: { contains: term, mode: 'insensitive' } },
+                { surname: { contains: term, mode: 'insensitive' } },
+                { otherName: { contains: term, mode: 'insensitive' } },
+                { phoneNumber: { contains: term, mode: 'insensitive' } },
+              ],
+            },
+          },
+          {
+            createdBy: {
+              OR: [
+                { firstName: { contains: term, mode: 'insensitive' } },
+                { lastName: { contains: term, mode: 'insensitive' } },
+                { staffId: { contains: term, mode: 'insensitive' } },
+              ],
+            },
+          },
+        ],
+      };
+    }
+
+    const where: Prisma.TransactionWhereInput = {
+      AND: [
+        ...(andConditions.length ? andConditions : [{}]),
+        ...(searchCondition ? [searchCondition] : []),
+      ],
+    };
+
+    const allowedSortFields = new Set([
+      'createdAt', 'updatedAt', 'totalAmount', 'amountPaid', 'status',
+    ]);
+    const orderBy: Prisma.TransactionOrderByWithRelationInput = allowedSortFields.has(sortBy ?? '')
+      ? { [sortBy!]: sortOrder ?? 'desc' }
+      : { createdAt: 'desc' };
+
+    const [data, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+        include: {
+          patient: {
+            select: {
+              id: true,
+              patientId: true,
+              firstName: true,
+              surname: true,
+              phoneNumber: true,
+            },
+          },
+          noIdPatient: {
+            select: { id: true, firstName: true, surname: true },
+          },
+          createdBy: {
+            select: {
+              id: true, staffId: true, firstName: true, lastName: true, role: true,
+            },
+          },
+          updatedBy: {
+            select: { id: true, staffId: true, firstName: true, lastName: true },
+          },
+          _count: {
+            select: { items: true, payments: true, discounts: true, refunds: true },
+          },
+        },
+      }),
+      this.prisma.transaction.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      skip,
+      take,
+      pageCount: Math.ceil(total / (take || 1)),
+    };
+  }
+
   // ─── Get Single Transaction ───────────────────────────────────────────────────────
 
   async findOne(idOrTransactionID: string) {
@@ -431,9 +597,9 @@ export class TransactionService {
             gender: true,
             dob: true,
           },
-          
+
         },
-        
+
         noIdPatient: true,
         admission: true,
         createdBy: {
@@ -1128,10 +1294,14 @@ export class TransactionService {
    * Returns the fully-hydrated transaction (same shape as findOne).
    */
   async createQuickTransaction(dto: any) {
-
     // ── 1. Validate entities (read-only — outside the transaction) ─────────────
-    const patient = await this.prisma.patient.findUnique({
-      where: { patientId: dto.patientId },
+    const patient = await this.prisma.patient.findFirst({
+      where: {
+        OR: [
+          { patientId: dto.patientId },
+          { id: dto.patientId }
+        ]
+      },
       select: { id: true, firstName: true, surname: true, patientId: true },
     });
     if (!patient) {
@@ -1169,6 +1339,7 @@ export class TransactionService {
       finalStatus,
       totalAmount,
       amountPaid,
+      itemSnapshots
     } = await this.prisma.$transaction(async (tx) => {
       // 3a. Validate items and compute totals
       let totalAmount = new Prisma.Decimal(0);
@@ -1391,7 +1562,10 @@ export class TransactionService {
       `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
     );
 
-    const result = await this.findOne(transaction.id);
+    const result = {
+      transaction, patient, staff, itemSnapshots
+    };
+    console.log(result)
     return result;
   }
 }

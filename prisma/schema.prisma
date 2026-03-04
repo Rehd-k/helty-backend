@@ -20,25 +20,25 @@ model NoIdPatient {
 
 // patient model with extended fields
 model Patient {
-  id                    String   @id @default(uuid())
-  patientId             String   @unique
+  id                    String    @id @default(uuid())
+  patientId             String?   @unique
   title                 String?
   cardNo                String?
-  surname               String
-  firstName             String
+  surname               String?
+  firstName             String?
   otherName             String?
-  dob                   DateTime
-  gender                String
-  maritalStatus         String
-  nationality           String
-  stateOfOrigin         String
-  lga                   String
-  town                  String
-  permanentAddress      String
+  dob                   DateTime?
+  gender                String?
+  maritalStatus         String?
+  nationality           String?
+  stateOfOrigin         String?
+  lga                   String?
+  town                  String?
+  permanentAddress      String?
   religion              String?
-  email                 String?  @unique
+  email                 String?   @unique
   preferredLanguage     String?
-  phoneNumber           String?
+  phoneNumber           String?   @unique
   addressOfResidence    String?
   profession            String?
   nextOfKinName         String?
@@ -59,6 +59,7 @@ model Patient {
   invoice          Invoice[]
   transactions     Transaction[]
   patientVitals    PatientVitals[]
+  allergies        PatientAllergy[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -68,6 +69,9 @@ model Patient {
   updatedBy       Staff?           @relation("PatientUpdatedBy", fields: [updatedById], references: [id])
   updatedById     String?
   waitingPatients WaitingPatient[]
+  encounters      Encounter[]
+  labRequests     LabRequest[]
+  imagingRequests ImagingRequest[]
 }
 
 model Appointment {
@@ -99,10 +103,43 @@ model Admission {
   transactions  Transaction[]
   createdAt     DateTime      @default(now())
 
-  createdBy   Staff   @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
+  // Enhanced inpatient structure (keep legacy fields above for compatibility)
+  admissionDateTime  DateTime        @default(now())
+  admittedByDoctor   Staff?          @relation("AdmissionAdmittedByDoctor", fields: [admittedByDoctorId], references: [id])
+  admittedByDoctorId String?
+  wardEntity         Ward?           @relation("WardAdmissions", fields: [wardId], references: [id])
+  wardId             String?
+  bed                Bed?            @relation("BedAdmissions", fields: [bedId], references: [id])
+  bedId              String?
+  primaryDiagnosis   String?
+  admissionReason    String?
+  admissionType      AdmissionType?
+  status             AdmissionStatus @default(ACTIVE)
+  dischargeDateTime  DateTime?
+  dischargeSummary   String?
+  outcome            String?
+
+  nurseAssignments          NurseAssignment[]
+  vitalSigns                VitalSigns[]
+  medicationOrders          MedicationOrder[]
+  medicationAdministrations MedicationAdministration[]
+  ivFluidOrders             IVFluidOrder[]
+  ivMonitorings             IVMonitoring[]
+  intakeOutputRecords       IntakeOutputRecord[]
+  nursingNotes              NursingNote[]
+  procedureRecords          ProcedureRecord[]
+  woundAssessments          WoundAssessment[]
+  carePlans                 CarePlan[]
+  monitoringCharts          MonitoringChart[]
+  handoverReports           HandoverReport[]
+  alerts                    AlertLog[]
+  auditTrails               AuditTrail[]
+
+  createdBy   Staff       @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
   createdById String
-  updatedBy   Staff?  @relation("AdmissionUpdatedBy", fields: [updatedById], references: [id])
+  updatedBy   Staff?      @relation("AdmissionUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+  encounters  Encounter[]
 }
 
 model Payment {
@@ -136,12 +173,14 @@ model MedicalHistory {
 }
 
 model DoctorReport {
-  id        String   @id @default(uuid())
-  patient   Patient  @relation(fields: [patientId], references: [id])
-  patientId String
-  doctorId  String?
-  report    String
-  createdAt DateTime @default(now())
+  id          String     @id @default(uuid())
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  patientId   String
+  encounter   Encounter? @relation(fields: [encounterId], references: [id])
+  encounterId String?
+  doctorId    String?
+  report      String
+  createdAt   DateTime   @default(now())
 
   createdBy   Staff   @relation("DoctorReportCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -150,12 +189,14 @@ model DoctorReport {
 }
 
 model LabReport {
-  id         String   @id @default(uuid())
-  patient    Patient  @relation(fields: [patientId], references: [id])
-  patientId  String
-  reportType String
-  results    String
-  date       DateTime @default(now())
+  id          String     @id @default(uuid())
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  patientId   String
+  encounter   Encounter? @relation(fields: [encounterId], references: [id])
+  encounterId String?
+  reportType  String
+  results     String
+  date        DateTime   @default(now())
 
   createdBy   Staff   @relation("LabReportCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -164,12 +205,14 @@ model LabReport {
 }
 
 model RadiologyReport {
-  id         String   @id @default(uuid())
-  patient    Patient  @relation(fields: [patientId], references: [id])
-  patientId  String
-  reportType String
-  results    String
-  date       DateTime @default(now())
+  id          String     @id @default(uuid())
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  patientId   String
+  encounter   Encounter? @relation(fields: [encounterId], references: [id])
+  encounterId String?
+  reportType  String
+  results     String
+  date        DateTime   @default(now())
 
   createdBy   Staff   @relation("RadiologyReportCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -178,19 +221,395 @@ model RadiologyReport {
 }
 
 model Prescription {
-  id        String    @id @default(uuid())
-  patient   Patient   @relation(fields: [patientId], references: [id])
-  patientId String
-  drug      String
-  dosage    String
-  startDate DateTime
-  endDate   DateTime?
-  notes     String?
+  id          String     @id @default(uuid())
+  patient     Patient    @relation(fields: [patientId], references: [id])
+  patientId   String
+  encounter   Encounter? @relation(fields: [encounterId], references: [id])
+  encounterId String?
+  // Legacy simple fields (kept nullable for backward compatibility)
+  drug        String?
+  dosage      String?
+  startDate   DateTime?
+  endDate     DateTime?
+  notes       String?
+
+  // Pharmacy domain extensions
+  type     PrescriptionType   @default(OUTPATIENT)
+  status   PrescriptionStatus @default(PENDING)
+  doctor   Staff?             @relation("PrescriptionDoctor", fields: [doctorId], references: [id])
+  doctorId String?
+
+  items         PrescriptionItem[]
+  dispensations Dispensation[]
 
   createdBy   Staff   @relation("PrescriptionCreatedBy", fields: [createdById], references: [id])
   createdById String
   updatedBy   Staff?  @relation("PrescriptionUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHARMACY DOMAIN
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PharmacyLocationType {
+  STORE
+  DISPENSARY
+}
+
+enum InventoryMovementType {
+  PURCHASE
+  TRANSFER_OUT
+  TRANSFER_IN
+  DISPENSE
+  ADJUSTMENT
+  RETURN
+  EXPIRY_WRITEOFF
+}
+
+enum MovementReferenceType {
+  PURCHASE_ORDER
+  TRANSFER
+  DISPENSATION
+  ADJUSTMENT
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  APPROVED
+  RECEIVED
+  CANCELLED
+}
+
+enum StockTransferStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+}
+
+enum PrescriptionType {
+  OUTPATIENT
+  INPATIENT
+}
+
+enum PrescriptionStatus {
+  PENDING
+  PARTIALLY_DISPENSED
+  COMPLETED
+  CANCELLED
+}
+
+enum DispensationStatus {
+  DRAFT
+  COMPLETED
+  REVERSED
+}
+
+enum PrescriptionItemType {
+  DRUG
+  CONSUMABLE
+}
+
+model Manufacturer {
+  id          String   @id @default(uuid())
+  name        String
+  country     String?
+  contactInfo Json?
+  createdAt   DateTime @default(now())
+
+  drugs Drug[]
+}
+
+model Supplier {
+  id            String   @id @default(uuid())
+  name          String
+  licenseNumber String?
+  contactInfo   Json?
+  creditTerms   String?
+  leadTimeDays  Int?
+  rating        Int?
+  isBlacklisted Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  batches        DrugBatch[]
+  purchaseOrders PurchaseOrder[]
+}
+
+model Drug {
+  id               String        @id @default(uuid())
+  genericName      String
+  brandName        String
+  strength         String?
+  dosageForm       String?
+  route            String?
+  therapeuticClass String?
+  atcCode          String?
+  manufacturer     Manufacturer? @relation(fields: [manufacturerId], references: [id])
+  manufacturerId   String?
+  isControlled     Boolean       @default(false)
+  isRefrigerated   Boolean       @default(false)
+  isHighAlert      Boolean       @default(false)
+  maxDailyDose     Decimal?      @db.Decimal(10, 2)
+  reorderLevel     Int           @default(0)
+  reorderQuantity  Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+
+  batches            DrugBatch[]
+  interactionsA      DrugInteraction[]   @relation("DrugInteractionA")
+  interactionsB      DrugInteraction[]   @relation("DrugInteractionB")
+  purchaseOrderItems PurchaseOrderItem[]
+  goodsReceiptItems  GoodsReceiptItem[]
+  prescriptionItems  PrescriptionItem[]
+  inventoryMovements InventoryMovement[]
+
+  @@index([manufacturerId])
+  @@index([isControlled])
+}
+
+model DrugInteraction {
+  id       String @id @default(uuid())
+  drugA    Drug   @relation("DrugInteractionA", fields: [drugAId], references: [id])
+  drugAId  String
+  drugB    Drug   @relation("DrugInteractionB", fields: [drugBId], references: [id])
+  drugBId  String
+  severity String
+
+  @@unique([drugAId, drugBId])
+}
+
+model Consumable {
+  id           String   @id @default(uuid())
+  name         String
+  category     String?
+  reorderLevel Int?
+  isBillable   Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  batches           ConsumableBatch[]
+  prescriptionItems PrescriptionItem[]
+  movements         ConsumableMovement[]
+}
+
+model DrugBatch {
+  id                String               @id @default(uuid())
+  drug              Drug                 @relation(fields: [drugId], references: [id])
+  drugId            String
+  locationType      PharmacyLocationType
+  batchNumber       String
+  manufacturingDate DateTime
+  expiryDate        DateTime
+  supplier          Supplier?            @relation(fields: [supplierId], references: [id])
+  supplierId        String?
+  costPrice         Decimal              @db.Decimal(12, 2)
+  sellingPrice      Decimal              @db.Decimal(12, 2)
+  quantityReceived  Int
+  quantityRemaining Int
+  grn               GoodsReceipt?        @relation(fields: [grnId], references: [id])
+  grnId             String?
+  createdAt         DateTime             @default(now())
+
+  movements         InventoryMovement[]
+  transferItems     StockTransferItem[]
+  dispensationItems DispensationItem[]
+
+  @@index([drugId, locationType])
+  @@index([expiryDate])
+  @@index([supplierId])
+  @@index([manufacturingDate])
+}
+
+model InventoryMovement {
+  id            String                @id @default(uuid())
+  batch         DrugBatch             @relation(fields: [batchId], references: [id])
+  batchId       String
+  drug          Drug                  @relation(fields: [drugId], references: [id])
+  drugId        String
+  locationType  PharmacyLocationType
+  movementType  InventoryMovementType
+  quantity      Int
+  referenceType MovementReferenceType
+  referenceId   String
+  performedBy   Staff                 @relation("InventoryMovementPerformedBy", fields: [performedById], references: [id])
+  performedById String
+  createdAt     DateTime              @default(now())
+}
+
+model PurchaseOrder {
+  id           String              @id @default(uuid())
+  supplier     Supplier            @relation(fields: [supplierId], references: [id])
+  supplierId   String
+  status       PurchaseOrderStatus @default(DRAFT)
+  totalAmount  Decimal             @db.Decimal(12, 2)
+  createdBy    Staff               @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  approvedBy   Staff?              @relation("PurchaseOrderApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+  createdAt    DateTime            @default(now())
+
+  items    PurchaseOrderItem[]
+  receipts GoodsReceipt[]
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId String
+  drug            Drug          @relation(fields: [drugId], references: [id])
+  drugId          String
+  quantity        Int
+  unitPrice       Decimal       @db.Decimal(12, 2)
+  expectedExpiry  DateTime?
+}
+
+model GoodsReceipt {
+  id              String        @id @default(uuid())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId String
+  receivedBy      Staff         @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id])
+  receivedById    String
+  receivedAt      DateTime      @default(now())
+
+  items   GoodsReceiptItem[]
+  batches DrugBatch[]
+}
+
+model GoodsReceiptItem {
+  id                String       @id @default(uuid())
+  goodsReceipt      GoodsReceipt @relation(fields: [goodsReceiptId], references: [id])
+  goodsReceiptId    String
+  drug              Drug         @relation(fields: [drugId], references: [id])
+  drugId            String
+  batchNumber       String
+  manufacturingDate DateTime
+  expiryDate        DateTime
+  quantityReceived  Int
+  costPrice         Decimal      @db.Decimal(12, 2)
+}
+
+model StockTransfer {
+  id           String               @id @default(uuid())
+  fromLocation PharmacyLocationType
+  toLocation   PharmacyLocationType
+  status       StockTransferStatus  @default(PENDING)
+  createdBy    Staff                @relation("StockTransferCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  approvedBy   Staff?               @relation("StockTransferApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+  createdAt    DateTime             @default(now())
+  completedAt  DateTime?
+
+  items StockTransferItem[]
+}
+
+model StockTransferItem {
+  id              String        @id @default(uuid())
+  stockTransfer   StockTransfer @relation(fields: [stockTransferId], references: [id])
+  stockTransferId String
+  batch           DrugBatch     @relation(fields: [batchId], references: [id])
+  batchId         String
+  quantity        Int
+}
+
+model PrescriptionItem {
+  id                 String               @id @default(uuid())
+  prescription       Prescription         @relation(fields: [prescriptionId], references: [id])
+  prescriptionId     String
+  itemType           PrescriptionItemType
+  drug               Drug?                @relation(fields: [drugId], references: [id])
+  drugId             String?
+  consumable         Consumable?          @relation(fields: [consumableId], references: [id])
+  consumableId       String?
+  dosage             String
+  frequency          String?
+  duration           Int?
+  quantityPrescribed Int
+  quantityDispensed  Int                  @default(0)
+  instructions       String?
+
+  dispensationItems DispensationItem[]
+
+  @@index([prescriptionId])
+  @@index([drugId])
+}
+
+model Dispensation {
+  id             String               @id @default(uuid())
+  prescription   Prescription         @relation(fields: [prescriptionId], references: [id])
+  prescriptionId String
+  locationType   PharmacyLocationType @default(DISPENSARY)
+  pharmacist     Staff                @relation("DispensationPharmacist", fields: [pharmacistId], references: [id])
+  pharmacistId   String
+  status         DispensationStatus   @default(DRAFT)
+  createdAt      DateTime             @default(now())
+
+  items     DispensationItem[]
+  approvals ControlledApproval[]
+}
+
+model DispensationItem {
+  id                 String           @id @default(uuid())
+  dispensation       Dispensation     @relation(fields: [dispensationId], references: [id])
+  dispensationId     String
+  prescriptionItem   PrescriptionItem @relation(fields: [prescriptionItemId], references: [id])
+  prescriptionItemId String
+  batch              DrugBatch?       @relation(fields: [batchId], references: [id])
+  batchId            String?
+  quantityDispensed  Int
+}
+
+model ControlledApproval {
+  id             String       @id @default(uuid())
+  dispensation   Dispensation @relation(fields: [dispensationId], references: [id])
+  dispensationId String
+  approver       Staff        @relation("ControlledApprovalApprover", fields: [approverId], references: [id])
+  approverId     String
+  approvedAt     DateTime     @default(now())
+}
+
+model ConsumableBatch {
+  id                String               @id @default(uuid())
+  consumable        Consumable           @relation(fields: [consumableId], references: [id])
+  consumableId      String
+  locationType      PharmacyLocationType
+  batchNumber       String?
+  expiryDate        DateTime?
+  quantityReceived  Int
+  quantityRemaining Int
+  createdAt         DateTime             @default(now())
+
+  movements ConsumableMovement[]
+
+  @@index([consumableId, locationType])
+}
+
+model ConsumableMovement {
+  id            String                @id @default(uuid())
+  batch         ConsumableBatch       @relation(fields: [batchId], references: [id])
+  batchId       String
+  consumable    Consumable            @relation(fields: [consumableId], references: [id])
+  consumableId  String
+  locationType  PharmacyLocationType
+  movementType  InventoryMovementType
+  quantity      Int
+  referenceType MovementReferenceType
+  referenceId   String
+  performedBy   Staff                 @relation("ConsumableMovementPerformedBy", fields: [performedById], references: [id])
+  performedById String
+  createdAt     DateTime              @default(now())
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  entity        String
+  entityId      String
+  action        String
+  oldValue      Json?
+  newValue      Json?
+  performedBy   Staff?   @relation("AuditLogPerformedBy", fields: [performedById], references: [id])
+  performedById String?
+  createdAt     DateTime @default(now())
 }
 
 model ServiceCategory {
@@ -319,6 +738,136 @@ enum AccountType {
   DIALYSIS
 }
 
+enum WardType {
+  GENERAL
+  ICU
+  ISOLATION
+}
+
+enum BedStatus {
+  AVAILABLE
+  OCCUPIED
+  CLEANING
+  RESERVED
+}
+
+enum AdmissionType {
+  EMERGENCY
+  ELECTIVE
+  TRANSFER
+}
+
+enum AdmissionStatus {
+  ACTIVE
+  DISCHARGED
+  TRANSFERRED
+  DECEASED
+}
+
+enum EncounterType {
+  OUTPATIENT
+  EMERGENCY
+  INPATIENT_REVIEW
+  TELEMEDICINE
+  FOLLOW_UP
+}
+
+enum EncounterStatus {
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum LabRequestStatus {
+  REQUESTED
+  COLLECTED
+  COMPLETED
+  CANCELLED
+}
+
+enum ImagingRequestStatus {
+  REQUESTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ShiftType {
+  MORNING
+  AFTERNOON
+  NIGHT
+}
+
+enum MedicationRoute {
+  IV
+  ORAL
+  IM
+  SC
+}
+
+enum MedicationOrderStatus {
+  ACTIVE
+  STOPPED
+}
+
+enum MedicationAdminStatus {
+  GIVEN
+  MISSED
+  REFUSED
+  DELAYED
+}
+
+enum IVOrderStatus {
+  ACTIVE
+  COMPLETED
+  STOPPED
+}
+
+enum IntakeOutputType {
+  INTAKE
+  OUTPUT
+}
+
+enum IntakeOutputCategory {
+  ORAL
+  IV
+  URINE
+  STOOL
+  DRAIN
+  VOMIT
+  BLOOD
+  OTHER
+}
+
+enum NursingNoteType {
+  GENERAL
+  INCIDENT
+  SHIFT_SUMMARY
+}
+
+enum MonitoringChartType {
+  GCS
+  NEURO
+  CARDIAC
+  SEIZURE
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AuditActionType {
+  CREATE
+  UPDATE
+  DELETE
+  ADMINISTER
+  MISSED
+  REFUSED
+}
+
 model Department {
   id   String @id @default(uuid())
   name String @unique
@@ -337,6 +886,8 @@ model Department {
   updatedBy   Staff?    @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
   services    Service[]
+  wards       Ward[]
+  nurses      Nurse[]
 }
 
 model Staff {
@@ -426,6 +977,105 @@ model Staff {
   consultingRoomsUpdated      ConsultingRoom[]      @relation("ConsultingRoomUpdatedBy")
   waitingPatientsCreated      WaitingPatient[]      @relation("WaitingPatientCreatedBy")
   waitingPatientsUpdated      WaitingPatient[]      @relation("WaitingPatientUpdatedBy")
+
+  admissionsAdmitted           Admission[]          @relation("AdmissionAdmittedByDoctor")
+  medicationOrdersPrescribed   MedicationOrder[]
+  ivFluidOrdersOrdered         IVFluidOrder[]
+  auditTrailsPerformed         AuditTrail[]
+  nurse                        Nurse?
+  alertLogs                    AlertLog[]
+  encountersAsDoctor           Encounter[]          @relation("EncounterDoctor")
+  encountersCreated            Encounter[]          @relation("EncounterCreatedBy")
+  encountersUpdated            Encounter[]          @relation("EncounterUpdatedBy")
+  labRequestsOrdered           LabRequest[]         @relation("LabRequestOrderedBy")
+  imagingRequestsOrdered       ImagingRequest[]     @relation("ImagingRequestOrderedBy")
+  prescriptionsAsDoctor        Prescription[]       @relation("PrescriptionDoctor")
+  purchaseOrdersCreated        PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersApproved       PurchaseOrder[]      @relation("PurchaseOrderApprovedBy")
+  goodsReceiptsReceived        GoodsReceipt[]       @relation("GoodsReceiptReceivedBy")
+  stockTransfersCreated        StockTransfer[]      @relation("StockTransferCreatedBy")
+  stockTransfersApproved       StockTransfer[]      @relation("StockTransferApprovedBy")
+  inventoryMovementsPerformed  InventoryMovement[]  @relation("InventoryMovementPerformedBy")
+  consumableMovementsPerformed ConsumableMovement[] @relation("ConsumableMovementPerformedBy")
+  dispensationsAsPharmacist    Dispensation[]       @relation("DispensationPharmacist")
+  controlledApprovals          ControlledApproval[] @relation("ControlledApprovalApprover")
+  auditLogsPerformed           AuditLog[]           @relation("AuditLogPerformedBy")
+}
+
+// Encounter: clinical anchor for every doctor interaction (outpatient, emergency, inpatient review, etc.)
+model Encounter {
+  id             String          @id @default(uuid())
+  patient        Patient         @relation(fields: [patientId], references: [id])
+  patientId      String
+  doctor         Staff           @relation("EncounterDoctor", fields: [doctorId], references: [id])
+  doctorId       String
+  admission      Admission?      @relation(fields: [admissionId], references: [id])
+  admissionId    String?
+  encounterType  EncounterType
+  startTime      DateTime
+  endTime        DateTime?
+  chiefComplaint String?
+  triageNotes    String?
+  status         EncounterStatus @default(ONGOING)
+
+  doctorReports    DoctorReport[]
+  prescriptions    Prescription[]
+  labReports       LabReport[]
+  radiologyReports RadiologyReport[]
+  diagnoses        EncounterDiagnosis[]
+  labRequests      LabRequest[]
+  imagingRequests  ImagingRequest[]
+
+  createdBy   Staff    @relation("EncounterCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?   @relation("EncounterUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Structured diagnosis per encounter
+model EncounterDiagnosis {
+  id          String    @id @default(uuid())
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  encounterId String
+  diagnosis   String // code or text
+  isPrimary   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Lab order/request tied to an encounter (before results in LabReport)
+model LabRequest {
+  id                  String           @id @default(uuid())
+  encounter           Encounter        @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  encounterId         String
+  patient             Patient          @relation(fields: [patientId], references: [id])
+  patientId           String
+  requestedBy         Staff            @relation("LabRequestOrderedBy", fields: [requestedByDoctorId], references: [id])
+  requestedByDoctorId String
+  testType            String?
+  notes               String?
+  status              LabRequestStatus @default(REQUESTED)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+// Imaging/radiology order tied to an encounter (before results in RadiologyReport)
+model ImagingRequest {
+  id                  String               @id @default(uuid())
+  encounter           Encounter            @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  encounterId         String
+  patient             Patient              @relation(fields: [patientId], references: [id])
+  patientId           String
+  requestedBy         Staff                @relation("ImagingRequestOrderedBy", fields: [requestedByDoctorId], references: [id])
+  requestedByDoctorId String
+  studyType           String?
+  modality            String?
+  notes               String?
+  status              ImagingRequestStatus @default(REQUESTED)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 }
 
 // Transaction: master transaction for a patient encounter (outpatient or inpatient)
@@ -667,4 +1317,326 @@ model WaitingPatient {
   updatedById String?
   staff       Staff?  @relation(fields: [staffId], references: [id])
   staffId     String?
+}
+
+model PatientAllergy {
+  id        String  @id @default(uuid())
+  patient   Patient @relation(fields: [patientId], references: [id])
+  patientId String
+
+  allergen String
+  reaction String?
+  severity String?
+  type     String?
+  notes    String?
+
+  createdAt DateTime @default(now())
+}
+
+model Ward {
+  id           String      @id @default(uuid())
+  name         String
+  capacity     Int
+  type         WardType
+  department   Department? @relation(fields: [departmentId], references: [id])
+  departmentId String?
+
+  beds       Bed[]
+  admissions Admission[] @relation("WardAdmissions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Bed {
+  id        String    @id @default(uuid())
+  ward      Ward      @relation(fields: [wardId], references: [id])
+  wardId    String
+  bedNumber String
+  status    BedStatus @default(AVAILABLE)
+
+  admissions Admission[] @relation("BedAdmissions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Nurse {
+  id      String @id @default(uuid())
+  staff   Staff  @relation(fields: [staffId], references: [id])
+  staffId String @unique
+
+  licenseNumber String?
+  role          String?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  departmentId  String?
+  active        Boolean     @default(true)
+
+  assignments               NurseAssignment[]
+  vitalSigns                VitalSigns[]
+  medicationAdministrations MedicationAdministration[]
+  ivMonitorings             IVMonitoring[]
+  intakeOutputRecords       IntakeOutputRecord[]
+  nursingNotes              NursingNote[]
+  procedureRecords          ProcedureRecord[]
+  woundAssessments          WoundAssessment[]
+  carePlans                 CarePlan[]
+  monitoringCharts          MonitoringChart[]
+  handoverReports           HandoverReport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model NurseAssignment {
+  id          String    @id @default(uuid())
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+
+  shiftDate  DateTime
+  shiftType  ShiftType
+  assignedAt DateTime  @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@unique([nurseId, admissionId, shiftDate, shiftType])
+}
+
+model VitalSigns {
+  id                String    @id @default(uuid())
+  admission         Admission @relation(fields: [admissionId], references: [id])
+  admissionId       String
+  nurse             Nurse     @relation(fields: [recordedByNurseId], references: [id])
+  recordedByNurseId String
+
+  shiftType  ShiftType
+  recordedAt DateTime  @default(now())
+
+  temperature      Float?
+  systolicBP       Int?
+  diastolicBP      Int?
+  pulse            Int?
+  respiratoryRate  Int?
+  oxygenSaturation Float?
+  painScore        Int?
+  bloodGlucose     Float?
+  weight           Float?
+  height           Float?
+  notes            String?
+
+  createdAt DateTime @default(now())
+}
+
+model MedicationOrder {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+
+  prescribedBy         Staff  @relation(fields: [prescribedByDoctorId], references: [id])
+  prescribedByDoctorId String
+
+  drugName      String
+  dose          String
+  route         MedicationRoute
+  frequency     String
+  startDateTime DateTime
+  endDateTime   DateTime?
+  status        MedicationOrderStatus @default(ACTIVE)
+  notes         String?
+
+  administrations MedicationAdministration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MedicationAdministration {
+  id                    String          @id @default(uuid())
+  medicationOrder       MedicationOrder @relation(fields: [medicationOrderId], references: [id])
+  medicationOrderId     String
+  admission             Admission       @relation(fields: [admissionId], references: [id])
+  admissionId           String
+  nurse                 Nurse           @relation(fields: [administeredByNurseId], references: [id])
+  administeredByNurseId String
+
+  scheduledTime    DateTime
+  actualTime       DateTime?
+  status           MedicationAdminStatus
+  reasonIfNotGiven String?
+  remarks          String?
+
+  createdAt DateTime @default(now())
+}
+
+model IVFluidOrder {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+
+  orderedBy         Staff  @relation(fields: [orderedByDoctorId], references: [id])
+  orderedByDoctorId String
+
+  fluidType       String
+  volume          Int
+  rate            Int
+  startTime       DateTime
+  expectedEndTime DateTime
+  status          IVOrderStatus @default(ACTIVE)
+
+  monitorings IVMonitoring[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model IVMonitoring {
+  id          String       @id @default(uuid())
+  ivOrder     IVFluidOrder @relation(fields: [ivOrderId], references: [id])
+  ivOrderId   String
+  admission   Admission    @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse        @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  currentRate            Int
+  insertionSiteCondition String
+  complications          String?
+  stoppedAt              DateTime?
+  reasonStopped          String?
+
+  recordedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+}
+
+model IntakeOutputRecord {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  type       IntakeOutputType
+  category   IntakeOutputCategory
+  amountMl   Int
+  recordedAt DateTime
+  notes      String?
+
+  createdAt DateTime @default(now())
+}
+
+model NursingNote {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  noteType  NursingNoteType
+  content   String
+  createdAt DateTime        @default(now())
+}
+
+model ProcedureRecord {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  procedureType String
+  description   String
+  outcome       String?
+  complications String?
+  recordedAt    DateTime
+
+  createdAt DateTime @default(now())
+}
+
+model WoundAssessment {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  woundLocation  String
+  woundSize      String
+  woundStage     String
+  exudate        String
+  odor           String
+  infectionSigns String
+  photoUrl       String?
+
+  recordedAt DateTime @default(now())
+}
+
+model CarePlan {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  problem          String
+  goal             String
+  intervention     String
+  evaluationStatus String
+
+  updatedAt DateTime @updatedAt
+}
+
+model MonitoringChart {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  type       MonitoringChartType
+  value      Json
+  recordedAt DateTime
+}
+
+model HandoverReport {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurseId     String
+
+  shiftType ShiftType
+  summary   String
+  createdAt DateTime  @default(now())
+}
+
+model AlertLog {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+
+  alertType    String
+  severity     AlertSeverity
+  message      String
+  resolved     Boolean       @default(false)
+  resolvedBy   Staff?        @relation(fields: [resolvedById], references: [id])
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime      @default(now())
+}
+
+model AuditTrail {
+  id            String          @id @default(uuid())
+  entityName    String
+  entityId      String
+  actionType    AuditActionType
+  performedBy   Staff           @relation(fields: [performedById], references: [id])
+  performedById String
+  performedAt   DateTime        @default(now())
+  previousValue Json?
+  newValue      Json?
+
+  admission   Admission? @relation(fields: [admissionId], references: [id])
+  admissionId String?
 }

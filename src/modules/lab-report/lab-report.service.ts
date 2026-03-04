@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateLabReportDto, UpdateLabReportDto } from './dto/create-lab-report.dto';
 
@@ -7,9 +7,19 @@ export class LabReportService {
   constructor(private prisma: PrismaService) { }
 
   async create(createLabReportDto: CreateLabReportDto) {
+    if (createLabReportDto.encounterId) {
+      await this.validateEncounterForPatient(
+        createLabReportDto.encounterId,
+        createLabReportDto.patientId,
+      );
+    }
+    const { encounterId, ...rest } = createLabReportDto;
     return this.prisma.labReport.create({
-      data: { ...createLabReportDto, createdById: '' },
-
+      data: {
+        ...rest,
+        ...(encounterId && { encounterId }),
+        createdById: '',
+      },
     });
   }
 
@@ -49,10 +59,32 @@ export class LabReportService {
   }
 
   async update(id: string, updateLabReportDto: UpdateLabReportDto) {
+    const existing = await this.prisma.labReport.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Lab report "${id}" not found.`);
+    }
+    if (updateLabReportDto.encounterId !== undefined) {
+      await this.validateEncounterForPatient(
+        updateLabReportDto.encounterId,
+        existing.patientId,
+      );
+    }
     return this.prisma.labReport.update({
       where: { id },
       data: updateLabReportDto,
     });
+  }
+
+  private async validateEncounterForPatient(encounterId: string, patientId: string) {
+    const encounter = await this.prisma.encounter.findUnique({
+      where: { id: encounterId },
+    });
+    if (!encounter) {
+      throw new BadRequestException(`Encounter "${encounterId}" not found.`);
+    }
+    if (encounter.patientId !== patientId) {
+      throw new BadRequestException('Encounter does not belong to the given patient.');
+    }
   }
 
   async remove(id: string) {

@@ -47,6 +47,12 @@ export class PrescriptionController {
     return this.prescriptionService.getActivePrescriptions(patientId);
   }
 
+  @Get('encounter/:encounterId')
+  @ApiOperation({ summary: 'Get all prescriptions for an encounter' })
+  findByEncounterId(@Param('encounterId') encounterId: string) {
+    return this.prescriptionService.findByEncounterId(encounterId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get prescription by ID' })
   findOne(@Param('id') id: string) {

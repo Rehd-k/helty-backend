@@ -36,7 +36,8 @@ export enum MaritalStatus {
 
 export class CreatePatientDto {
   @IsEnum(Title)
-  title: string;
+  @IsOptional()
+  title?: string;
 
   @IsString()
   @MinLength(2)
@@ -54,13 +55,16 @@ export class CreatePatientDto {
   otherName?: string;
 
   @IsDateString()
-  dob: string;
+  @IsOptional()
+  dob?: string;
 
   @IsEnum(Gender)
-  gender: string;
+  @IsOptional()
+  gender?: string;
 
   @IsEnum(MaritalStatus)
-  maritalStatus: string;
+  @IsOptional()
+  maritalStatus?: string;
 
   @IsString()
   @IsOptional()
@@ -202,13 +206,13 @@ export class UpdatePatientDto {
 }
 
 export class PatientResponseDto {
-  id: string;
-  patientId: string;
-  title: string;
-  surname: string;
-  firstName: string;
+  id?: string;
+  patientId?: string;
+  title?: string;
+  surname?: string;
+  firstName?: string;
   otherName?: string;
-  dob: Date;
+  dob?: Date;
   gender: string;
   maritalStatus: string;
   nationality?: string;

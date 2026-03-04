@@ -28,6 +28,11 @@ import { BankModule } from './modules/bank/bank.module';
 import { PatientVitalsModule } from './modules/patient-vitals/patient-vitals.module';
 import { ConsultingRoomModule } from './modules/consulting-room/consulting-room.module';
 import { WaitingPatientModule } from './modules/waiting-patient/waiting-patient.module';
+import { WardModule } from './modules/ward/ward.module';
+import { EncounterModule } from './modules/encounter/encounter.module';
+import { LabRequestModule } from './modules/lab-request/lab-request.module';
+import { ImagingRequestModule } from './modules/imaging-request/imaging-request.module';
+import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 @Module({
   imports: [
 
@@ -70,6 +75,11 @@ import { WaitingPatientModule } from './modules/waiting-patient/waiting-patient.
     PatientVitalsModule,
     ConsultingRoomModule,
     WaitingPatientModule,
+    WardModule,
+    EncounterModule,
+    LabRequestModule,
+    ImagingRequestModule,
+    PharmacyModule,
   ],
   controllers: [AppController],
   providers: [

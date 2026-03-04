@@ -3,12 +3,27 @@ import {
   IsDateString,
   IsOptional,
   IsNotEmpty,
+  IsUUID,
+  IsEnum,
 } from 'class-validator';
+import { PrescriptionStatus, PrescriptionType } from '@prisma/client';
 
 export class CreatePrescriptionDto {
   @IsString()
   @IsNotEmpty()
   patientId: string;
+
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  doctorId?: string;
+
+  @IsEnum(PrescriptionType)
+  @IsOptional()
+  type?: PrescriptionType;
 
   @IsString()
   @IsNotEmpty()
@@ -31,6 +46,22 @@ export class CreatePrescriptionDto {
 }
 
 export class UpdatePrescriptionDto {
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  doctorId?: string;
+
+  @IsEnum(PrescriptionType)
+  @IsOptional()
+  type?: PrescriptionType;
+
+  @IsEnum(PrescriptionStatus)
+  @IsOptional()
+  status?: PrescriptionStatus;
+
   @IsString()
   @IsOptional()
   drug?: string;

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRadiologyReportDto, UpdateRadiologyReportDto } from './dto/create-radiology-report.dto';
 
@@ -7,8 +7,19 @@ export class RadiologyReportService {
   constructor(private prisma: PrismaService) { }
 
   async create(createRadiologyReportDto: CreateRadiologyReportDto) {
+    if (createRadiologyReportDto.encounterId) {
+      await this.validateEncounterForPatient(
+        createRadiologyReportDto.encounterId,
+        createRadiologyReportDto.patientId,
+      );
+    }
+    const { encounterId, ...rest } = createRadiologyReportDto;
     return this.prisma.radiologyReport.create({
-      data: { ...createRadiologyReportDto, createdById: '', },
+      data: {
+        ...rest,
+        ...(encounterId && { encounterId }),
+        createdById: '',
+      },
     });
   }
 
@@ -48,10 +59,32 @@ export class RadiologyReportService {
   }
 
   async update(id: string, updateRadiologyReportDto: UpdateRadiologyReportDto) {
+    const existing = await this.prisma.radiologyReport.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Radiology report "${id}" not found.`);
+    }
+    if (updateRadiologyReportDto.encounterId !== undefined) {
+      await this.validateEncounterForPatient(
+        updateRadiologyReportDto.encounterId,
+        existing.patientId,
+      );
+    }
     return this.prisma.radiologyReport.update({
       where: { id },
       data: updateRadiologyReportDto,
     });
+  }
+
+  private async validateEncounterForPatient(encounterId: string, patientId: string) {
+    const encounter = await this.prisma.encounter.findUnique({
+      where: { id: encounterId },
+    });
+    if (!encounter) {
+      throw new BadRequestException(`Encounter "${encounterId}" not found.`);
+    }
+    if (encounter.patientId !== patientId) {
+      throw new BadRequestException('Encounter does not belong to the given patient.');
+    }
   }
 
   async remove(id: string) {

@@ -241,7 +241,7 @@ export class WaitingPatientService {
   async update(id: string, dto: UpdateWaitingPatientDto) {
     const waiting = await this.findOne(id);
 
-    const { consultingRoomId, staffId } = dto;
+    const { consultingRoomId, seen, staffId } = dto;
 
     if (consultingRoomId) {
       await this.assertPatientHasVitals(waiting.patientId);
@@ -271,6 +271,7 @@ export class WaitingPatientService {
         ...(consultingRoomId && {
           consultingRoom: { connect: { id: consultingRoomId } },
         }),
+        ...(seen !== undefined && { seen }),
         ...(staffId && {
           updatedBy: { connect: { id: staffId } },
         }),

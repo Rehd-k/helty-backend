@@ -13,13 +13,14 @@ export class PatientService {
 
   async create(createPatientDto: CreatePatientDto, req: any) {
 
+
     const patientId = `${this.nanoid()}`;
     const data: any = {
-      patientId,
+      patientId: createPatientDto.email ? patientId : null,
       title: createPatientDto.title,
-      surname: createPatientDto.surname,
+      surname: createPatientDto.surname ?? '',
       firstName: createPatientDto.firstName,
-      dob: new Date(createPatientDto.dob),
+      dob: new Date(createPatientDto.dob ?? Date.now()),
       gender: createPatientDto.gender,
       maritalStatus: createPatientDto.maritalStatus,
       nationality: createPatientDto.nationality || '',
@@ -80,7 +81,9 @@ export class PatientService {
   ) {
 
 
-    const where: Prisma.PatientWhereInput = {}
+    const where: Prisma.PatientWhereInput = {
+
+    }
 
     if (search && search.trim() !== '') {
       const trimmedSearch = search.trim()
@@ -95,6 +98,9 @@ export class PatientService {
       else if (filterCategory === 'fullName') {
         where.OR = [
           {
+            patientId: {
+              not: null
+            },
             firstName: {
               contains: trimmedSearch,
               mode: 'insensitive',
@@ -113,6 +119,11 @@ export class PatientService {
       else if (filterCategory === 'nameIdPhonenumber') {
 
         where.OR = [
+          {
+            patientId: {
+              not: null
+            }
+          },
           {
             phoneNumber: {
               contains: trimmedSearch,

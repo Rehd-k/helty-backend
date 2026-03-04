@@ -128,6 +128,33 @@ export class TransactionController {
         return this.transactionService.findAll(query);
     }
 
+    // ─── List Transactions For Patients Without patientId ─────────────────────
+
+    @Get('unregistered-patients')
+    @ApiOperation({
+        summary: 'List transactions for patients without a hospital patientId',
+        description:
+            'Returns a paginated list of transactions where the linked patient record has a NULL `patientId`. ' +
+            'Use this to find bills for patients that have not yet been assigned an official hospital ID so they can be properly registered. ' +
+            'Requires at least one of `fromDate` or `toDate` so that the search is always constrained to a date range.',
+    })
+    @ApiQuery({ name: 'fromDate', required: false, description: 'Start date (ISO 8601, e.g. 2025-01-01)' })
+    @ApiQuery({ name: 'toDate', required: false, description: 'End date (ISO 8601, e.g. 2025-12-31) — inclusive of entire day' })
+    @ApiQuery({ name: 'search', required: false, description: 'Free-text search (transactionID, patient name/phone, staff name)' })
+    @ApiQuery({ name: 'transactionID', required: false, description: 'Partial match on Transaction ID (e.g. BILL-2025)' })
+    @ApiQuery({ name: 'patientName', required: false, description: 'Search by patient first or last name' })
+    @ApiQuery({ name: 'phoneNumber', required: false, description: 'Search by patient phone number' })
+    @ApiQuery({ name: 'createdById', required: false, description: 'Filter by the Staff UUID who created the transaction' })
+    @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'ACTIVE', 'PARTIALLY_PAID', 'PAID', 'CANCELLED', 'REFUNDED'], description: 'Filter by transaction status' })
+    @ApiQuery({ name: 'skip', required: false, type: Number, description: 'Records to skip (default: 0)' })
+    @ApiQuery({ name: 'take', required: false, type: Number, description: 'Records to return (default: 20)' })
+    @ApiQuery({ name: 'sortBy', required: false, enum: ['createdAt', 'updatedAt', 'totalAmount', 'amountPaid', 'status'], description: 'Sort field (default: createdAt)' })
+    @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'], description: 'Sort direction (default: desc)' })
+    @ApiOkResponse({ description: 'Returns { data, total, skip, take, pageCount }.' })
+    findUnregisteredPatientTransactions(@Query() query: QueryTransactionDto) {
+        return this.transactionService.findUnregisteredPatientTransactions(query);
+    }
+
     // ─── Get All for a Patient ──────────────────────────────────────────────────
 
     @Get('patient/:patientId')

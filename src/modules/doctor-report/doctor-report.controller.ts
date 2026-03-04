@@ -41,6 +41,12 @@ export class DoctorReportController {
     return this.doctorReportService.findByPatientId(patientId);
   }
 
+  @Get('encounter/:encounterId')
+  @ApiOperation({ summary: 'Get all doctor reports for an encounter' })
+  findByEncounterId(@Param('encounterId') encounterId: string) {
+    return this.doctorReportService.findByEncounterId(encounterId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get doctor report by ID' })
   findOne(@Param('id') id: string) {

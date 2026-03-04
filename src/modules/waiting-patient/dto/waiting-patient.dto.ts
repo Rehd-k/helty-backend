@@ -55,6 +55,13 @@ export class UpdateWaitingPatientDto {
   consultingRoomId?: string;
 
   @ApiPropertyOptional({
+    description: 'Whether the patient has been seen by the doctor',
+  })
+  @IsBoolean()
+  @IsOptional()
+  seen?: boolean;
+
+  @ApiPropertyOptional({
     description:
       'Staff UUID of the user updating this waiting patient entry',
   })

@@ -2,12 +2,17 @@ import {
   IsString,
   IsOptional,
   IsNotEmpty,
+  IsUUID,
 } from 'class-validator';
 
 export class CreateLabReportDto {
   @IsString()
   @IsNotEmpty()
   patientId: string;
+
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -19,6 +24,10 @@ export class CreateLabReportDto {
 }
 
 export class UpdateLabReportDto {
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
+
   @IsString()
   @IsOptional()
   reportType?: string;
