@@ -157,6 +157,10 @@ export class CreatePatientDto {
 export class UpdatePatientDto {
   @IsString()
   @IsOptional()
+  patientId?: string;
+
+  @IsString()
+  @IsOptional()
   @MinLength(2)
   @MaxLength(50)
   surname?: string;

@@ -290,12 +290,19 @@ export class PatientService {
   }
 
   async update(id: string, updatePatientDto: UpdatePatientDto) {
+    const patientId = `${this.nanoid()}`;
+    console.log({
+      id,
+      updatePatientDto
+    })
+    if (!updatePatientDto.patientId) {
+      updatePatientDto.patientId = patientId;
+    }
     return this.prisma.patient.update({
       where: { id },
       data: updatePatientDto,
     });
   }
-
   async remove(id: string) {
     return this.prisma.patient.delete({
       where: { id },

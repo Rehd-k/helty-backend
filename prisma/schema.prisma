@@ -338,6 +338,7 @@ model Supplier {
 model Drug {
   id               String        @id @default(uuid())
   genericName      String
+  searviceCode     String
   brandName        String
   strength         String?
   dosageForm       String?
@@ -363,6 +364,11 @@ model Drug {
   goodsReceiptItems  GoodsReceiptItem[]
   prescriptionItems  PrescriptionItem[]
   inventoryMovements InventoryMovement[]
+
+  createdBy   Staff   @relation("DrugCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("DrugUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
 
   @@index([manufacturerId])
   @@index([isControlled])
@@ -393,47 +399,53 @@ model Consumable {
 }
 
 model DrugBatch {
-  id                String               @id @default(uuid())
-  drug              Drug                 @relation(fields: [drugId], references: [id])
+  id                String           @id @default(uuid())
+  drug              Drug             @relation(fields: [drugId], references: [id])
   drugId            String
-  locationType      PharmacyLocationType
+  fromLocation      PharmacyLocation @relation("DrugBatchFromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId    String
+  toLocation        PharmacyLocation @relation("DrugBatchToLocation", fields: [toLocationId], references: [id])
+  toLocationId      String
   batchNumber       String
   manufacturingDate DateTime
   expiryDate        DateTime
-  supplier          Supplier?            @relation(fields: [supplierId], references: [id])
+  supplier          Supplier?        @relation(fields: [supplierId], references: [id])
   supplierId        String?
-  costPrice         Decimal              @db.Decimal(12, 2)
-  sellingPrice      Decimal              @db.Decimal(12, 2)
+  costPrice         Decimal          @db.Decimal(12, 2)
+  sellingPrice      Decimal          @db.Decimal(12, 2)
   quantityReceived  Int
   quantityRemaining Int
-  grn               GoodsReceipt?        @relation(fields: [grnId], references: [id])
+  grn               GoodsReceipt?    @relation(fields: [grnId], references: [id])
   grnId             String?
-  createdAt         DateTime             @default(now())
+  createdAt         DateTime         @default(now())
 
   movements         InventoryMovement[]
   transferItems     StockTransferItem[]
   dispensationItems DispensationItem[]
 
-  @@index([drugId, locationType])
+  @@index([drugId, fromLocationId, toLocationId])
   @@index([expiryDate])
   @@index([supplierId])
   @@index([manufacturingDate])
 }
 
 model InventoryMovement {
-  id            String                @id @default(uuid())
-  batch         DrugBatch             @relation(fields: [batchId], references: [id])
-  batchId       String
-  drug          Drug                  @relation(fields: [drugId], references: [id])
-  drugId        String
-  locationType  PharmacyLocationType
-  movementType  InventoryMovementType
-  quantity      Int
-  referenceType MovementReferenceType
-  referenceId   String
-  performedBy   Staff                 @relation("InventoryMovementPerformedBy", fields: [performedById], references: [id])
-  performedById String
-  createdAt     DateTime              @default(now())
+  id             String                @id @default(uuid())
+  batch          DrugBatch             @relation(fields: [batchId], references: [id])
+  batchId        String
+  drug           Drug                  @relation(fields: [drugId], references: [id])
+  drugId         String
+  fromLocation   PharmacyLocation      @relation("InventoryMovementFromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId String
+  toLocation     PharmacyLocation      @relation("InventoryMovementToLocation", fields: [toLocationId], references: [id])
+  toLocationId   String
+  movementType   InventoryMovementType
+  quantity       Int
+  referenceType  MovementReferenceType
+  referenceId    String
+  performedBy    Staff                 @relation("InventoryMovementPerformedBy", fields: [performedById], references: [id])
+  performedById  String
+  createdAt      DateTime              @default(now())
 }
 
 model PurchaseOrder {
@@ -489,15 +501,18 @@ model GoodsReceiptItem {
 }
 
 model StockTransfer {
-  id           String               @id @default(uuid())
-  fromLocation PharmacyLocationType
-  toLocation   PharmacyLocationType
-  status       StockTransferStatus  @default(PENDING)
-  createdBy    Staff                @relation("StockTransferCreatedBy", fields: [createdById], references: [id])
+  id             String           @id @default(uuid())
+  fromLocation   PharmacyLocation @relation("StockTransferFromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId String
+  toLocation     PharmacyLocation @relation("StockTransferToLocation", fields: [toLocationId], references: [id])
+  toLocationId   String
+
+  status       StockTransferStatus @default(PENDING)
+  createdBy    Staff               @relation("StockTransferCreatedBy", fields: [createdById], references: [id])
   createdById  String
-  approvedBy   Staff?               @relation("StockTransferApprovedBy", fields: [approvedById], references: [id])
+  approvedBy   Staff?              @relation("StockTransferApprovedBy", fields: [approvedById], references: [id])
   approvedById String?
-  createdAt    DateTime             @default(now())
+  createdAt    DateTime            @default(now())
   completedAt  DateTime?
 
   items StockTransferItem[]
@@ -534,10 +549,36 @@ model PrescriptionItem {
   @@index([drugId])
 }
 
+model PharmacyLocation {
+  id                  String               @id @default(uuid())
+  name                String
+  locationType        PharmacyLocationType
+  description         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  createdBy           Staff                @relation("PharmacyLocationCreatedBy", fields: [createdById], references: [id])
+  createdById         String
+  updatedBy           Staff?               @relation("PharmacyLocationUpdatedBy", fields: [updatedById], references: [id])
+  updatedById         String?
+  drugBatchesFrom       DrugBatch[]         @relation("DrugBatchFromLocation")
+  drugBatchesTo         DrugBatch[]         @relation("DrugBatchToLocation")
+  inventoryMovementsFrom InventoryMovement[] @relation("InventoryMovementFromLocation")
+  inventoryMovementsTo   InventoryMovement[] @relation("InventoryMovementToLocation")
+  stockTransfersFrom    StockTransfer[]     @relation("StockTransferFromLocation")
+  stockTransfersTo      StockTransfer[]     @relation("StockTransferToLocation")
+  dispensations        Dispensation[]
+  consumableBatches    ConsumableBatch[]
+  consumableMovements  ConsumableMovement[]
+  staff                Staff?               @relation("PharmacyLocationStaff", fields: [staffId], references: [id])
+  staffId              String?              @unique
+}
+
 model Dispensation {
   id             String               @id @default(uuid())
   prescription   Prescription         @relation(fields: [prescriptionId], references: [id])
   prescriptionId String
+  location       PharmacyLocation     @relation(fields: [locationId], references: [id])
+  locationId     String
   locationType   PharmacyLocationType @default(DISPENSARY)
   pharmacist     Staff                @relation("DispensationPharmacist", fields: [pharmacistId], references: [id])
   pharmacistId   String
@@ -573,6 +614,8 @@ model ConsumableBatch {
   consumable        Consumable           @relation(fields: [consumableId], references: [id])
   consumableId      String
   locationType      PharmacyLocationType
+  location          PharmacyLocation     @relation(fields: [locationId], references: [id])
+  locationId        String
   batchNumber       String?
   expiryDate        DateTime?
   quantityReceived  Int
@@ -592,6 +635,8 @@ model ConsumableMovement {
   consumableId  String
   locationType  PharmacyLocationType
   movementType  InventoryMovementType
+  location      PharmacyLocation      @relation(fields: [locationId], references: [id])
+  locationId    String
   quantity      Int
   referenceType MovementReferenceType
   referenceId   String
@@ -995,11 +1040,16 @@ model Staff {
   goodsReceiptsReceived        GoodsReceipt[]       @relation("GoodsReceiptReceivedBy")
   stockTransfersCreated        StockTransfer[]      @relation("StockTransferCreatedBy")
   stockTransfersApproved       StockTransfer[]      @relation("StockTransferApprovedBy")
+  drugsCreated                 Drug[]               @relation("DrugCreatedBy")
+  drugsUpdated                 Drug[]               @relation("DrugUpdatedBy")
   inventoryMovementsPerformed  InventoryMovement[]  @relation("InventoryMovementPerformedBy")
   consumableMovementsPerformed ConsumableMovement[] @relation("ConsumableMovementPerformedBy")
   dispensationsAsPharmacist    Dispensation[]       @relation("DispensationPharmacist")
   controlledApprovals          ControlledApproval[] @relation("ControlledApprovalApprover")
   auditLogsPerformed           AuditLog[]           @relation("AuditLogPerformedBy")
+  pharmacyLocationsCreated  PharmacyLocation[]  @relation("PharmacyLocationCreatedBy")
+  pharmacyLocationsUpdated  PharmacyLocation[]  @relation("PharmacyLocationUpdatedBy")
+  pharmacyLocationAssigned  PharmacyLocation?   @relation("PharmacyLocationStaff")
 }
 
 // Encounter: clinical anchor for every doctor interaction (outpatient, emergency, inpatient review, etc.)

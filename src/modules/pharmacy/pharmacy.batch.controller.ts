@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PharmacyBatchService } from './pharmacy.batch.service';
 import { SearchBatchDto } from './dto/search-batch.dto';
@@ -15,8 +15,14 @@ export class PharmacyBatchController {
     summary:
       'List drug batches with filters for drug, supplier, location, dates, and stock availability',
   })
-  async search(@Query() query: SearchBatchDto) {
+  search(@Query() query: SearchBatchDto) {
     return this.batchService.search(query);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get drug batch by ID' })
+  findOne(@Param('id') id: string) {
+    return this.batchService.findOne(id);
   }
 }
 

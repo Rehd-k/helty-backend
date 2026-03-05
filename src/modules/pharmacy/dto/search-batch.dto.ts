@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { PharmacyLocationType } from '@prisma/client';
 
 export class SearchBatchDto {
@@ -38,6 +38,16 @@ export class SearchBatchDto {
   @IsOptional()
   supplierId?: string;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  fromLocationId?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  toLocationId?: string;
+
   @ApiPropertyOptional({ enum: PharmacyLocationType })
   @IsEnum(PharmacyLocationType)
   @IsOptional()
@@ -49,9 +59,23 @@ export class SearchBatchDto {
   inStock?: string;
 
   @ApiPropertyOptional({ default: 50 })
-  @IsInt()
-  @Min(1)
   @IsOptional()
+  @IsString()
   limit?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsString()
+  skip?: number;
+
+  @ApiPropertyOptional({ enum: ['batchNumber', 'manufacturingDate', 'expiryDate', 'costPrice', 'sellingPrice', 'quantityRemaining', 'createdAt'] })
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc';
 }
 

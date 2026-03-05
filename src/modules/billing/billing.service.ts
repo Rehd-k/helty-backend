@@ -564,7 +564,6 @@ export class TransactionService {
       }),
       this.prisma.transaction.count({ where }),
     ]);
-
     return {
       data,
       total,

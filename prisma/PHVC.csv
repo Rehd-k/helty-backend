@@ -1,0 +1,32 @@
+Service Code,Department,Category,Service Name,Service Rate
+PHVC000011,Vaccines & Immunisation,Vaccines & Immunisation,BCG              (TUBERCULOSIS),16000
+PHVC000012,Vaccines & Immunisation,Vaccines & Immunisation,CHOLERA VACCINE,8100
+PHVC000013,Vaccines & Immunisation,Vaccines & Immunisation,DPT(PLAIN),8100
+PHVC000014,Vaccines & Immunisation,Vaccines & Immunisation,DPT(ACELLULAR) (DIPHTERIA+ACELLULAR PERTUSSI+TETANUS),12300
+PHVC000015,Vaccines & Immunisation,Vaccines & Immunisation,DT -ADULT,16000
+PHVC000016,Vaccines & Immunisation,Paediatric Services,DT -CHILD,1900
+PHVC000017,Vaccines & Immunisation,Vaccines & Immunisation,HEPATATIS - B ADULT (ENGERIX),1900
+PHVC000018,Vaccines & Immunisation,Paediatric Services,HEPATATIS - B CHILD  (ENGERIX),8100
+PHVC000019,Vaccines & Immunisation,Vaccines & Immunisation,HEPATITIS -A+B ADULT,6800
+PHVC000020,Vaccines & Immunisation,Vaccines & Immunisation,HEPATITIS - A+B CHILD  (TWIN RIX JUNIOR),16000
+PHVC000021,Vaccines & Immunisation,Vaccines & Immunisation,HEPATITIS A ADULT     (HARVIX 1440),12300
+PHVC000022,Vaccines & Immunisation,Vaccines & Immunisation,HEPATITIS A CHILD     (HARVIX 720),12300
+PHVC000023,Vaccines & Immunisation,Vaccines & Immunisation,HIB(HEMOPHILUS INFLUENZA-B),8100
+PHVC000024,Vaccines & Immunisation,Vaccines & Immunisation,INFLUENZA,9900
+PHVC000025,Vaccines & Immunisation,Vaccines & Immunisation,MEASLES,8100
+PHVC000026,Vaccines & Immunisation,Vaccines & Immunisation,MENINGITIS -A+C      (MENCEVAX),8100
+PHVC000027,Vaccines & Immunisation,Vaccines & Immunisation,MMR PRIORIX,11100
+PHVC000028,Vaccines & Immunisation,Vaccines & Immunisation,PENTAACT -HIB (DIPHTERIA+TETANUS+WHOLE CELL PERTUSSIS+HEPTITIS B+HIB),8100
+PHVC000029,Vaccines & Immunisation,Vaccines & Immunisation,PNEUMOCOCCAL CONJUG.ATE(PCV-7)         (PREVENAR),12300
+PHVC000030,Vaccines & Immunisation,Vaccines & Immunisation,POLIO CEL,29500
+PHVC000031,Vaccines & Immunisation,Vaccines & Immunisation,POLIO ORAL,16000
+PHVC000032,Vaccines & Immunisation,Vaccines & Immunisation,POLIO IMOVAX(IVP),1900
+PHVC000033,Vaccines & Immunisation,Vaccines & Immunisation,RABIS    (RABIPUR/VERORAB),8100
+PHVC000034,Vaccines & Immunisation,Vaccines & Immunisation,RUBELLA,16000
+PHVC000035,Vaccines & Immunisation,Vaccines & Immunisation,TATANUS TOXOID,8100
+PHVC000036,Vaccines & Immunisation,Vaccines & Immunisation,TETRAACT -HIB (DIPHTERIA+ACELLULAR PERTUSSIS+HIB+TETANUS),5000
+PHVC000037,Vaccines & Immunisation,Vaccines & Immunisation,TYPHIMI VI/TYPHOID (TYPHERIX),12300
+PHVC000038,Vaccines & Immunisation,Vaccines & Immunisation,VARILIRIX(CHICKEN POX),8100
+PHVC000040,Vaccines & Immunisation,Vaccines & Immunisation,VITAMIN K VACCINATION,17900
+PHVC000041,Vaccines & Immunisation,Pharmaceuticals,MEDICINE (DRUGS),2600
+PHVC000042,Vaccines & Immunisation,Consultations & Reviews,ABA/DEVELOPMENT THERAPY INITIAL CONSULTATION,0
