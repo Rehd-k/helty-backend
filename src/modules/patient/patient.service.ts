@@ -291,10 +291,7 @@ export class PatientService {
 
   async update(id: string, updatePatientDto: UpdatePatientDto) {
     const patientId = `${this.nanoid()}`;
-    console.log({
-      id,
-      updatePatientDto
-    })
+
     if (!updatePatientDto.patientId) {
       updatePatientDto.patientId = patientId;
     }

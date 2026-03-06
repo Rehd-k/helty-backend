@@ -74,6 +74,19 @@ model Patient {
   imagingRequests ImagingRequest[]
 }
 
+// ─── ICD-10 (optional: for diagnosis tab search; or use external API) ───────────
+
+model Icd10Code {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  description String
+  createdAt   DateTime? @default(now())
+  updatedAt   DateTime? @updatedAt
+
+  @@index([code])
+  @@index([description])
+}
+
 model Appointment {
   id        String   @id @default(uuid())
   patient   Patient  @relation(fields: [patientId], references: [id])
@@ -85,6 +98,8 @@ model Appointment {
   staffId   String?
   staff     Staff?   @relation(fields: [staffId], references: [id])
 
+  encounters Encounter[]
+
   createdBy   Staff   @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
   createdById String
   updatedBy   Staff?  @relation("AppointmentUpdatedBy", fields: [updatedById], references: [id])
@@ -95,6 +110,7 @@ model Admission {
   id            String        @id @default(uuid())
   patient       Patient       @relation(fields: [patientId], references: [id])
   patientId     String
+  encounterId   String
   admissionDate DateTime
   dischargeDate DateTime?
   ward          String?
@@ -121,7 +137,7 @@ model Admission {
 
   nurseAssignments          NurseAssignment[]
   vitalSigns                VitalSigns[]
-  medicationOrders          MedicationOrder[]
+  medicationOrders          AdmissionMedicationOrder[]
   medicationAdministrations MedicationAdministration[]
   ivFluidOrders             IVFluidOrder[]
   ivMonitorings             IVMonitoring[]
@@ -140,6 +156,10 @@ model Admission {
   updatedBy   Staff?      @relation("AdmissionUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
   encounters  Encounter[]
+
+  @@index([patientId])
+  @@index([encounterId])
+  @@index([status])
 }
 
 model Payment {
@@ -550,27 +570,27 @@ model PrescriptionItem {
 }
 
 model PharmacyLocation {
-  id                  String               @id @default(uuid())
-  name                String
-  locationType        PharmacyLocationType
-  description         String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  createdBy           Staff                @relation("PharmacyLocationCreatedBy", fields: [createdById], references: [id])
-  createdById         String
-  updatedBy           Staff?               @relation("PharmacyLocationUpdatedBy", fields: [updatedById], references: [id])
-  updatedById         String?
-  drugBatchesFrom       DrugBatch[]         @relation("DrugBatchFromLocation")
-  drugBatchesTo         DrugBatch[]         @relation("DrugBatchToLocation")
-  inventoryMovementsFrom InventoryMovement[] @relation("InventoryMovementFromLocation")
-  inventoryMovementsTo   InventoryMovement[] @relation("InventoryMovementToLocation")
-  stockTransfersFrom    StockTransfer[]     @relation("StockTransferFromLocation")
-  stockTransfersTo      StockTransfer[]     @relation("StockTransferToLocation")
-  dispensations        Dispensation[]
-  consumableBatches    ConsumableBatch[]
-  consumableMovements  ConsumableMovement[]
-  staff                Staff?               @relation("PharmacyLocationStaff", fields: [staffId], references: [id])
-  staffId              String?              @unique
+  id                     String               @id @default(uuid())
+  name                   String
+  locationType           PharmacyLocationType
+  description            String?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  createdBy              Staff                @relation("PharmacyLocationCreatedBy", fields: [createdById], references: [id])
+  createdById            String
+  updatedBy              Staff?               @relation("PharmacyLocationUpdatedBy", fields: [updatedById], references: [id])
+  updatedById            String?
+  drugBatchesFrom        DrugBatch[]          @relation("DrugBatchFromLocation")
+  drugBatchesTo          DrugBatch[]          @relation("DrugBatchToLocation")
+  inventoryMovementsFrom InventoryMovement[]  @relation("InventoryMovementFromLocation")
+  inventoryMovementsTo   InventoryMovement[]  @relation("InventoryMovementToLocation")
+  stockTransfersFrom     StockTransfer[]      @relation("StockTransferFromLocation")
+  stockTransfersTo       StockTransfer[]      @relation("StockTransferToLocation")
+  dispensations          Dispensation[]
+  consumableBatches      ConsumableBatch[]
+  consumableMovements    ConsumableMovement[]
+  staff                  Staff?               @relation("PharmacyLocationStaff", fields: [staffId], references: [id])
+  staffId                String?              @unique
 }
 
 model Dispensation {
@@ -767,8 +787,13 @@ enum TransactionAuditAction {
 
 // Staff: any user who performs actions (cashier, doctor, admin, etc.)
 enum AccountType {
-  STORE
-  DISPENSARY
+  PHARMACY_STORE
+  PHARMACY_DISPENSARY
+  PHARMACY_HEAD
+  INPATIENT_NURSE
+  OUTPATIENT_NURSE
+  INPATIENT_DOCTOR
+  MEDICAL_RECORDS
   OTHER
   FRONTDESK
   CONSULTANT
@@ -1023,36 +1048,37 @@ model Staff {
   waitingPatientsCreated      WaitingPatient[]      @relation("WaitingPatientCreatedBy")
   waitingPatientsUpdated      WaitingPatient[]      @relation("WaitingPatientUpdatedBy")
 
-  admissionsAdmitted           Admission[]          @relation("AdmissionAdmittedByDoctor")
-  medicationOrdersPrescribed   MedicationOrder[]
-  ivFluidOrdersOrdered         IVFluidOrder[]
-  auditTrailsPerformed         AuditTrail[]
-  nurse                        Nurse?
-  alertLogs                    AlertLog[]
-  encountersAsDoctor           Encounter[]          @relation("EncounterDoctor")
-  encountersCreated            Encounter[]          @relation("EncounterCreatedBy")
-  encountersUpdated            Encounter[]          @relation("EncounterUpdatedBy")
-  labRequestsOrdered           LabRequest[]         @relation("LabRequestOrderedBy")
-  imagingRequestsOrdered       ImagingRequest[]     @relation("ImagingRequestOrderedBy")
-  prescriptionsAsDoctor        Prescription[]       @relation("PrescriptionDoctor")
-  purchaseOrdersCreated        PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersApproved       PurchaseOrder[]      @relation("PurchaseOrderApprovedBy")
-  goodsReceiptsReceived        GoodsReceipt[]       @relation("GoodsReceiptReceivedBy")
-  stockTransfersCreated        StockTransfer[]      @relation("StockTransferCreatedBy")
-  stockTransfersApproved       StockTransfer[]      @relation("StockTransferApprovedBy")
-  drugsCreated                 Drug[]               @relation("DrugCreatedBy")
-  drugsUpdated                 Drug[]               @relation("DrugUpdatedBy")
-  inventoryMovementsPerformed  InventoryMovement[]  @relation("InventoryMovementPerformedBy")
-  consumableMovementsPerformed ConsumableMovement[] @relation("ConsumableMovementPerformedBy")
-  dispensationsAsPharmacist    Dispensation[]       @relation("DispensationPharmacist")
-  controlledApprovals          ControlledApproval[] @relation("ControlledApprovalApprover")
-  auditLogsPerformed           AuditLog[]           @relation("AuditLogPerformedBy")
-  pharmacyLocationsCreated  PharmacyLocation[]  @relation("PharmacyLocationCreatedBy")
-  pharmacyLocationsUpdated  PharmacyLocation[]  @relation("PharmacyLocationUpdatedBy")
-  pharmacyLocationAssigned  PharmacyLocation?   @relation("PharmacyLocationStaff")
+  admissionsAdmitted                  Admission[]                @relation("AdmissionAdmittedByDoctor")
+  admissionMedicationOrdersPrescribed AdmissionMedicationOrder[] @relation("AdmissionMedicationOrderPrescribedBy")
+  ivFluidOrdersOrdered                IVFluidOrder[]
+  auditTrailsPerformed                AuditTrail[]
+  nurse                               Nurse?
+  alertLogs                           AlertLog[]
+  encountersAsDoctor                  Encounter[]                @relation("EncounterDoctor")
+  encountersCreated                   Encounter[]                @relation("EncounterCreatedBy")
+  encountersUpdated                   Encounter[]                @relation("EncounterUpdatedBy")
+  labRequestsOrdered                  LabRequest[]               @relation("LabRequestOrderedBy")
+  imagingRequestsOrdered              ImagingRequest[]           @relation("ImagingRequestOrderedBy")
+  prescriptionsAsDoctor               Prescription[]             @relation("PrescriptionDoctor")
+  purchaseOrdersCreated               PurchaseOrder[]            @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersApproved              PurchaseOrder[]            @relation("PurchaseOrderApprovedBy")
+  goodsReceiptsReceived               GoodsReceipt[]             @relation("GoodsReceiptReceivedBy")
+  stockTransfersCreated               StockTransfer[]            @relation("StockTransferCreatedBy")
+  stockTransfersApproved              StockTransfer[]            @relation("StockTransferApprovedBy")
+  drugsCreated                        Drug[]                     @relation("DrugCreatedBy")
+  drugsUpdated                        Drug[]                     @relation("DrugUpdatedBy")
+  inventoryMovementsPerformed         InventoryMovement[]        @relation("InventoryMovementPerformedBy")
+  consumableMovementsPerformed        ConsumableMovement[]       @relation("ConsumableMovementPerformedBy")
+  dispensationsAsPharmacist           Dispensation[]             @relation("DispensationPharmacist")
+  controlledApprovals                 ControlledApproval[]       @relation("ControlledApprovalApprover")
+  auditLogsPerformed                  AuditLog[]                 @relation("AuditLogPerformedBy")
+  pharmacyLocationsCreated            PharmacyLocation[]         @relation("PharmacyLocationCreatedBy")
+  pharmacyLocationsUpdated            PharmacyLocation[]         @relation("PharmacyLocationUpdatedBy")
+  pharmacyLocationAssigned            PharmacyLocation?          @relation("PharmacyLocationStaff")
 }
 
 // Encounter: clinical anchor for every doctor interaction (outpatient, emergency, inpatient review, etc.)
+// Merged with OPD/visit fields and orders (medication, lab, imaging).
 model Encounter {
   id             String          @id @default(uuid())
   patient        Patient         @relation(fields: [patientId], references: [id])
@@ -1061,12 +1087,42 @@ model Encounter {
   doctorId       String
   admission      Admission?      @relation(fields: [admissionId], references: [id])
   admissionId    String?
+  appointment    Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  appointmentId  String?
   encounterType  EncounterType
   startTime      DateTime
   endTime        DateTime?
   chiefComplaint String?
   triageNotes    String?
   status         EncounterStatus @default(ONGOING)
+
+  // OPD / visit context
+  visitType              String? // OPD, Walk-in, Follow-up
+  insurance              String?
+  // History
+  hpi                    String?
+  pmh                    String?
+  surgicalHistory        String?
+  drugHistory            String?
+  allergyHistory         String?
+  familyHistory          String?
+  socialHistory          String?
+  // Examination & SOAP
+  examinationNotes       String?
+  soapSubjective         String?
+  soapObjective          String?
+  soapAssessment         String?
+  soapPlan               String?
+  soapLockedAt           DateTime?
+  // Diagnosis (structured use EncounterDiagnosis; these for quick/legacy)
+  primaryIcdCode         String?
+  primaryIcdDescription  String?
+  secondaryDiagnosesJson String? // JSON array of { code, description }
+  proceduresJson         String? // JSON array of { type, consent, notes, complications }
+  // Follow-up
+  followUpDate           String?
+  followUpInstructions   String?
+  referral               String?
 
   doctorReports    DoctorReport[]
   prescriptions    Prescription[]
@@ -1075,6 +1131,9 @@ model Encounter {
   diagnoses        EncounterDiagnosis[]
   labRequests      LabRequest[]
   imagingRequests  ImagingRequest[]
+  medicationOrders MedicationOrder[]
+  labOrders        LabOrder[]
+  imagingOrders    ImagingOrder[]
 
   createdBy   Staff    @relation("EncounterCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -1086,13 +1145,14 @@ model Encounter {
 
 // Structured diagnosis per encounter
 model EncounterDiagnosis {
-  id          String    @id @default(uuid())
-  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  encounterId String
-  diagnosis   String // code or text
-  isPrimary   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                     String    @id @default(uuid())
+  encounter              Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  encounterId            String
+  primaryIcdCode         String?
+  primaryIcdDescription  String?
+  secondaryDiagnosesJson Json? // JSON array of { code, description }
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 }
 
 // Lab order/request tied to an encounter (before results in LabReport)
@@ -1314,9 +1374,7 @@ model Bank {
 }
 
 model PatientVitals {
-  id        String  @id @default(uuid())
-  patient   Patient @relation(fields: [patientId], references: [id])
-  patientId String
+  id String @id @default(uuid())
 
   systolic    Int?
   diastolic   Int?
@@ -1327,8 +1385,12 @@ model PatientVitals {
   pulseRate   Int?
   spo2        Float?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  waitingPatient   WaitingPatient @relation(fields: [waitingPatientId], references: [id])
+  waitingPatientId String         @unique
+  patient          Patient?       @relation(fields: [patientId], references: [id])
+  patientId        String?
 }
 
 model ConsultingRoom {
@@ -1355,6 +1417,7 @@ model WaitingPatient {
   patientId        String
   consultingRoom   ConsultingRoom? @relation(fields: [consultingRoomId], references: [id])
   consultingRoomId String?
+  vitals           PatientVitals?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   service          Service?        @relation(fields: [serviceId], references: [id])
@@ -1438,6 +1501,112 @@ model Nurse {
   updatedAt DateTime @updatedAt
 }
 
+// ─── Orders (from encounter tabs) ──────────────────────────────────────────────
+
+model DrugCatalog {
+  id                String    @id @default(uuid())
+  name              String
+  generic           String?
+  strength          String?
+  form              String?
+  stockStatus       String?
+  contraindications String?
+  interactions      String?
+  createdAt         DateTime? @default(now())
+  updatedAt         DateTime? @updatedAt
+
+  medicationOrders MedicationOrder[]
+
+  @@index([name])
+}
+
+model MedicationOrder {
+  id                  String    @id @default(uuid())
+  encounterId         String
+  drugId              String
+  drugName            String // denormalized for display
+  dose                String?
+  frequency           String?
+  duration            String?
+  route               String?
+  specialInstructions String?
+  status              String    @default("Pending Dispense") // Pending Dispense, Dispensed, Cancelled
+  createdAt           DateTime? @default(now())
+  updatedAt           DateTime? @updatedAt
+
+  encounter Encounter   @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  drug      DrugCatalog @relation(fields: [drugId], references: [id], onDelete: Restrict)
+
+  @@index([encounterId])
+}
+
+model LabCatalog {
+  id          String    @id @default(uuid())
+  name        String
+  department  String?
+  cost        Float?
+  turnaround  String?
+  sampleType  String?
+  preparation String?
+  createdAt   DateTime? @default(now())
+  updatedAt   DateTime? @updatedAt
+
+  labOrders LabOrder[]
+
+  @@index([name])
+}
+
+model LabOrder {
+  id            String    @id @default(uuid())
+  encounterId   String
+  catalogTestId String
+  testName      String
+  priority      String?   @default("Routine") // Routine, Urgent, STAT
+  clinicalNotes String?
+  status        String    @default("Ordered") // Ordered, SampleReceived, InProgress, Completed, Cancelled
+  resultValues  Json? // { "Hb": "12.5", "WBC": "7.2", ... }
+  createdAt     DateTime? @default(now())
+  updatedAt     DateTime? @updatedAt
+
+  encounter Encounter  @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  catalog   LabCatalog @relation(fields: [catalogTestId], references: [id], onDelete: Restrict)
+
+  @@index([encounterId])
+}
+
+model ImagingCatalog {
+  id                String    @id @default(uuid())
+  name              String
+  area              String?
+  contrastAvailable Boolean   @default(false)
+  cost              Float?
+  createdAt         DateTime? @default(now())
+  updatedAt         DateTime? @updatedAt
+
+  imagingOrders ImagingOrder[]
+
+  @@index([name])
+}
+
+model ImagingOrder {
+  id                 String    @id @default(uuid())
+  encounterId        String
+  catalogId          String
+  studyName          String
+  area               String?
+  contrast           Boolean   @default(false)
+  urgency            String?   @default("Routine") // Routine, Urgent, STAT
+  notesToRadiologist String?
+  status             String    @default("Ordered") // Ordered, InProgress, Completed, Reported
+  createdAt          DateTime? @default(now())
+  updatedAt          DateTime? @updatedAt
+
+  encounter Encounter      @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  catalog   ImagingCatalog @relation(fields: [catalogId], references: [id], onDelete: Restrict)
+
+  @@index([encounterId])
+}
+
 model NurseAssignment {
   id          String    @id @default(uuid())
   nurse       Nurse     @relation(fields: [nurseId], references: [id])
@@ -1479,12 +1648,12 @@ model VitalSigns {
   createdAt DateTime @default(now())
 }
 
-model MedicationOrder {
+model AdmissionMedicationOrder {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
 
-  prescribedBy         Staff  @relation(fields: [prescribedByDoctorId], references: [id])
+  prescribedBy         Staff  @relation("AdmissionMedicationOrderPrescribedBy", fields: [prescribedByDoctorId], references: [id])
   prescribedByDoctorId String
 
   drugName      String
@@ -1503,12 +1672,12 @@ model MedicationOrder {
 }
 
 model MedicationAdministration {
-  id                    String          @id @default(uuid())
-  medicationOrder       MedicationOrder @relation(fields: [medicationOrderId], references: [id])
+  id                    String                   @id @default(uuid())
+  medicationOrder       AdmissionMedicationOrder @relation(fields: [medicationOrderId], references: [id])
   medicationOrderId     String
-  admission             Admission       @relation(fields: [admissionId], references: [id])
+  admission             Admission                @relation(fields: [admissionId], references: [id])
   admissionId           String
-  nurse                 Nurse           @relation(fields: [administeredByNurseId], references: [id])
+  nurse                 Nurse                    @relation(fields: [administeredByNurseId], references: [id])
   administeredByNurseId String
 
   scheduledTime    DateTime

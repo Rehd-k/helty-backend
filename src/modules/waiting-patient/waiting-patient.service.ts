@@ -102,6 +102,7 @@ export class WaitingPatientService {
           //     surname: true,
           //   },
           // },
+          vitals: true,
           consultingRoom: {
             select: {
               id: true,
@@ -125,6 +126,7 @@ export class WaitingPatientService {
       }),
       this.prisma.waitingPatient.count({ where }),
     ]);
+
     return { data, total, skip, take };
   }
 
@@ -134,6 +136,8 @@ export class WaitingPatientService {
       include: {
         patient: true,
         consultingRoom: true,
+        vitals: true,
+
         createdBy: {
           select: {
             id: true,
@@ -240,7 +244,7 @@ export class WaitingPatientService {
 
   async update(id: string, dto: UpdateWaitingPatientDto) {
     const waiting = await this.findOne(id);
-
+    console.log(dto, id);
     const { consultingRoomId, seen, staffId } = dto;
 
     if (consultingRoomId) {

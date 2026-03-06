@@ -35,6 +35,7 @@ export class CreateEncounterDto {
 
   @ApiProperty({ description: 'When the encounter started (ISO date string)' })
   @IsDateString()
+  @IsOptional()
   startTime: string;
 
   @ApiPropertyOptional({ description: 'When the encounter ended (ISO date string)' })
@@ -59,7 +60,7 @@ export class CreateEncounterDto {
 
   @ApiProperty({ description: 'Staff UUID of the user creating the record' })
   @IsUUID()
-  @IsNotEmpty()
+  @IsOptional()
   createdById: string;
 }
 

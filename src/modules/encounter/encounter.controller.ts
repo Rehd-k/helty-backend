@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { EncounterService } from './encounter.service';
 import {
@@ -26,13 +27,13 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Encounter')
 @Controller('encounters')
 export class EncounterController {
-  constructor(private readonly encounterService: EncounterService) {}
+  constructor(private readonly encounterService: EncounterService) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new encounter' })
-  create(@Body() createEncounterDto: CreateEncounterDto) {
-    return this.encounterService.create(createEncounterDto);
+  create(@Body() createEncounterDto: CreateEncounterDto, @Req() req: Request) {
+    return this.encounterService.create(createEncounterDto, req);
   }
 
   @Post('start-outpatient')
@@ -91,9 +92,15 @@ export class EncounterController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get encounter by ID' })
-  findOne(@Param('id') id: string) {
-    return this.encounterService.findOne(id);
+  @ApiOperation({
+    summary: 'Get encounter by ID',
+    description: 'Optional query: expand=medicationOrders,labOrders,imagingOrders,appointment (or * for all)',
+  })
+  findOne(
+    @Param('id') id: string,
+    @Query('expand') expand?: string,
+  ) {
+    return this.encounterService.findOne(id, expand);
   }
 
   @Patch(':id')

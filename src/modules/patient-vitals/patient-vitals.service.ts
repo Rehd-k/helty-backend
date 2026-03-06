@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,18 +12,12 @@ import {
 
 @Injectable()
 export class PatientVitalsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreatePatientVitalsDto) {
-    const patient = await this.prisma.patient.findUnique({
-      where: { id: dto.patientId },
-    });
-    if (!patient) {
-      throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
-    }
-
     const {
       patientId,
+      waitingPatientId,
       systolic,
       diastolic,
       temperature,
@@ -33,9 +28,52 @@ export class PatientVitalsService {
       spo2,
     } = dto;
 
-    return this.prisma.patientVitals.create({
+    if (!waitingPatientId) {
+      throw new BadRequestException('waitingPatientId is required.');
+    }
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const waiting = await this.prisma.waitingPatient.findUnique({
+      where: {
+        id: waitingPatientId, seen: false, createdAt: { gte: startOfToday }
+      },
+      include: { vitals: true },
+    });
+    if (!waiting) {
+      throw new NotFoundException(`Waiting patient "${waitingPatientId}" not found.`);
+    }
+
+    if (patientId && patientId !== waiting.patientId) {
+      throw new BadRequestException(
+        `patientId "${patientId}" does not match the waiting patient's patientId "${waiting.patientId}".`,
+      );
+    }
+
+    // 1:1 (WaitingPatient -> PatientVitals). If vitals already exist, update them instead of creating a second row.
+    if (waiting.vitals) {
+      return this.prisma.patientVitals.update({
+        where: { id: waiting.vitals.id },
+        data: {
+          systolic,
+          diastolic,
+          temperature,
+          height,
+          weight,
+          bmi,
+          pulseRate,
+          spo2,
+        },
+        include: {
+          patient: true,
+          waitingPatient: true,
+        },
+      });
+    }
+
+    const vitals = await this.prisma.patientVitals.create({
       data: {
-        patient: { connect: { id: patientId } },
+        waitingPatient: { connect: { id: waitingPatientId } },
+        patient: { connect: { id: waiting.patientId } },
         systolic,
         diastolic,
         temperature,
@@ -47,8 +85,16 @@ export class PatientVitalsService {
       },
       include: {
         patient: true,
+        waitingPatient: true,
       },
     });
+    await this.prisma.waitingPatient.update({
+      where: { id: waitingPatientId },
+      data: {
+        vitals: { connect: { id: vitals.id } },
+      },
+    });
+    return vitals;
   }
 
   async findAll(query: QueryPatientVitalsDto) {

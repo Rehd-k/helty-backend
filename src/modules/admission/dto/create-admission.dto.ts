@@ -2,11 +2,18 @@ import {
   IsString,
   IsDateString,
   IsOptional,
+  IsNotEmpty,
+  IsUUID,
 } from 'class-validator';
 
 export class CreateAdmissionDto {
-  @IsString()
+  @IsUUID()
+  @IsNotEmpty()
   patientId: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  encounterId: string;
 
   @IsDateString()
   admissionDate: string;
@@ -26,6 +33,10 @@ export class CreateAdmissionDto {
   @IsString()
   @IsOptional()
   reason?: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  createdById: string;
 }
 
 export class UpdateAdmissionDto {

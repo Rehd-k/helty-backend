@@ -11,10 +11,17 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreatePatientVitalsDto {
-  @ApiProperty({ description: 'Patient UUID the vitals belong to' })
+  @ApiPropertyOptional({ description: 'Patient UUID the vitals belong to' })
+  @IsString()
+  @IsOptional()
+  patientId?: string;
+
+  @ApiProperty({
+    description: 'Waiting patient UUID to link these vitals to (1:1)',
+  })
   @IsString()
   @IsNotEmpty()
-  patientId: string;
+  waitingPatientId?: string;
 
   @ApiPropertyOptional({
     description: 'Systolic blood pressure in mmHg',

@@ -1564,7 +1564,6 @@ export class TransactionService {
     const result = {
       transaction, patient, staff, itemSnapshots
     };
-    console.log(result)
     return result;
   }
 }

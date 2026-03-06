@@ -18,9 +18,9 @@ import { EncounterType, EncounterStatus } from '@prisma/client';
 
 @Injectable()
 export class EncounterService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
-  async create(dto: CreateEncounterDto) {
+  async create(dto: CreateEncounterDto, req: any) {
     await this.validatePatientAndDoctor(dto.patientId, dto.doctorId);
     if (dto.admissionId) {
       await this.validateAdmissionForPatient(dto.admissionId, dto.patientId);
@@ -32,12 +32,12 @@ export class EncounterService {
         doctorId: dto.doctorId,
         admissionId: dto.admissionId,
         encounterType: dto.encounterType,
-        startTime: new Date(dto.startTime),
+        startTime: new Date(Date.now()),
         endTime: dto.endTime ? new Date(dto.endTime) : undefined,
         chiefComplaint: dto.chiefComplaint,
         triageNotes: dto.triageNotes,
         status: dto.status ?? EncounterStatus.ONGOING,
-        createdById: dto.createdById,
+        createdById: req.user.sub,
       },
       include: {
         patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
@@ -113,13 +113,15 @@ export class EncounterService {
     return { data, total, skip, take };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, expand?: string) {
+    const expandSet = expand ? new Set(expand.split(',').map((s) => s.trim().toLowerCase())) : new Set<string>();
     const encounter = await this.prisma.encounter.findUnique({
       where: { id },
       include: {
         patient: true,
         doctor: { select: { id: true, firstName: true, lastName: true, staffId: true, role: true } },
         admission: true,
+        appointment: expandSet.has('appointment') || expandSet.has('*'),
         doctorReports: true,
         prescriptions: true,
         labReports: true,
@@ -127,6 +129,9 @@ export class EncounterService {
         diagnoses: true,
         labRequests: true,
         imagingRequests: true,
+        medicationOrders: expandSet.has('medicationorders') || expandSet.has('*'),
+        labOrders: expandSet.has('laborders') || expandSet.has('*'),
+        imagingOrders: expandSet.has('imagingorders') || expandSet.has('*'),
       },
     });
     if (!encounter) {
@@ -228,8 +233,10 @@ export class EncounterService {
     return this.prisma.encounterDiagnosis.create({
       data: {
         encounterId,
-        diagnosis: dto.diagnosis,
-        isPrimary: dto.isPrimary ?? false,
+        primaryIcdCode: dto.primaryIcdCode,
+        primaryIcdDescription: dto.primaryIcdDescription,
+        secondaryDiagnosesJson: dto.secondaryDiagnosesJson,
+
       },
       include: { encounter: { select: { id: true, patientId: true } } },
     });
@@ -239,7 +246,7 @@ export class EncounterService {
     await this.findOne(encounterId);
     return this.prisma.encounterDiagnosis.findMany({
       where: { encounterId },
-      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+      orderBy: [{ createdAt: 'asc' }],
     });
   }
 
