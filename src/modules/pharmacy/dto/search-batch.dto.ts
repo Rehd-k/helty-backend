@@ -1,10 +1,18 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { PharmacyLocationType } from '@prisma/client';
+import { PaginationDto } from './pagination.dto';
 
-export class SearchBatchDto {
+export class SearchBatchDto extends PaginationDto {
   @ApiPropertyOptional()
-  @IsString()
+  @IsUUID()
   @IsOptional()
   drugId?: string;
 
@@ -14,37 +22,37 @@ export class SearchBatchDto {
   batchNumber?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   manufacturingDateFrom?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   manufacturingDateTo?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   expiryDateFrom?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   expiryDateTo?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsUUID()
   @IsOptional()
   supplierId?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsUUID()
   @IsOptional()
   fromLocationId?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsUUID()
   @IsOptional()
   toLocationId?: string;
 
@@ -55,27 +63,12 @@ export class SearchBatchDto {
 
   @ApiPropertyOptional({ description: 'Only batches with quantityRemaining > 0' })
   @IsOptional()
-  @IsString()
-  inStock?: string;
-
-  @ApiPropertyOptional({ default: 50 })
-  @IsOptional()
-  @IsString()
-  limit?: number;
-
-  @ApiPropertyOptional({ default: 0 })
-  @IsOptional()
-  @IsString()
-  skip?: number;
+  @IsIn(['true', 'false'])
+  inStock?: 'true' | 'false';
 
   @ApiPropertyOptional({ enum: ['batchNumber', 'manufacturingDate', 'expiryDate', 'costPrice', 'sellingPrice', 'quantityRemaining', 'createdAt'] })
   @IsOptional()
   @IsString()
   sortBy?: string;
-
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
-  @IsOptional()
-  @IsString()
-  sortOrder?: 'asc' | 'desc';
 }
 

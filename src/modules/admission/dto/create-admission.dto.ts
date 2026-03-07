@@ -16,6 +16,7 @@ export class CreateAdmissionDto {
   encounterId: string;
 
   @IsDateString()
+  @IsOptional()
   admissionDate: string;
 
   @IsDateString()
@@ -35,8 +36,12 @@ export class CreateAdmissionDto {
   reason?: string;
 
   @IsUUID()
-  @IsNotEmpty()
+  @IsOptional()
   createdById: string;
+
+  @IsUUID()
+  @IsOptional()
+  attendingDoctorId?: string;
 }
 
 export class UpdateAdmissionDto {
@@ -55,4 +60,8 @@ export class UpdateAdmissionDto {
   @IsString()
   @IsOptional()
   reason?: string;
+
+  @IsUUID()
+  @IsOptional()
+  attendingDoctorId?: string;
 }

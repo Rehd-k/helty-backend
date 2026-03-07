@@ -9,9 +9,11 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { AdmissionService } from './admission.service';
 import { CreateAdmissionDto, UpdateAdmissionDto } from './dto/create-admission.dto';
+import { ListAdmissionsQueryDto } from './dto/list-admissions-query.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Admission')
@@ -22,17 +24,19 @@ export class AdmissionController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new admission' })
-  create(@Body() createAdmissionDto: CreateAdmissionDto) {
-    return this.admissionService.create(createAdmissionDto);
+  create(@Body() createAdmissionDto: CreateAdmissionDto, @Req() req: any) {
+    return this.admissionService.create(createAdmissionDto, req);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all admissions' })
-  findAll(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '10',
-  ) {
-    return this.admissionService.findAll(parseInt(skip), parseInt(take));
+  @ApiOperation({ summary: 'Get all admissions (optional: status, attendingDoctorId)' })
+  findAll(@Query() query: ListAdmissionsQueryDto) {
+    const skip = Math.max(0, parseInt(query.skip ?? '0', 10) || 0);
+    const take = Math.min(100, Math.max(1, parseInt(query.take ?? '10', 10) || 10));
+    return this.admissionService.findAll(skip, take, {
+      status: query.status,
+      attendingDoctorId: query.attendingDoctorId,
+    });
   }
 
   @Get('active')

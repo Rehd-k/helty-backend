@@ -11,7 +11,7 @@ import { CreateDrugDto, UpdateDrugDto } from './dto/drug.dto';
 
 @Injectable()
 export class PharmacyDrugService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreateDrugDto, createdById: string) {
     try {
@@ -171,6 +171,13 @@ export class PharmacyDrugService {
       ];
     }
 
+    if (search) {
+      where.OR = [
+        { genericName: { contains: search, mode: 'insensitive' } },
+        { brandName: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
     if (supplierId) {
       batchFilters.supplierId = supplierId;
     }
@@ -254,24 +261,24 @@ export class PharmacyDrugService {
         : undefined;
 
     // Full-text search via raw query when `search` provided
-    if (search) {
-      const rows = await this.prisma.$queryRawUnsafe<
-        Array<{ id: string }>
-      >(
-        `
-        SELECT id
-        FROM "Drug"
-        WHERE "deletedAt" IS NULL
-        AND to_tsvector('english', "genericName" || ' ' || "brandName") @@ plainto_tsquery($1)
-      `,
-        search,
-      );
-      const ids = rows.map((r) => r.id);
-      if (!ids.length) {
-        return { data: [], nextCursor: null };
-      }
-      where.id = { in: ids };
-    }
+    // if (search) {
+    //   const rows = await this.prisma.$queryRawUnsafe<
+    //     Array<{ id: string }>
+    //   >(
+    //     `
+    //     SELECT id
+    //     FROM "Drug"
+    //     WHERE "deletedAt" IS NULL
+    //     AND to_tsvector('english', "genericName" || ' ' || "brandName") @@ plainto_tsquery($1)
+    //   `,
+    //     search,
+    //   );
+    //   const ids = rows.map((r) => r.id);
+    //   if (!ids.length) {
+    //     return { data: [], nextCursor: null };
+    //   }
+    //   where.id = { in: ids };
+    // }
 
     const drugs = await this.prisma.drug.findMany({
       where,
@@ -279,6 +286,7 @@ export class PharmacyDrugService {
       take: take + 1,
       include: {
         manufacturer: true,
+        batches: true,
       },
     });
 
@@ -288,8 +296,45 @@ export class PharmacyDrugService {
       nextCursor = { id: last.id, createdAt: last.createdAt };
     }
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const data = drugs.map((drug) => {
+      const batches = drug.batches ?? [];
+      const quantity = batches.reduce(
+        (sum, b) => sum + (b.quantityRemaining ?? 0),
+        0,
+      );
+      const earliestBatch = batches.length
+        ? batches.reduce((earliest, b) =>
+          b.createdAt < earliest.createdAt ? b : earliest,
+        )
+        : null;
+      const sellingPrice = earliestBatch?.sellingPrice ?? null;
+      const expiryDateClosest = batches.length
+        ? batches.reduce((closest, b) => {
+          const diff = Math.abs(
+            new Date(b.expiryDate).getTime() - today.getTime(),
+          );
+          const closestDiff = Math.abs(
+            new Date(closest.expiryDate).getTime() - today.getTime(),
+          );
+          return diff < closestDiff ? b : closest;
+        }).expiryDate
+        : null;
+
+      const { batches: _batches, ...rest } = drug;
+      return {
+        ...rest,
+        batches: _batches,
+        quantity,
+        sellingPrice,
+        expiryDate: expiryDateClosest,
+      };
+    });
+    console.log({ data, nextCursor })
     return {
-      data: drugs,
+      data,
       nextCursor,
     };
   }

@@ -72,6 +72,12 @@ model Patient {
   encounters      Encounter[]
   labRequests     LabRequest[]
   imagingRequests ImagingRequest[]
+
+  pregnancies    Pregnancy[]
+  babiesAsMother Baby[]
+  babiesRegisteredAsPatient Baby[]     @relation("BabyRegisteredPatient")
+  gynaeProcedures GynaeProcedure[]
+  postnatalVisitsAsSubject  PostnatalVisit[]
 }
 
 // ─── ICD-10 (optional: for diagnosis tab search; or use external API) ───────────
@@ -150,6 +156,12 @@ model Admission {
   handoverReports           HandoverReport[]
   alerts                    AlertLog[]
   auditTrails               AuditTrail[]
+  wardRoundNotes            WardRoundNote[]
+  labourDeliveries          LabourDelivery[]
+  gynaeProcedures           GynaeProcedure[]
+
+  attendingDoctor   Staff?   @relation("AdmissionAttendingDoctor", fields: [attendingDoctorId], references: [id])
+  attendingDoctorId String?
 
   createdBy   Staff       @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -160,6 +172,7 @@ model Admission {
   @@index([patientId])
   @@index([encounterId])
   @@index([status])
+  @@index([attendingDoctorId])
 }
 
 model Payment {
@@ -808,6 +821,51 @@ enum AccountType {
   DIALYSIS
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// OBSTETRICS & GYNAECOLOGY
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PregnancyStatus {
+  ONGOING
+  DELIVERED
+  LOST
+  TERMINATED
+}
+
+enum FetalPresentation {
+  CEPHALIC
+  BREECH
+  TRANSVERSE
+  UNKNOWN
+}
+
+enum DeliveryMode {
+  SVD
+  ASSISTED_VAGINAL
+  CS_ELECTIVE
+  CS_EMERGENCY
+  BREECH
+  TWIN
+  OTHER
+}
+
+enum DeliveryOutcome {
+  LIVE_BIRTH
+  STILLBIRTH
+  OTHER
+}
+
+enum BabySex {
+  M
+  F
+  U
+}
+
+enum PostnatalVisitType {
+  MOTHER
+  BABY
+}
+
 enum WardType {
   GENERAL
   ICU
@@ -1075,6 +1133,18 @@ model Staff {
   pharmacyLocationsCreated            PharmacyLocation[]         @relation("PharmacyLocationCreatedBy")
   pharmacyLocationsUpdated            PharmacyLocation[]         @relation("PharmacyLocationUpdatedBy")
   pharmacyLocationAssigned            PharmacyLocation?          @relation("PharmacyLocationStaff")
+  admissionsAsAttendingDoctor         Admission[]               @relation("AdmissionAttendingDoctor")
+  wardRoundNotes                      WardRoundNote[]
+  pregnanciesCreated                 Pregnancy[]               @relation("PregnancyCreatedBy")
+  pregnanciesUpdated                 Pregnancy[]                @relation("PregnancyUpdatedBy")
+  antenatalVisitsRecorded            AntenatalVisit[]
+  labourDeliveriesDeliveredBy        LabourDelivery[]
+  partogramEntriesRecorded           PartogramEntry[]
+  babiesCreated                      Baby[]                     @relation("BabyCreatedBy")
+  babiesUpdated                      Baby[]                     @relation("BabyUpdatedBy")
+  postnatalVisitsRecorded             PostnatalVisit[]
+  gynaeProceduresAsSurgeon            GynaeProcedure[]           @relation("GynaeProcedureSurgeon")
+  gynaeProceduresAsAssistant          GynaeProcedure[]           @relation("GynaeProcedureAssistant")
 }
 
 // Encounter: clinical anchor for every doctor interaction (outpatient, emergency, inpatient review, etc.)
@@ -1134,6 +1204,8 @@ model Encounter {
   medicationOrders MedicationOrder[]
   labOrders        LabOrder[]
   imagingOrders    ImagingOrder[]
+  antenatalVisits  AntenatalVisit[]
+  gynaeProcedures  GynaeProcedure[]
 
   createdBy   Staff    @relation("EncounterCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -1757,6 +1829,26 @@ model NursingNote {
   createdAt DateTime        @default(now())
 }
 
+// Ward round (progress) notes for inpatients – SOAP-style, linked to admission and doctor
+model WardRoundNote {
+  id          String    @id @default(cuid())
+  admission   Admission @relation(fields: [admissionId], references: [id])
+  admissionId String
+  doctor      Staff     @relation(fields: [doctorId], references: [id])
+  doctorId    String
+  roundDate   DateTime  // calendar day of the round (use date portion in queries)
+  subjective  String?
+  objective   String?
+  assessment  String?
+  plan        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([admissionId])
+  @@index([doctorId])
+  @@index([roundDate])
+}
+
 model ProcedureRecord {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
@@ -1858,4 +1950,193 @@ model AuditTrail {
 
   admission   Admission? @relation(fields: [admissionId], references: [id])
   admissionId String?
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OBSTETRICS & GYNAECOLOGY MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Pregnancy {
+  id          String          @id @default(uuid())
+  patient     Patient         @relation(fields: [patientId], references: [id])
+  patientId   String
+  gravida    Int
+  para       Int
+  lmp        DateTime
+  edd        DateTime
+  bookingDate DateTime?
+  status     PregnancyStatus  @default(ONGOING)
+  outcome    String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  createdBy   Staff    @relation("PregnancyCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?   @relation("PregnancyUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  antenatalVisits AntenatalVisit[]
+  labourDeliveries LabourDelivery[]
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model AntenatalVisit {
+  id              String     @id @default(uuid())
+  pregnancy       Pregnancy  @relation(fields: [pregnancyId], references: [id], onDelete: Cascade)
+  pregnancyId     String
+  visitDate       DateTime
+  gestationWeeks  Float?
+  systolicBP      Int?
+  diastolicBP     Int?
+  weight          Float?
+  fundalHeight    Float?
+  fetalHeartRate  Int?
+  presentation   FetalPresentation?
+  urineProtein   String?
+  notes           String?
+  ultrasoundFindings String?
+  labResultsJson  Json?
+  staff           Staff      @relation(fields: [staffId], references: [id])
+  staffId         String
+  encounter       Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  encounterId     String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([pregnancyId])
+  @@index([visitDate])
+}
+
+model LabourDelivery {
+  id               String         @id @default(uuid())
+  pregnancy        Pregnancy      @relation(fields: [pregnancyId], references: [id], onDelete: Cascade)
+  pregnancyId      String
+  admission        Admission?     @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId      String?
+  deliveryDateTime DateTime
+  mode             DeliveryMode
+  outcome          DeliveryOutcome
+  bloodLossMl      Int?
+  placentaComplete Boolean?
+  episiotomy       Boolean?
+  perinealTearGrade String?
+  notes            String?
+  deliveredBy      Staff          @relation(fields: [deliveredById], references: [id])
+  deliveredById    String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  partogramEntries PartogramEntry[]
+  babies           Baby[]
+  postnatalVisits  PostnatalVisit[]
+
+  @@index([pregnancyId])
+  @@index([admissionId])
+}
+
+model PartogramEntry {
+  id                  String        @id @default(uuid())
+  labourDelivery       LabourDelivery @relation(fields: [labourDeliveryId], references: [id], onDelete: Cascade)
+  labourDeliveryId    String
+  recordedAt          DateTime
+  cervicalDilationCm  Float?
+  station             Int?
+  contractionsPer10Min Int?
+  fetalHeartRate      Int?
+  moulding            String?
+  descent             String?
+  oxytocin            String?
+  comments            String?
+  recordedBy          Staff         @relation(fields: [recordedById], references: [id])
+  recordedById        String
+  createdAt           DateTime       @default(now())
+
+  @@index([labourDeliveryId])
+  @@index([recordedAt])
+}
+
+model Baby {
+  id                   String         @id @default(uuid())
+  labourDelivery       LabourDelivery @relation(fields: [labourDeliveryId], references: [id], onDelete: Cascade)
+  labourDeliveryId    String
+  mother               Patient        @relation(fields: [motherId], references: [id])
+  motherId             String
+  sex                  BabySex
+  birthWeightG         Int?
+  birthLengthCm        Float?
+  apgar1               Int?
+  apgar5               Int?
+  resuscitation       String?
+  birthOrder           Int             @default(1)
+  registeredPatient   Patient?        @relation("BabyRegisteredPatient", fields: [registeredPatientId], references: [id], onDelete: SetNull)
+  registeredPatientId String?          @unique
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  createdBy   Staff   @relation("BabyCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("BabyUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  postnatalVisits PostnatalVisit[]
+
+  @@index([labourDeliveryId])
+  @@index([motherId])
+}
+
+model PostnatalVisit {
+  id               String            @id @default(uuid())
+  labourDelivery   LabourDelivery     @relation(fields: [labourDeliveryId], references: [id], onDelete: Cascade)
+  labourDeliveryId String
+  type             PostnatalVisitType
+  visitDate        DateTime
+  patient          Patient?           @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  patientId        String?
+  baby             Baby?              @relation(fields: [babyId], references: [id], onDelete: SetNull)
+  babyId           String?
+  uterusInvolution String?
+  lochia           String?
+  perineum         String?
+  bloodPressure    String?
+  temperature      Float?
+  breastfeeding    String?
+  weight          Float?
+  feeding          String?
+  jaundice         String?
+  immunisationGiven String?
+  notes            String?
+  staff            Staff             @relation(fields: [staffId], references: [id])
+  staffId          String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([labourDeliveryId])
+  @@index([type])
+  @@index([visitDate])
+}
+
+model GynaeProcedure {
+  id              String     @id @default(uuid())
+  patient         Patient    @relation(fields: [patientId], references: [id])
+  patientId       String
+  encounter       Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  encounterId     String?
+  admission       Admission? @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId     String?
+  procedureType   String
+  procedureDate   DateTime
+  surgeon         Staff      @relation("GynaeProcedureSurgeon", fields: [surgeonId], references: [id])
+  surgeonId       String
+  assistant       Staff?     @relation("GynaeProcedureAssistant", fields: [assistantId], references: [id], onDelete: SetNull)
+  assistantId     String?
+  findings        String?
+  complications   String?
+  notes           String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([patientId])
+  @@index([procedureDate])
 }

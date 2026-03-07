@@ -33,6 +33,9 @@ import { EncounterModule } from './modules/encounter/encounter.module';
 import { LabRequestModule } from './modules/lab-request/lab-request.module';
 import { ImagingRequestModule } from './modules/imaging-request/imaging-request.module';
 import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
+import { WardRoundNotesModule } from './modules/ward-round-notes/ward-round-notes.module';
+import { ObstetricsModule } from './modules/obstetrics/obstetrics.module';
+
 @Module({
   imports: [
 
@@ -80,6 +83,8 @@ import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
     LabRequestModule,
     ImagingRequestModule,
     PharmacyModule,
+    WardRoundNotesModule,
+    ObstetricsModule,
   ],
   controllers: [AppController],
   providers: [

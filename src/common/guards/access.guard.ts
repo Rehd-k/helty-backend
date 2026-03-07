@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY, ROLES_KEY } from '../decorators';
+import { IS_PUBLIC_KEY, ROLES_KEY, ACCOUNT_TYPES_KEY } from '../decorators';
 
 const ADMIN_ROLE = 'admin';
 
@@ -26,6 +26,24 @@ export class AccessGuard implements CanActivate {
     }
 
     if (user.role?.toLowerCase() === ADMIN_ROLE) {
+      return true;
+    }
+
+    const allowedAccountTypes =
+      this.reflector.getAllAndOverride<string[]>(ACCOUNT_TYPES_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+    if (allowedAccountTypes?.length) {
+      const hasAccountType = allowedAccountTypes.some(
+        (t) => t === user.accountType,
+      );
+      if (!hasAccountType) {
+        throw new ForbiddenException(
+          'Access denied: requires one of account types ' +
+            allowedAccountTypes.join(', '),
+        );
+      }
       return true;
     }
 
