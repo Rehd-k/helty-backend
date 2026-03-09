@@ -35,6 +35,7 @@ import { ImagingRequestModule } from './modules/imaging-request/imaging-request.
 import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { WardRoundNotesModule } from './modules/ward-round-notes/ward-round-notes.module';
 import { ObstetricsModule } from './modules/obstetrics/obstetrics.module';
+import { LabModule } from './modules/lab/lab.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { ObstetricsModule } from './modules/obstetrics/obstetrics.module';
     PharmacyModule,
     WardRoundNotesModule,
     ObstetricsModule,
+    LabModule,
   ],
   controllers: [AppController],
   providers: [

@@ -12,8 +12,8 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PregnancyStatus } from '@prisma/client';
 
 export class CreatePregnancyDto {
+
   @ApiProperty()
-  @IsUUID()
   @IsNotEmpty()
   patientId: string;
 

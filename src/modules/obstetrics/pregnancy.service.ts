@@ -6,19 +6,20 @@ import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 
 @Injectable()
 export class PregnancyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreatePregnancyDto, createdById: string) {
     const patient = await this.prisma.patient.findUnique({
-      where: { id: dto.patientId },
+      where: { patientId: dto.patientId },
     });
     if (!patient) {
       throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
     }
+    console.log(patient);
 
     return this.prisma.pregnancy.create({
       data: {
-        patientId: dto.patientId,
+        patientId: patient.id,
         gravida: dto.gravida,
         para: dto.para,
         lmp: new Date(dto.lmp),

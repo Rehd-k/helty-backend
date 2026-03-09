@@ -130,7 +130,7 @@ export class EncounterService {
         labRequests: true,
         imagingRequests: true,
         medicationOrders: expandSet.has('medicationorders') || expandSet.has('*'),
-        labOrders: expandSet.has('laborders') || expandSet.has('*'),
+        legacyLabOrders: expandSet.has('laborders') || expandSet.has('*'),
         imagingOrders: expandSet.has('imagingorders') || expandSet.has('*'),
       },
     });

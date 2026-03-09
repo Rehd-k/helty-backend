@@ -14,7 +14,7 @@ import { AccountTypes } from '../../common/decorators';
 import { PartogramService } from './partogram.service';
 import { CreatePartogramEntryDto } from './dto/create-partogram-entry.dto';
 
-@ApiTags('Obstetrics – Labour & delivery')
+@ApiTags('Obstetrics - Labour & delivery')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')

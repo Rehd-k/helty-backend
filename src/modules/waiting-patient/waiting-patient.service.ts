@@ -76,7 +76,13 @@ export class WaitingPatientService {
       take = 20,
     } = query;
 
-    const where: { consultingRoomId?: string | null; patientId?: string } = {};
+    const where: {
+      patient: { patientId: { not: null } };
+      consultingRoomId?: string | null;
+      patientId?: string;
+    } = {
+      patient: { patientId: { not: null } },
+    };
 
     if (unassignedOnly) {
       where.consultingRoomId = null;
@@ -95,13 +101,7 @@ export class WaitingPatientService {
         orderBy: { createdAt: 'asc' },
         include: {
           patient: true,
-          // {
-          //   select: {
-          //     id: true,
-          //     firstName: true,
-          //     surname: true,
-          //   },
-          // },
+        
           vitals: true,
           consultingRoom: {
             select: {

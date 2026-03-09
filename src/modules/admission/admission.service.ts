@@ -67,7 +67,6 @@ export class AdmissionService {
       }),
       this.prisma.admission.count({ where }),
     ]);
-
     return { admissions, total, skip, take };
   }
 

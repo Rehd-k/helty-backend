@@ -78,6 +78,7 @@ model Patient {
   babiesRegisteredAsPatient Baby[]     @relation("BabyRegisteredPatient")
   gynaeProcedures GynaeProcedure[]
   postnatalVisitsAsSubject  PostnatalVisit[]
+  labOrders      LabOrder[]
 }
 
 // ─── ICD-10 (optional: for diagnosis tab search; or use external API) ───────────
@@ -1145,6 +1146,9 @@ model Staff {
   postnatalVisitsRecorded             PostnatalVisit[]
   gynaeProceduresAsSurgeon            GynaeProcedure[]           @relation("GynaeProcedureSurgeon")
   gynaeProceduresAsAssistant          GynaeProcedure[]           @relation("GynaeProcedureAssistant")
+  labOrdersAsDoctor                   LabOrder[]                 @relation("LabOrderDoctor")
+  labSamplesCollected                 LabSample[]                @relation("LabSampleCollectedBy")
+  labResultsEntered                   LabResult[]                @relation("LabResultEnteredBy")
 }
 
 // Encounter: clinical anchor for every doctor interaction (outpatient, emergency, inpatient review, etc.)
@@ -1202,7 +1206,7 @@ model Encounter {
   labRequests      LabRequest[]
   imagingRequests  ImagingRequest[]
   medicationOrders MedicationOrder[]
-  labOrders        LabOrder[]
+  legacyLabOrders  LegacyLabOrder[]
   imagingOrders    ImagingOrder[]
   antenatalVisits  AntenatalVisit[]
   gynaeProcedures  GynaeProcedure[]
@@ -1612,7 +1616,7 @@ model MedicationOrder {
   @@index([encounterId])
 }
 
-model LabCatalog {
+model LegacyLabCatalog {
   id          String    @id @default(uuid())
   name        String
   department  String?
@@ -1623,12 +1627,12 @@ model LabCatalog {
   createdAt   DateTime? @default(now())
   updatedAt   DateTime? @updatedAt
 
-  labOrders LabOrder[]
+  labOrders LegacyLabOrder[]
 
   @@index([name])
 }
 
-model LabOrder {
+model LegacyLabOrder {
   id            String    @id @default(uuid())
   encounterId   String
   catalogTestId String
@@ -1640,10 +1644,156 @@ model LabOrder {
   createdAt     DateTime? @default(now())
   updatedAt     DateTime? @updatedAt
 
-  encounter Encounter  @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  catalog   LabCatalog @relation(fields: [catalogTestId], references: [id], onDelete: Restrict)
+  encounter Encounter         @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  catalog   LegacyLabCatalog  @relation(fields: [catalogTestId], references: [id], onDelete: Restrict)
 
   @@index([encounterId])
+}
+
+// ─── Dynamic Lab Module (build-once-use-everywhere) ─────────────────────────
+
+enum LabOrderStatus {
+  PENDING
+  SAMPLE_COLLECTED
+  PROCESSING
+  COMPLETED
+  VERIFIED
+}
+
+enum LabTestFieldType {
+  TEXT
+  NUMBER
+  DROPDOWN
+  CHECKBOX
+  MULTISELECT
+  DATE
+}
+
+model LabCategory {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+
+  tests LabTest[]
+
+  @@index([name])
+}
+
+model LabTest {
+  id          String    @id @default(uuid())
+  name        String
+  categoryId  String
+  sampleType  String    // blood, urine, stool, sputum, swab, etc.
+  description String?
+  price       Float?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  category  LabCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  versions LabTestVersion[]
+
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model LabTestVersion {
+  id            String   @id @default(uuid())
+  testId        String
+  versionNumber Int
+  isActive      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  test       LabTest        @relation(fields: [testId], references: [id], onDelete: Cascade)
+  fields     LabTestField[]
+  orderItems LabOrderItem[]
+
+  @@unique([testId, versionNumber])
+  @@index([testId])
+  @@index([isActive])
+}
+
+model LabTestField {
+  id             String           @id @default(uuid())
+  testVersionId  String
+  label          String
+  fieldType      LabTestFieldType
+  unit           String?
+  referenceRange String?
+  required       Boolean          @default(false)
+  position       Int              @default(0)
+  optionsJson    String?          // JSON for DROPDOWN/MULTISELECT options
+  createdAt      DateTime         @default(now())
+
+  testVersion LabTestVersion @relation(fields: [testVersionId], references: [id], onDelete: Cascade)
+  results     LabResult[]
+
+  @@index([testVersionId])
+}
+
+model LabOrder {
+  id        String         @id @default(uuid())
+  patientId String
+  doctorId  String
+  status    LabOrderStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+
+  patient Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  doctor  Staff          @relation("LabOrderDoctor", fields: [doctorId], references: [id], onDelete: Restrict)
+  items   LabOrderItem[]
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([status])
+}
+
+model LabOrderItem {
+  id             String   @id @default(uuid())
+  orderId        String
+  testVersionId  String
+  status         String   @default("PENDING") // PENDING, SAMPLE_COLLECTED, PROCESSING, COMPLETED, VERIFIED
+  createdAt      DateTime @default(now())
+
+  order       LabOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  testVersion LabTestVersion  @relation(fields: [testVersionId], references: [id], onDelete: Restrict)
+  sample      LabSample?
+  results     LabResult[]
+
+  @@index([orderId])
+  @@index([testVersionId])
+}
+
+model LabSample {
+  id             String   @id @default(uuid())
+  orderItemId    String
+  sampleType     String
+  collectedById  String
+  collectionTime DateTime
+  barcode        String?
+  createdAt      DateTime @default(now())
+
+  orderItem   LabOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  collectedBy Staff         @relation("LabSampleCollectedBy", fields: [collectedById], references: [id], onDelete: Restrict)
+
+  @@unique([orderItemId])
+  @@index([orderItemId])
+}
+
+model LabResult {
+  id          String   @id @default(uuid())
+  orderItemId String
+  fieldId     String
+  value       String
+  enteredById String
+  createdAt   DateTime @default(now())
+
+  orderItem  LabOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  field      LabTestField @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+  enteredBy  Staff        @relation("LabResultEnteredBy", fields: [enteredById], references: [id], onDelete: Restrict)
+
+  @@unique([orderItemId, fieldId])
+  @@index([orderItemId])
+  @@index([fieldId])
 }
 
 model ImagingCatalog {

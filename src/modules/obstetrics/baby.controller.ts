@@ -18,7 +18,7 @@ import { BabyService } from './baby.service';
 import { CreateBabyDto, UpdateBabyDto, RegisterBabyAsPatientDto } from './dto/create-baby.dto';
 import { ListBabiesQueryDto } from './dto/list-babies-query.dto';
 
-@ApiTags('Obstetrics – Labour & delivery')
+@ApiTags('Obstetrics - Labour & delivery')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')

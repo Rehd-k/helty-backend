@@ -23,7 +23,7 @@ export class WardRoundNotesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('INPATIENT_DOCTOR')
+  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT')
   @ApiOperation({ summary: 'Create a ward round (progress) note' })
   create(@Body() dto: CreateWardRoundNoteDto) {
     return this.wardRoundNotesService.create(dto);

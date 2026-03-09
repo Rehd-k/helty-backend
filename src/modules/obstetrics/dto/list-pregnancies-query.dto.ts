@@ -6,7 +6,6 @@ import { Type } from 'class-transformer';
 export class ListPregnanciesQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUUID()
   patientId?: string;
 
   @ApiPropertyOptional({ enum: PregnancyStatus })

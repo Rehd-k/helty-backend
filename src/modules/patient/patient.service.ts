@@ -96,57 +96,59 @@ export class PatientService {
       }
 
       else if (filterCategory === 'fullName') {
-        where.OR = [
+        where.AND = [
+          { patientId: { not: null } },
           {
-            patientId: {
-              not: null
-            },
-            firstName: {
-              contains: trimmedSearch,
-              mode: 'insensitive',
-            },
-          },
-          {
-            surname: {
-              contains: trimmedSearch,
-              mode: 'insensitive',
-            },
+            OR: [
+              {
+                firstName: {
+                  contains: trimmedSearch,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                surname: {
+                  contains: trimmedSearch,
+                  mode: 'insensitive',
+                },
+              },
+            ],
           },
         ]
       }
 
 
       else if (filterCategory === 'nameIdPhonenumber') {
-
-        where.OR = [
+        // Only patients with patientId, AND search must match one of the fields
+        where.AND = [
+          { patientId: { not: null } },
           {
-            patientId: {
-              not: null
-            }
-          },
-          {
-            phoneNumber: {
-              contains: trimmedSearch,
-              mode: 'insensitive',
-            },
-          },
-          {
-            patientId: {
-              contains: trimmedSearch.toUpperCase(),
-              mode: 'insensitive',
-            },
-          },
-          {
-            firstName: {
-              contains: trimmedSearch,
-              mode: 'insensitive',
-            },
-          },
-          {
-            surname: {
-              contains: trimmedSearch,
-              mode: 'insensitive',
-            },
+            OR: [
+              {
+                phoneNumber: {
+                  contains: trimmedSearch,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                patientId: {
+                  contains: trimmedSearch.toUpperCase(),
+                  mode: 'insensitive',
+                },
+              },
+              {
+                firstName: {
+                  contains: trimmedSearch,
+                  mode: 'insensitive',
+                },
+              },
+              {
+                surname: {
+                  contains: trimmedSearch,
+                  mode: 'insensitive',
+                },
+              },
+            ],
           },
         ]
       }
