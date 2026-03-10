@@ -79,6 +79,7 @@ model Patient {
   gynaeProcedures GynaeProcedure[]
   postnatalVisitsAsSubject  PostnatalVisit[]
   labOrders      LabOrder[]
+  radiologyRequests RadiologyRequest[]
 }
 
 // ─── ICD-10 (optional: for diagnosis tab search; or use external API) ───────────
@@ -158,7 +159,7 @@ model Admission {
   alerts                    AlertLog[]
   auditTrails               AuditTrail[]
   wardRoundNotes            WardRoundNote[]
-  labourDeliveries          LabourDelivery[]
+  labourDeliveries          LabourDelivery[]  @relation("AdmissionLabourDeliveries")
   gynaeProcedures           GynaeProcedure[]
 
   attendingDoctor   Staff?   @relation("AdmissionAttendingDoctor", fields: [attendingDoctorId], references: [id])
@@ -814,6 +815,9 @@ enum AccountType {
   NURSE
   LAB
   RADIOLOGY
+  RADIOLOGIST
+  RADIOGRAPHER
+  RADIOLOGY_RECEPTIONIST
   ACCOUNTS
   BILLS
   PHARMACY
@@ -921,6 +925,37 @@ enum ImagingRequestStatus {
   CANCELLED
 }
 
+enum RadiologyPriority {
+  ROUTINE
+  URGENT
+  EMERGENCY
+}
+
+enum RadiologyModality {
+  X_RAY
+  CT
+  MRI
+  ULTRASOUND
+  MAMMOGRAPHY
+  FLUOROSCOPY
+  OTHER
+}
+
+enum RadiologyRequestStatus {
+  PENDING
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  REPORTED
+  CANCELLED
+}
+
+enum ReportSeverity {
+  NORMAL
+  ABNORMAL
+  CRITICAL
+}
+
 enum ShiftType {
   MORNING
   AFTERNOON
@@ -1017,6 +1052,7 @@ model Department {
   services    Service[]
   wards       Ward[]
   nurses      Nurse[]
+  radiologyRequests RadiologyRequest[]
 }
 
 model Staff {
@@ -1149,6 +1185,30 @@ model Staff {
   labOrdersAsDoctor                   LabOrder[]                 @relation("LabOrderDoctor")
   labSamplesCollected                 LabSample[]                @relation("LabSampleCollectedBy")
   labResultsEntered                   LabResult[]                @relation("LabResultEnteredBy")
+  chatMessagesSent                    ChatMessage[]              @relation("ChatMessageSender")
+  chatMessagesReceived                ChatMessage[]              @relation("ChatMessageRecipient")
+  radiologyRequestsRequested          RadiologyRequest[]          @relation("RadiologyRequestOrderedBy")
+  radiologySchedulesAsRadiographer    RadiologySchedule[]        @relation("RadiologyScheduleRadiographer")
+  radiologyProceduresPerformed        RadiologyProcedure[]       @relation("RadiologyProcedurePerformedBy")
+  radiologyImagesUploaded             RadiologyImage[]           @relation("RadiologyImageUploadedBy")
+  radiologyReportsSigned              RadiologyStudyReport[]     @relation("RadiologyReportSignedBy")
+}
+
+enum ChatMessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model ChatMessage {
+  id         String            @id @default(uuid())
+  sender     Staff             @relation("ChatMessageSender", fields: [senderId], references: [id])
+  senderId   String
+  recipient  Staff             @relation("ChatMessageRecipient", fields: [recipientId], references: [id])
+  recipientId String
+  content    String
+  status     ChatMessageStatus @default(SENT)
+  createdAt  DateTime          @default(now())
 }
 
 // Encounter: clinical anchor for every doctor interaction (outpatient, emergency, inpatient review, etc.)
@@ -1210,6 +1270,7 @@ model Encounter {
   imagingOrders    ImagingOrder[]
   antenatalVisits  AntenatalVisit[]
   gynaeProcedures  GynaeProcedure[]
+  radiologyRequests RadiologyRequest[]
 
   createdBy   Staff    @relation("EncounterCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -2126,7 +2187,7 @@ model Pregnancy {
   updatedById String?
 
   antenatalVisits AntenatalVisit[]
-  labourDeliveries LabourDelivery[]
+  labourDeliveries LabourDelivery[] @relation("PregnancyLabourDeliveries")
 
   @@index([patientId])
   @@index([status])
@@ -2161,9 +2222,9 @@ model AntenatalVisit {
 
 model LabourDelivery {
   id               String         @id @default(uuid())
-  pregnancy        Pregnancy      @relation(fields: [pregnancyId], references: [id], onDelete: Cascade)
+  pregnancy        Pregnancy      @relation("PregnancyLabourDeliveries", fields: [pregnancyId], references: [id], onDelete: Cascade)
   pregnancyId      String
-  admission        Admission?     @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admission        Admission?     @relation("AdmissionLabourDeliveries", fields: [admissionId], references: [id], onDelete: SetNull)
   admissionId      String?
   deliveryDateTime DateTime
   mode             DeliveryMode
@@ -2289,4 +2350,121 @@ model GynaeProcedure {
 
   @@index([patientId])
   @@index([procedureDate])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RADIOLOGY MODULE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RadiologyMachine {
+  id        String          @id @default(uuid())
+  name      String
+  modality  RadiologyModality
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime         @updatedAt
+
+  schedules   RadiologySchedule[]
+  procedures  RadiologyProcedure[]
+
+  @@index([modality])
+  @@index([isActive])
+}
+
+model RadiologyRequest {
+  id                    String                 @id @default(uuid())
+  patient               Patient                @relation(fields: [patientId], references: [id])
+  patientId             String
+  encounter             Encounter?             @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  encounterId           String?
+  requestedBy           Staff                   @relation("RadiologyRequestOrderedBy", fields: [requestedById], references: [id])
+  requestedById         String
+  department            Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId          String?
+  clinicalNotes         String?
+  reasonForInvestigation String?
+  priority              RadiologyPriority      @default(ROUTINE)
+  scanType              RadiologyModality
+  bodyPart              String?
+  status                RadiologyRequestStatus @default(PENDING)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  schedule   RadiologySchedule?
+  procedure  RadiologyProcedure?
+  images     RadiologyImage[]
+  report     RadiologyStudyReport?
+
+  @@index([patientId])
+  @@index([status])
+  @@index([requestedById])
+  @@index([createdAt])
+  @@index([priority])
+}
+
+model RadiologySchedule {
+  id                String           @id @default(uuid())
+  radiologyRequest  RadiologyRequest @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
+  radiologyRequestId String          @unique
+  scheduledAt       DateTime
+  radiographer      Staff?           @relation("RadiologyScheduleRadiographer", fields: [radiographerId], references: [id], onDelete: SetNull)
+  radiographerId    String?
+  machine           RadiologyMachine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  machineId         String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([scheduledAt])
+  @@index([radiographerId])
+  @@index([machineId])
+}
+
+model RadiologyProcedure {
+  id                String           @id @default(uuid())
+  radiologyRequest  RadiologyRequest @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
+  radiologyRequestId String          @unique
+  performedBy       Staff            @relation("RadiologyProcedurePerformedBy", fields: [performedById], references: [id])
+  performedById     String
+  machine           RadiologyMachine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  machineId         String?
+  startTime         DateTime
+  endTime           DateTime?
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([performedById])
+  @@index([machineId])
+}
+
+model RadiologyImage {
+  id                String           @id @default(uuid())
+  radiologyRequest  RadiologyRequest @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
+  radiologyRequestId String
+  fileName          String
+  filePath          String
+  mimeType          String?
+  fileSize          Int?
+  uploadedBy        Staff            @relation("RadiologyImageUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById      String
+  uploadedAt        DateTime         @default(now())
+
+  @@index([radiologyRequestId])
+}
+
+model RadiologyStudyReport {
+  id                String           @id @default(uuid())
+  radiologyRequest  RadiologyRequest @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
+  radiologyRequestId String          @unique
+  findings          String?
+  impression        String?
+  recommendations   String?
+  severity          ReportSeverity?
+  signedBy          Staff            @relation("RadiologyReportSignedBy", fields: [signedById], references: [id])
+  signedById        String
+  signedAt          DateTime
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([signedById])
 }

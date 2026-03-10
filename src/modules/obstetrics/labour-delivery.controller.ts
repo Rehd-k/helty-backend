@@ -15,7 +15,7 @@ import { AccountTypes } from '../../common/decorators';
 import { LabourDeliveryService } from './labour-delivery.service';
 import { CreateLabourDeliveryDto, UpdateLabourDeliveryDto } from './dto/create-labour-delivery.dto';
 
-@ApiTags('Obstetrics – Labour & delivery')
+@ApiTags('Obstetrics - Labour & delivery')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')

@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vessel API • Health</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      background: radial-gradient(circle at top, #0f2027, #203a43, #14532d);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      color: white;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+    }
+
+    .scene {
+      width: 200px;
+      height: 200px;
+      perspective: 800px;
+      margin-bottom: 50px;
+      z-index: 2;
+    }
+
+    .cross {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      transform-style: preserve-3d;
+      animation: rotate 10s infinite linear;
+    }
+
+    @keyframes rotate {
+      0% { transform: rotateX(0deg) rotateY(0deg); }
+      100% { transform: rotateX(360deg) rotateY(360deg); }
+    }
+
+    .bar {
+      position: absolute;
+      background: linear-gradient(45deg, #00ff9d, #00cc77);
+      box-shadow: 0 0 30px #00ff9d, 0 0 60px #00cc77;
+      border-radius: 10px;
+    }
+
+    .bar.vertical {
+      width: 50px;
+      height: 180px;
+      left: 75px;
+      top: 10px;
+    }
+
+    .bar.horizontal {
+      width: 180px;
+      height: 50px;
+      top: 75px;
+      left: 10px;
+    }
+
+    .logo {
+      font-size: 4rem;
+      font-weight: 800;
+      letter-spacing: 8px;
+      color: #00ff9d;
+      animation: glow 2s ease-in-out infinite alternate;
+      z-index: 2;
+    }
+
+    @keyframes glow {
+      from { text-shadow: 0 0 10px #00ff9d, 0 0 20px #00ff9d, 0 0 40px #00cc77; }
+      to { text-shadow: 0 0 20px #00ff9d, 0 0 40px #00cc77, 0 0 80px #00ff9d; }
+    }
+
+    .tagline {
+      margin-top: 20px;
+      font-size: 1.2rem;
+      opacity: 0.85;
+      color: #b6ffe5;
+      z-index: 2;
+    }
+
+    #runner {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      background: #00ff9d;
+      border-radius: 50%;
+      box-shadow: 0 0 20px #00ff9d;
+      z-index: 3;
+    }
+
+    /* ================= LIVE CHAT ================= */
+    #chat-toggle {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #00cc77, #00ff9d);
+      border: none;
+      box-shadow: 0 4px 20px rgba(0, 255, 157, 0.4);
+      cursor: pointer;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0f2027;
+      font-size: 24px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #chat-toggle:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 24px rgba(0, 255, 157, 0.5);
+    }
+
+    #chat-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 1001;
+      display: none;
+      align-items: stretch;
+      justify-content: flex-end;
+    }
+    #chat-overlay.open { display: flex; }
+
+    @media (max-width: 768px) {
+      #chat-panel { width: 100% !important; max-width: 100% !important; border-radius: 0 !important; }
+      #chat-overlay { justify-content: center; align-items: stretch; }
+    }
+
+    #chat-panel {
+      width: 380px;
+      max-width: 100%;
+      background: #1a2f38;
+      box-shadow: -4px 0 24px rgba(0,0,0,0.3);
+      z-index: 1002;
+      display: flex;
+      flex-direction: column;
+      border-radius: 16px 0 0 16px;
+      overflow: hidden;
+    }
+
+    #chat-header {
+      padding: 16px 20px;
+      background: #0f2027;
+      color: #00ff9d;
+      font-weight: 700;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #chat-close {
+      background: none;
+      border: none;
+      color: #00ff9d;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+
+    #chat-step-username {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #chat-step-username label { color: #b6ffe5; font-size: 0.9rem; }
+    #chat-username-input {
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid #2d4a3e;
+      background: #0f2027;
+      color: white;
+      font-size: 1rem;
+    }
+    #chat-username-join {
+      padding: 12px;
+      border-radius: 8px;
+      border: none;
+      background: linear-gradient(145deg, #00cc77, #00ff9d);
+      color: #0f2027;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    #chat-step-list, #chat-step-conversation {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #chat-step-list.active, #chat-step-conversation.active {
+      display: flex;
+    }
+
+    #chat-users-title {
+      padding: 12px 20px;
+      color: #b6ffe5;
+      font-size: 0.85rem;
+    }
+    #chat-users-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .chat-user-item {
+      padding: 12px 16px;
+      margin-bottom: 4px;
+      background: #0f2027;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .chat-user-item:hover { background: #1a2f38; }
+    .chat-user-item.self { opacity: 0.7; cursor: default; }
+
+    #chat-conv-header {
+      padding: 12px 20px;
+      background: #0f2027;
+      color: #00ff9d;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #chat-conv-back {
+      background: none;
+      border: none;
+      color: #00ff9d;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    #chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .chat-msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      word-break: break-word;
+    }
+    .chat-msg.sent {
+      align-self: flex-end;
+      background: #00cc77;
+      color: #0f2027;
+    }
+    .chat-msg.received {
+      align-self: flex-start;
+      background: #2d4a3e;
+      color: #e0e0e0;
+    }
+    .chat-msg .meta { font-size: 0.75rem; opacity: 0.85; margin-top: 4px; }
+    .chat-typing {
+      align-self: flex-start;
+      color: #00ff9d;
+      font-size: 0.85rem;
+      font-style: italic;
+      padding: 4px 0;
+    }
+    #chat-input-row {
+      padding: 12px 16px;
+      background: #0f2027;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    #chat-input {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #2d4a3e;
+      background: #1a2f38;
+      color: white;
+      font-size: 0.95rem;
+    }
+    #chat-send {
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: none;
+      background: #00cc77;
+      color: #0f2027;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="particles"></canvas>
+  <div class="scene">
+    <div class="cross">
+      <div class="bar vertical"></div>
+      <div class="bar horizontal"></div>
+    </div>
+  </div>
+  <div class="logo">VESSEL</div>
+  <div class="tagline">HELTY • Africa's Best Hospital Management Systems</div>
+  <div id="runner"></div>
+
+  <!-- Live chat floating button -->
+  <button type="button" id="chat-toggle" title="Open chat">💬</button>
+
+  <div id="chat-overlay">
+    <div id="chat-panel">
+      <div id="chat-header">
+        <span>Live Chat</span>
+        <button type="button" id="chat-close" aria-label="Close">×</button>
+      </div>
+
+      <div id="chat-step-username">
+        <label for="chat-username-input">Enter your name to join (testing, no auth)</label>
+        <input type="text" id="chat-username-input" placeholder="Your name" maxlength="80" autocomplete="off">
+        <button type="button" id="chat-username-join">Join chat</button>
+      </div>
+
+      <div id="chat-step-list">
+        <div id="chat-users-title">Online — click a user to chat</div>
+        <div id="chat-users-list"></div>
+      </div>
+
+      <div id="chat-step-conversation">
+        <div id="chat-conv-header">
+          <button type="button" id="chat-conv-back">← Back</button>
+          <span id="chat-conv-with"></span>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-row">
+          <input type="text" id="chat-input" placeholder="Type a message..." maxlength="10000" autocomplete="off">
+          <button type="button" id="chat-send">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const port = window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
+      const host = window.location.hostname;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = protocol + '//' + host + (port ? ':' + port : '') + '/socket.io';
+      const io = window.io || (typeof require !== 'undefined' && require('socket.io-client'));
+      if (!io) {
+        console.error('Socket.IO client not found. Include socket.io-client from CDN.');
+        return;
+      }
+
+      /* ================= PARTICLE SYSTEM ================= */
+      const canvas = document.getElementById('particles');
+      const ctx = canvas.getContext('2d');
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      let particles = [];
+      for (let i = 0; i < 80; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          size: Math.random() * 2 + 1,
+          speedX: (Math.random() - 0.5) * 0.5,
+          speedY: (Math.random() - 0.5) * 0.5
+        });
+      }
+      function animateParticles() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'rgba(0,255,150,0.6)';
+        for (let p of particles) {
+          p.x += p.speedX;
+          p.y += p.speedY;
+          if (p.x < 0 || p.x > canvas.width) p.speedX *= -1;
+          if (p.y < 0 || p.y > canvas.height) p.speedY *= -1;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        requestAnimationFrame(animateParticles);
+      }
+      animateParticles();
+
+      /* ================= RUNNER BALL ================= */
+      const runner = document.getElementById('runner');
+      let x = window.innerWidth / 2, y = window.innerHeight / 2, vx = 0, vy = 0;
+      function updateRunner() {
+        x += vx; y += vy;
+        vx *= 0.95; vy *= 0.95;
+        const radius = 11;
+        if (x < radius) { x = radius; vx *= -1; }
+        if (x > window.innerWidth - radius) { x = window.innerWidth - radius; vx *= -1; }
+        if (y < radius) { y = radius; vy *= -1; }
+        if (y > window.innerHeight - radius) { y = window.innerHeight - radius; vy *= -1; }
+        runner.style.left = (x - radius) + 'px';
+        runner.style.top = (y - radius) + 'px';
+        requestAnimationFrame(updateRunner);
+      }
+      updateRunner();
+      document.addEventListener('mousemove', function (e) {
+        const dx = x - e.clientX, dy = y - e.clientY, d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 150) { vx += (dx / d) * 2; vy += (dy / d) * 2; }
+      });
+
+      /* ================= CHAT (test mode: username only) ================= */
+      const overlay = document.getElementById('chat-overlay');
+      const panel = document.getElementById('chat-panel');
+      const stepUsername = document.getElementById('chat-step-username');
+      const stepList = document.getElementById('chat-step-list');
+      const stepConv = document.getElementById('chat-step-conversation');
+      const usernameInput = document.getElementById('chat-username-input');
+      const usernameJoin = document.getElementById('chat-username-join');
+      const usersList = document.getElementById('chat-users-list');
+      const convBack = document.getElementById('chat-conv-back');
+      const convWith = document.getElementById('chat-conv-with');
+      const messagesEl = document.getElementById('chat-messages');
+      const chatInput = document.getElementById('chat-input');
+      const chatSend = document.getElementById('chat-send');
+
+      let socket = null;
+      let myId = null;
+      let myDisplayName = '';
+      let onlineUsers = [];
+      let selectedUserId = null;
+      let conversation = [];
+      let typingTimeout = null;
+
+      document.getElementById('chat-toggle').addEventListener('click', function () {
+        overlay.classList.add('open');
+      });
+      document.getElementById('chat-close').addEventListener('click', function () {
+        overlay.classList.remove('open');
+      });
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) overlay.classList.remove('open');
+      });
+
+      function showStep(step) {
+        stepUsername.style.display = step === 'username' ? 'flex' : 'none';
+        stepList.classList.toggle('active', step === 'list');
+        stepConv.classList.toggle('active', step === 'conversation');
+      }
+
+      function renderUsers() {
+        usersList.innerHTML = '';
+        onlineUsers.forEach(function (u) {
+          if (u.id === myId) return;
+          const div = document.createElement('div');
+          div.className = 'chat-user-item';
+          div.textContent = u.displayName || u.id;
+          div.dataset.userId = u.id;
+          div.addEventListener('click', function () {
+            selectedUserId = u.id;
+            convWith.textContent = u.displayName || u.id;
+            conversation = [];
+            messagesEl.innerHTML = '';
+            showStep('conversation');
+            chatInput.focus();
+          });
+          usersList.appendChild(div);
+        });
+      }
+
+      function addMessageToUI(msg, isSent) {
+        const div = document.createElement('div');
+        div.className = 'chat-msg ' + (isSent ? 'sent' : 'received');
+        div.dataset.messageId = msg.messageId;
+        div.innerHTML = msg.content + '<div class="meta">' + (msg.status || '') + '</div>';
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      function setMessageStatus(messageId, status) {
+        const el = messagesEl.querySelector('[data-message-id="' + messageId + '"]');
+        if (el) {
+          const meta = el.querySelector('.meta');
+          if (meta) meta.textContent = status;
+        }
+      }
+
+      usernameJoin.addEventListener('click', function () {
+        const name = usernameInput.value.trim();
+        if (!name) return;
+        myDisplayName = name;
+        const baseUrl = window.location.origin;
+        socket = io(baseUrl, { auth: { username: name }, transports: ['websocket', 'polling'] });
+        socket.on('online_users', function (users) {
+          onlineUsers = users || [];
+          if (stepList.classList.contains('active')) renderUsers();
+        });
+        socket.on('new_message', function (payload) {
+          if (payload.senderId !== selectedUserId) return;
+          addMessageToUI(payload, false);
+          socket.emit('message_delivered', { messageId: payload.messageId });
+          setTimeout(function () { socket.emit('message_read', { messageId: payload.messageId }); }, 500);
+        });
+        socket.on('message_sent', function (payload) {
+          conversation.push(payload);
+          addMessageToUI(payload, true);
+        });
+        socket.on('message_delivered', function (data) {
+          setMessageStatus(data.messageId, '✓');
+        });
+        socket.on('message_read', function (data) {
+          setMessageStatus(data.messageId, '✓✓');
+        });
+        socket.on('user_typing', function (data) {
+          if (data.userId !== selectedUserId) return;
+          let tip = messagesEl.querySelector('.chat-typing');
+          if (!tip) {
+            tip = document.createElement('div');
+            tip.className = 'chat-typing';
+            messagesEl.appendChild(tip);
+          }
+          tip.textContent = 'typing...';
+          tip.style.display = 'block';
+          clearTimeout(typingTimeout);
+          typingTimeout = setTimeout(function () { tip.style.display = 'none'; }, 2000);
+        });
+        socket.on('typing_stop', function (data) {
+          if (data.userId !== selectedUserId) return;
+          const tip = messagesEl.querySelector('.chat-typing');
+          if (tip) tip.style.display = 'none';
+        });
+        socket.on('chat_error', function (err) {
+          console.warn('Chat error:', err);
+        });
+        socket.on('user_id', function (data) {
+          myId = data.userId;
+          showStep('list');
+          renderUsers();
+        });
+        socket.on('disconnect', function () {
+          myId = null;
+        });
+      });
+
+      convBack.addEventListener('click', function () {
+        selectedUserId = null;
+        showStep('list');
+        renderUsers();
+      });
+
+      function sendMessage() {
+        const text = chatInput.value.trim();
+        if (!text || !selectedUserId || !socket) return;
+        socket.emit('send_message', { recipientId: selectedUserId, content: text });
+        chatInput.value = '';
+      }
+      chatSend.addEventListener('click', sendMessage);
+      chatInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
+      });
+
+      chatInput.addEventListener('input', function () {
+        if (!selectedUserId || !socket) return;
+        socket.emit('typing_start', { recipientId: selectedUserId });
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(function () {
+          socket.emit('typing_stop', { recipientId: selectedUserId });
+        }, 1000);
+      });
+    })();
+  </script>
+</body>
+
+</html>

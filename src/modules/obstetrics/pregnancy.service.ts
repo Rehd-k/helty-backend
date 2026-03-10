@@ -15,10 +15,9 @@ export class PregnancyService {
     if (!patient) {
       throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
     }
-    console.log(patient);
-
     return this.prisma.pregnancy.create({
       data: {
+
         patientId: patient.id,
         gravida: dto.gravida,
         para: dto.para,
@@ -64,6 +63,7 @@ export class PregnancyService {
       where: { id },
       include: {
         patient: true,
+
         antenatalVisits: { orderBy: { visitDate: 'desc' }, take: 10 },
         labourDeliveries: true,
       },
@@ -71,6 +71,7 @@ export class PregnancyService {
     if (!pregnancy) {
       throw new NotFoundException(`Pregnancy "${id}" not found.`);
     }
+    console.log(pregnancy);
     return pregnancy;
   }
 

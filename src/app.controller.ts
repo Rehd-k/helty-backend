@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Logger, Post } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, Render } from '@nestjs/common';
 import { Public } from './common/decorators';
 import { AppService } from './app.service';
 
@@ -11,12 +11,11 @@ export class AppController {
     private readonly appService: AppService
   ) { }
 
-  // @Public()
-  // @Get()
-  // getHello(): string {
-  //   this.log.log('GET / called');
-  //   return this.appService.getHello();
-  // }
+  @Get()
+  @Render('index')
+  index(): object {
+    return {};
+  }
 
   @Public()
   @Post()
