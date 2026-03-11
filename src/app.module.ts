@@ -22,8 +22,6 @@ import { AppService } from './app.service';
 import { InvoiceModule } from './modules/invoice/invoice.module';
 import { NoIdPatientModule } from './modules/no-id-patient/no-id-patient.module';
 import { LoggerModule } from 'nestjs-pino';
-import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
 import { BankModule } from './modules/bank/bank.module';
 import { PatientVitalsModule } from './modules/patient-vitals/patient-vitals.module';
 import { ConsultingRoomModule } from './modules/consulting-room/consulting-room.module';
@@ -38,6 +36,7 @@ import { ObstetricsModule } from './modules/obstetrics/obstetrics.module';
 import { LabModule } from './modules/lab/lab.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { RadiologyModule } from './modules/radiology/radiology.module';
+import { MedicationOrderModule } from './modules/medication-order/medication-order.module';
 
 @Module({
   imports: [
@@ -62,9 +61,6 @@ import { RadiologyModule } from './modules/radiology/radiology.module';
     DepartmentModule,
     InvoiceModule,
     NoIdPatientModule,
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'public'),
-    }),
     LoggerModule.forRoot({
       pinoHttp: {
         level: 'info', // Set log level
@@ -91,6 +87,7 @@ import { RadiologyModule } from './modules/radiology/radiology.module';
     LabModule,
     ChatModule,
     RadiologyModule,
+    MedicationOrderModule,
   ],
   controllers: [AppController],
   providers: [

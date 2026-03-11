@@ -27,7 +27,7 @@ export class InvoiceService {
                 patientId: dto.patientId,
                 status: dto.status,
                 createdById: req.user.sub,
-                staffId: dto.staffId,
+                staffId: dto.staffId ?? '',
             },
             include: {
                 patient: {
