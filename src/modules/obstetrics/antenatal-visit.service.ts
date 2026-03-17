@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateAntenatalVisitDto, UpdateAntenatalVisitDto } from './dto/create-antenatal-visit.dto';
+import {
+  CreateAntenatalVisitDto,
+  UpdateAntenatalVisitDto,
+} from './dto/create-antenatal-visit.dto';
 import { ListAntenatalVisitsQueryDto } from './dto/list-antenatal-visits-query.dto';
 
 @Injectable()
@@ -24,7 +27,9 @@ export class AntenatalVisitService {
         where: { id: dto.encounterId },
       });
       if (!encounter) {
-        throw new NotFoundException(`Encounter "${dto.encounterId}" not found.`);
+        throw new NotFoundException(
+          `Encounter "${dto.encounterId}" not found.`,
+        );
       }
     }
 
@@ -53,7 +58,10 @@ export class AntenatalVisitService {
     });
   }
 
-  async findByPregnancy(pregnancyId: string, query: ListAntenatalVisitsQueryDto) {
+  async findByPregnancy(
+    pregnancyId: string,
+    query: ListAntenatalVisitsQueryDto,
+  ) {
     const pregnancy = await this.prisma.pregnancy.findUnique({
       where: { id: pregnancyId },
     });
@@ -63,7 +71,10 @@ export class AntenatalVisitService {
 
     const skip = query.skip ?? 0;
     const take = query.take ?? 50;
-    const where: { pregnancyId: string; visitDate?: { gte?: Date; lte?: Date } } = {
+    const where: {
+      pregnancyId: string;
+      visitDate?: { gte?: Date; lte?: Date };
+    } = {
       pregnancyId,
     };
     if (query.fromDate) {
@@ -111,21 +122,38 @@ export class AntenatalVisitService {
     return this.prisma.antenatalVisit.update({
       where: { id },
       data: {
-        ...(dto.visitDate !== undefined && { visitDate: new Date(dto.visitDate) }),
-        ...(dto.gestationWeeks !== undefined && { gestationWeeks: dto.gestationWeeks }),
+        ...(dto.visitDate !== undefined && {
+          visitDate: new Date(dto.visitDate),
+        }),
+        ...(dto.gestationWeeks !== undefined && {
+          gestationWeeks: dto.gestationWeeks,
+        }),
         ...(dto.systolicBP !== undefined && { systolicBP: dto.systolicBP }),
         ...(dto.diastolicBP !== undefined && { diastolicBP: dto.diastolicBP }),
         ...(dto.weight !== undefined && { weight: dto.weight }),
-        ...(dto.fundalHeight !== undefined && { fundalHeight: dto.fundalHeight }),
-        ...(dto.fetalHeartRate !== undefined && { fetalHeartRate: dto.fetalHeartRate }),
-        ...(dto.presentation !== undefined && { presentation: dto.presentation }),
-        ...(dto.urineProtein !== undefined && { urineProtein: dto.urineProtein }),
-        ...(dto.notes !== undefined && { notes: dto.notes }),
-        ...(dto.ultrasoundFindings !== undefined && { ultrasoundFindings: dto.ultrasoundFindings }),
-        ...(dto.labResultsJson !== undefined && {
-          labResultsJson: dto.labResultsJson === null ? Prisma.DbNull : (dto.labResultsJson as object),
+        ...(dto.fundalHeight !== undefined && {
+          fundalHeight: dto.fundalHeight,
         }),
-        ...(dto.encounterId !== undefined && { encounterId: dto.encounterId ?? null }),
+        ...(dto.fetalHeartRate !== undefined && {
+          fetalHeartRate: dto.fetalHeartRate,
+        }),
+        ...(dto.presentation !== undefined && {
+          presentation: dto.presentation,
+        }),
+        ...(dto.urineProtein !== undefined && {
+          urineProtein: dto.urineProtein,
+        }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(dto.ultrasoundFindings !== undefined && {
+          ultrasoundFindings: dto.ultrasoundFindings,
+        }),
+        ...(dto.labResultsJson !== undefined && {
+          labResultsJson:
+            dto.labResultsJson === null ? Prisma.DbNull : dto.labResultsJson,
+        }),
+        ...(dto.encounterId !== undefined && {
+          encounterId: dto.encounterId ?? null,
+        }),
       },
       include: {
         pregnancy: { select: { id: true, patientId: true } },

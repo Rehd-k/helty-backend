@@ -1,6 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateDoctorReportDto, UpdateDoctorReportDto } from './dto/create-doctor-report.dto';
+import {
+  CreateDoctorReportDto,
+  UpdateDoctorReportDto,
+} from './dto/create-doctor-report.dto';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class DoctorReportService {
@@ -23,9 +32,12 @@ export class DoctorReportService {
     });
   }
 
-  async findAll(skip = 0, take = 10) {
+  async findAll(query: DateRangeSkipTakeDto) {
+    const { skip = 0, take = 20, fromDate, toDate } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const [reports, total] = await Promise.all([
       this.prisma.doctorReport.findMany({
+        where: { createdAt: { gte: from, lte: to } },
         skip,
         take,
         include: {
@@ -33,7 +45,9 @@ export class DoctorReportService {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.doctorReport.count(),
+      this.prisma.doctorReport.count({
+        where: { createdAt: { gte: from, lte: to } },
+      }),
     ]);
 
     return { reports, total, skip, take };
@@ -59,7 +73,9 @@ export class DoctorReportService {
   }
 
   async update(id: string, updateDoctorReportDto: UpdateDoctorReportDto) {
-    const existing = await this.prisma.doctorReport.findUnique({ where: { id } });
+    const existing = await this.prisma.doctorReport.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException(`Doctor report "${id}" not found.`);
     }
@@ -83,7 +99,10 @@ export class DoctorReportService {
     });
   }
 
-  private async validateEncounterForPatient(encounterId: string, patientId: string) {
+  private async validateEncounterForPatient(
+    encounterId: string,
+    patientId: string,
+  ) {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: encounterId },
     });
@@ -91,7 +110,9 @@ export class DoctorReportService {
       throw new BadRequestException(`Encounter "${encounterId}" not found.`);
     }
     if (encounter.patientId !== patientId) {
-      throw new BadRequestException('Encounter does not belong to the given patient.');
+      throw new BadRequestException(
+        'Encounter does not belong to the given patient.',
+      );
     }
   }
 

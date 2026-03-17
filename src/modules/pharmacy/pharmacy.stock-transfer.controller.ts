@@ -28,7 +28,9 @@ export class PharmacyStockTransferController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List stock transfers with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List stock transfers with filtering and pagination',
+  })
   findAll(@Query() query: ListStockTransferDto) {
     return this.service.findAll(query);
   }

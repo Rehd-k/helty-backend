@@ -52,12 +52,18 @@ export class LabOrderService {
         },
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
         items: {
           include: {
             testVersion: {
-              include: { test: { select: { id: true, name: true, sampleType: true } } },
+              include: {
+                test: { select: { id: true, name: true, sampleType: true } },
+              },
             },
           },
         },
@@ -80,7 +86,14 @@ export class LabOrderService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
+          },
           doctor: { select: { id: true, firstName: true, lastName: true } },
           items: {
             include: {
@@ -100,8 +113,12 @@ export class LabOrderService {
     const order = await this.prisma.labOrder.findUnique({
       where: { id },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
         items: {
           include: {
             testVersion: {
@@ -132,7 +149,9 @@ export class LabOrderService {
         doctor: { select: { id: true, firstName: true, lastName: true } },
         items: {
           include: {
-            testVersion: { include: { test: { select: { id: true, name: true } } } },
+            testVersion: {
+              include: { test: { select: { id: true, name: true } } },
+            },
           },
         },
       },

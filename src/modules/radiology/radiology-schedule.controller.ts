@@ -13,14 +13,19 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { RadiologyScheduleService } from './radiology-schedule.service';
-import { CreateRadiologyScheduleDto, UpdateRadiologyScheduleDto } from './dto/radiology-schedule.dto';
+import {
+  CreateRadiologyScheduleDto,
+  UpdateRadiologyScheduleDto,
+} from './dto/radiology-schedule.dto';
 
 @ApiTags('Radiology – Scheduling')
 @Controller('radiology/requests/:requestId/schedule')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('RADIOLOGY_RECEPTIONIST', 'RADIOGRAPHER', 'RADIOLOGY')
 export class RadiologyScheduleController {
-  constructor(private readonly radiologyScheduleService: RadiologyScheduleService) {}
+  constructor(
+    private readonly radiologyScheduleService: RadiologyScheduleService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

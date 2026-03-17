@@ -29,7 +29,9 @@ export class CreateRadiologyRequestDto {
   @IsOptional()
   departmentId?: string;
 
-  @ApiPropertyOptional({ description: 'Clinical notes / reason for investigation' })
+  @ApiPropertyOptional({
+    description: 'Clinical notes / reason for investigation',
+  })
   @IsString()
   @IsOptional()
   clinicalNotes?: string;
@@ -53,4 +55,12 @@ export class CreateRadiologyRequestDto {
   @IsString()
   @IsOptional()
   bodyPart?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Service UUID to bill for this radiology request (creates invoice with this service)',
+  })
+  @IsUUID()
+  @IsOptional()
+  serviceId?: string;
 }

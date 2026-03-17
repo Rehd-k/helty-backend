@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateAppointmentDto, UpdateAppointmentDto } from './dto/create-appointment.dto';
+import {
+  CreateAppointmentDto,
+  UpdateAppointmentDto,
+} from './dto/create-appointment.dto';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class AppointmentService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(createAppointmentDto: CreateAppointmentDto) {
     return this.prisma.appointment.create({
@@ -18,9 +23,12 @@ export class AppointmentService {
     });
   }
 
-  async findAll(skip = 0, take = 10) {
+  async findAll(query: DateRangeSkipTakeDto) {
+    const { skip = 0, take = 20, fromDate, toDate } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const [appointments, total] = await Promise.all([
       this.prisma.appointment.findMany({
+        where: { date: { gte: from, lte: to } },
         skip,
         take,
         include: {
@@ -28,7 +36,9 @@ export class AppointmentService {
         },
         orderBy: { date: 'desc' },
       }),
-      this.prisma.appointment.count(),
+      this.prisma.appointment.count({
+        where: { date: { gte: from, lte: to } },
+      }),
     ]);
 
     return { appointments, total, skip, take };

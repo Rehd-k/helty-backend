@@ -22,7 +22,9 @@ export class LabOrderController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a lab order with items (only active test versions)' })
+  @ApiOperation({
+    summary: 'Create a lab order with items (only active test versions)',
+  })
   create(@Body() dto: CreateLabOrderDto) {
     return this.labOrderService.create(dto);
   }

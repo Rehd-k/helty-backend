@@ -16,13 +16,20 @@ export class PharmacyDrugInteractionService {
       throw new BadRequestException('Drug A and Drug B must be different.');
     }
     const [drugA, drugB] = await Promise.all([
-      this.prisma.drug.findFirst({ where: { id: dto.drugAId, deletedAt: null } }),
-      this.prisma.drug.findFirst({ where: { id: dto.drugBId, deletedAt: null } }),
+      this.prisma.drug.findFirst({
+        where: { id: dto.drugAId, deletedAt: null },
+      }),
+      this.prisma.drug.findFirst({
+        where: { id: dto.drugBId, deletedAt: null },
+      }),
     ]);
     if (!drugA) throw new NotFoundException(`Drug "${dto.drugAId}" not found.`);
     if (!drugB) throw new NotFoundException(`Drug "${dto.drugBId}" not found.`);
 
-    const [aId, bId] = dto.drugAId < dto.drugBId ? [dto.drugAId, dto.drugBId] : [dto.drugBId, dto.drugAId];
+    const [aId, bId] =
+      dto.drugAId < dto.drugBId
+        ? [dto.drugAId, dto.drugBId]
+        : [dto.drugBId, dto.drugAId];
     try {
       return await this.prisma.drugInteraction.create({
         data: {
@@ -69,7 +76,10 @@ export class PharmacyDrugInteractionService {
           drugA: { select: { id: true, genericName: true, brandName: true } },
           drugB: { select: { id: true, genericName: true, brandName: true } },
         },
-        orderBy: [{ drugA: { genericName: 'asc' } }, { drugB: { genericName: 'asc' } }],
+        orderBy: [
+          { drugA: { genericName: 'asc' } },
+          { drugB: { genericName: 'asc' } },
+        ],
       }),
       this.prisma.drugInteraction.count(),
     ]);

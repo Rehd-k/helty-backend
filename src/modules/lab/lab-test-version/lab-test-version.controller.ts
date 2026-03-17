@@ -18,7 +18,9 @@ export class LabTestVersionController {
 
   @Post(':testId/version')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new test version (optionally set as active)' })
+  @ApiOperation({
+    summary: 'Create a new test version (optionally set as active)',
+  })
   create(
     @Param('testId') testId: string,
     @Body() dto: CreateLabTestVersionDto,

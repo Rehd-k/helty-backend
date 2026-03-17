@@ -10,4 +10,3 @@ import { PatientVitalsController } from './patient-vitals.controller';
   exports: [PatientVitalsService],
 })
 export class PatientVitalsModule {}
-

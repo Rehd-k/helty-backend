@@ -7,9 +7,18 @@ import { RadiologyHistoryService } from './radiology-history.service';
 @ApiTags('Radiology – History')
 @Controller('radiology')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('CONSULTANT', 'INPATIENT_DOCTOR', 'RADIOLOGIST', 'RADIOGRAPHER', 'RADIOLOGY_RECEPTIONIST', 'RADIOLOGY')
+@AccountTypes(
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+  'RADIOLOGIST',
+  'RADIOGRAPHER',
+  'RADIOLOGY_RECEPTIONIST',
+  'RADIOLOGY',
+)
 export class RadiologyHistoryController {
-  constructor(private readonly radiologyHistoryService: RadiologyHistoryService) {}
+  constructor(
+    private readonly radiologyHistoryService: RadiologyHistoryService,
+  ) {}
 
   @Get('patients/:patientId/radiology-history')
   @ApiOperation({ summary: 'Get complete imaging history for a patient' })

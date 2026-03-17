@@ -1,8 +1,9 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsEnum,
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -11,6 +12,22 @@ import { PharmacyLocationType } from '@prisma/client';
 import { PaginationDto } from './pagination.dto';
 
 export class SearchBatchDto extends PaginationDto {
+  @ApiProperty({
+    description:
+      'Start date (ISO 8601). Filters by batch createdAt. Normalized to start-of-day.',
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  fromDate!: string;
+
+  @ApiProperty({
+    description:
+      'End date (ISO 8601). Filters by batch createdAt. Normalized to end-of-day.',
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  toDate!: string;
+
   @ApiPropertyOptional()
   @IsUUID()
   @IsOptional()
@@ -61,14 +78,25 @@ export class SearchBatchDto extends PaginationDto {
   @IsOptional()
   locationType?: PharmacyLocationType;
 
-  @ApiPropertyOptional({ description: 'Only batches with quantityRemaining > 0' })
+  @ApiPropertyOptional({
+    description: 'Only batches with quantityRemaining > 0',
+  })
   @IsOptional()
   @IsIn(['true', 'false'])
   inStock?: 'true' | 'false';
 
-  @ApiPropertyOptional({ enum: ['batchNumber', 'manufacturingDate', 'expiryDate', 'costPrice', 'sellingPrice', 'quantityRemaining', 'createdAt'] })
+  @ApiPropertyOptional({
+    enum: [
+      'batchNumber',
+      'manufacturingDate',
+      'expiryDate',
+      'costPrice',
+      'sellingPrice',
+      'quantityRemaining',
+      'createdAt',
+    ],
+  })
   @IsOptional()
   @IsString()
   sortBy?: string;
 }
-

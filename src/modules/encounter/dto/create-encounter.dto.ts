@@ -38,7 +38,9 @@ export class CreateEncounterDto {
   @IsOptional()
   startTime: string;
 
-  @ApiPropertyOptional({ description: 'When the encounter ended (ISO date string)' })
+  @ApiPropertyOptional({
+    description: 'When the encounter ended (ISO date string)',
+  })
   @IsDateString()
   @IsOptional()
   endTime?: string;
@@ -53,7 +55,10 @@ export class CreateEncounterDto {
   @IsOptional()
   triageNotes?: string;
 
-  @ApiPropertyOptional({ enum: EncounterStatus, default: EncounterStatus.ONGOING })
+  @ApiPropertyOptional({
+    enum: EncounterStatus,
+    default: EncounterStatus.ONGOING,
+  })
   @IsEnum(EncounterStatus)
   @IsOptional()
   status?: EncounterStatus;
@@ -81,20 +86,25 @@ export class StartOutpatientEncounterDto {
   chiefComplaint?: string;
 
   @ApiPropertyOptional({
-    description: 'Waiting patient entry UUID; if provided, that entry will be marked as seen',
+    description:
+      'Waiting patient entry UUID; if provided, that entry will be marked as seen',
   })
   @IsUUID()
   @IsOptional()
   waitingPatientId?: string;
 
-  @ApiPropertyOptional({ description: 'Staff UUID creating the record (defaults to doctorId)' })
+  @ApiPropertyOptional({
+    description: 'Staff UUID creating the record (defaults to doctorId)',
+  })
   @IsUUID()
   @IsOptional()
   createdById?: string;
 }
 
 export class UpdateEncounterDto {
-  @ApiPropertyOptional({ description: 'When the encounter ended (ISO date string)' })
+  @ApiPropertyOptional({
+    description: 'When the encounter ended (ISO date string)',
+  })
   @IsDateString()
   @IsOptional()
   endTime?: string;
@@ -114,7 +124,9 @@ export class UpdateEncounterDto {
   @IsOptional()
   status?: EncounterStatus;
 
-  @ApiPropertyOptional({ description: 'Staff UUID of the user updating the record' })
+  @ApiPropertyOptional({
+    description: 'Staff UUID of the user updating the record',
+  })
   @IsUUID()
   @IsOptional()
   updatedById?: string;
@@ -131,12 +143,18 @@ export class QueryEncounterDto {
   @IsOptional()
   doctorId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by encounter type', enum: EncounterType })
+  @ApiPropertyOptional({
+    description: 'Filter by encounter type',
+    enum: EncounterType,
+  })
   @IsEnum(EncounterType)
   @IsOptional()
   encounterType?: EncounterType;
 
-  @ApiPropertyOptional({ description: 'Filter by status', enum: EncounterStatus })
+  @ApiPropertyOptional({
+    description: 'Filter by status',
+    enum: EncounterStatus,
+  })
   @IsEnum(EncounterStatus)
   @IsOptional()
   status?: EncounterStatus;
@@ -148,10 +166,29 @@ export class QueryEncounterDto {
   @IsOptional()
   skip?: number = 0;
 
-  @ApiPropertyOptional({ description: 'Number of records to return', example: 20 })
+  @ApiPropertyOptional({
+    description: 'Number of records to return',
+    example: 20,
+  })
   @Type(() => Number)
   @IsInt()
   @IsPositive()
   @IsOptional()
   take?: number = 20;
+
+  @ApiProperty({
+    description: 'Start date (ISO 8601). Will be normalized to start-of-day.',
+    example: '2025-01-01',
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  fromDate!: string;
+
+  @ApiProperty({
+    description: 'End date (ISO 8601). Will be normalized to end-of-day.',
+    example: '2025-12-31',
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  toDate!: string;
 }

@@ -15,7 +15,7 @@ import { CreateBankDto, UpdateBankDto, QueryBankDto } from './dto/bank.dto';
 @ApiTags('Bank')
 @Controller('bank')
 export class BankController {
-  constructor(private readonly bankService: BankService) { }
+  constructor(private readonly bankService: BankService) {}
 
   // ─── POST /bank ───────────────────────────────────────────────────────────────
 
@@ -28,7 +28,9 @@ export class BankController {
   // ─── GET /bank ────────────────────────────────────────────────────────────────
 
   @Get()
-  @ApiOperation({ summary: 'List all bank accounts (with optional search + pagination)' })
+  @ApiOperation({
+    summary: 'List all bank accounts (with optional search + pagination)',
+  })
   findAll(@Query() query: QueryBankDto) {
     return this.bankService.findAll(query);
   }
@@ -54,7 +56,9 @@ export class BankController {
   // ─── DELETE /bank/:id ─────────────────────────────────────────────────────────
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a bank account (only if it has no linked payments)' })
+  @ApiOperation({
+    summary: 'Delete a bank account (only if it has no linked payments)',
+  })
   @ApiParam({ name: 'id', description: 'Bank UUID' })
   remove(@Param('id') id: string) {
     return this.bankService.remove(id);

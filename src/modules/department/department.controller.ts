@@ -19,7 +19,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 @ApiTags('Department')
 @Controller('departments')
 export class DepartmentController {
-  constructor(private readonly departmentService: DepartmentService) { }
+  constructor(private readonly departmentService: DepartmentService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

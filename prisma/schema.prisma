@@ -18,10 +18,16 @@ model NoIdPatient {
   transactions Transaction[]
 }
 
+enum PatientStatus {
+  ADMITED
+  DECEASED
+  OUTPATIENT
+}
+
 // patient model with extended fields
 model Patient {
-  id                    String    @id @default(uuid())
-  patientId             String?   @unique
+  id                    String        @id @default(uuid())
+  patientId             String?       @unique
   title                 String?
   cardNo                String?
   surname               String?
@@ -36,9 +42,9 @@ model Patient {
   town                  String?
   permanentAddress      String?
   religion              String?
-  email                 String?   @unique
+  email                 String?       @unique
   preferredLanguage     String?
-  phoneNumber           String?   @unique
+  phoneNumber           String?       @unique
   addressOfResidence    String?
   profession            String?
   nextOfKinName         String?
@@ -47,6 +53,7 @@ model Patient {
   nextOfKinRelationship String?
   hmo                   String?
   fingerprintData       String?
+  status                PatientStatus @default(OUTPATIENT)
 
   appointments     Appointment[]
   admissions       Admission[]
@@ -119,7 +126,7 @@ model Admission {
   id            String        @id @default(uuid())
   patient       Patient       @relation(fields: [patientId], references: [id])
   patientId     String
-  encounterId   String
+  encounter     Encounter?    @relation("AdmissionEncounter")
   admissionDate DateTime
   dischargeDate DateTime?
   ward          String?
@@ -166,14 +173,12 @@ model Admission {
   attendingDoctor   Staff?  @relation("AdmissionAttendingDoctor", fields: [attendingDoctorId], references: [id])
   attendingDoctorId String?
 
-  createdBy   Staff       @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
+  createdBy   Staff   @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
   createdById String
-  updatedBy   Staff?      @relation("AdmissionUpdatedBy", fields: [updatedById], references: [id])
+  updatedBy   Staff?  @relation("AdmissionUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
-  encounters  Encounter[]
 
   @@index([patientId])
-  @@index([encounterId])
   @@index([status])
   @@index([attendingDoctorId])
 }
@@ -748,6 +753,7 @@ model Invoice {
   updatedById String?
 
   invoiceItems InvoiceItem[]
+  transactions Transaction[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   staff        Staff         @relation(fields: [staffId], references: [id])
@@ -760,11 +766,12 @@ model Invoice {
   @@index([createdById])
   @@index([updatedById])
   @@index([staffId])
+  @@index([encounterId])
 }
 
 model InvoiceItem {
   id        String   @id @default(uuid())
-  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId String
   service   Service? @relation(fields: [serviceId], references: [id])
   serviceId String?
@@ -838,6 +845,7 @@ enum AccountType {
   THEATERE
   ONG
   DIALYSIS
+  STORE
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1059,14 +1067,16 @@ model Department {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  createdBy         Staff              @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
-  createdById       String
-  updatedBy         Staff?             @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
-  updatedById       String?
-  services          Service[]
-  wards             Ward[]
-  nurses            Nurse[]
-  radiologyRequests RadiologyRequest[]
+  createdBy           Staff                @relation("DepartmentCreatedBy", fields: [createdById], references: [id])
+  createdById         String
+  updatedBy           Staff?               @relation("DepartmentUpdatedBy", fields: [updatedById], references: [id])
+  updatedById         String?
+  services            Service[]
+  wards               Ward[]
+  nurses              Nurse[]
+  radiologyRequests   RadiologyRequest[]
+  purchaseNotes       PurchaseNote[]
+  storeStockMovements StoreStockMovement[]
 }
 
 model Staff {
@@ -1207,6 +1217,8 @@ model Staff {
   radiologyImagesUploaded             RadiologyImage[]           @relation("RadiologyImageUploadedBy")
   radiologyReportsSigned              RadiologyStudyReport[]     @relation("RadiologyReportSignedBy")
   medicationOrders                    MedicationOrder[]
+  purchaseNotesRequested              PurchaseNote[]             @relation("PurchaseNoteRequestedBy")
+  storeStockMovementsCreated          StoreStockMovement[]       @relation("StoreStockMovementCreatedBy")
 }
 
 enum ChatMessageStatus {
@@ -1234,8 +1246,8 @@ model Encounter {
   patientId      String
   doctor         Staff           @relation("EncounterDoctor", fields: [doctorId], references: [id])
   doctorId       String
-  admission      Admission?      @relation(fields: [admissionId], references: [id])
-  admissionId    String?
+  admission      Admission?      @relation("AdmissionEncounter", fields: [admissionId], references: [id])
+  admissionId    String?         @unique
   appointment    Appointment?    @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
   appointmentId  String?
   encounterType  EncounterType
@@ -1379,6 +1391,8 @@ model Transaction {
 
   noIdPatient   NoIdPatient? @relation(fields: [noIdPatientid], references: [id])
   noIdPatientid String?
+  invoice       Invoice?     @relation(fields: [invoiceId], references: [id])
+  invoiceId     String?
 }
 
 // TransactionItem: a single charge line on a transaction
@@ -2490,4 +2504,166 @@ model RadiologyStudyReport {
   updatedAt          DateTime         @updatedAt
 
   @@index([signedById])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORE MODULE (non-pharmacy / general supplies)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum StoreStockMovementType {
+  ISSUE
+  RECEIPT
+  TRANSFER
+  ADJUSTMENT
+  RETURN
+}
+
+enum PurchaseNoteStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ORDERED
+  COMPLETED
+}
+
+enum PurchaseNotePriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+model StoreItemCategory {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items StoreItem[]
+}
+
+model StoreItem {
+  id            String            @id @default(uuid())
+  name          String
+  sku           String?           @unique
+  category      StoreItemCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  categoryId    String
+  unitOfMeasure String
+  reorderLevel  Decimal           @default(0) @db.Decimal(12, 2)
+  isActive      Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  stocks            StoreStock[]
+  movements         StoreStockMovement[]
+  purchaseNoteItems PurchaseNoteItem[]
+
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+model StoreLocation {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  description String?
+  isPrimary   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stocks        StoreStock[]
+  movementsFrom StoreStockMovement[] @relation("StoreMovementFromLocation")
+  movementsTo   StoreStockMovement[] @relation("StoreMovementToLocation")
+}
+
+model StoreStock {
+  id             String        @id @default(uuid())
+  item           StoreItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId         String
+  location       StoreLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  locationId     String
+  quantity       Decimal       @default(0) @db.Decimal(12, 2)
+  unitCost       Decimal       @default(0) @db.Decimal(12, 2)
+  lastMovementAt DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([itemId, locationId])
+  @@index([itemId])
+  @@index([locationId])
+}
+
+model StoreStockMovement {
+  id             String                 @id @default(uuid())
+  item           StoreItem              @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  itemId         String
+  fromLocation   StoreLocation?         @relation("StoreMovementFromLocation", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  fromLocationId String?
+  toLocation     StoreLocation?         @relation("StoreMovementToLocation", fields: [toLocationId], references: [id], onDelete: SetNull)
+  toLocationId   String?
+  department     Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  type           StoreStockMovementType
+  quantity       Decimal                @db.Decimal(12, 2)
+  unitCost       Decimal                @db.Decimal(12, 2)
+  totalCost      Decimal                @db.Decimal(12, 2)
+  reason         String?
+  referenceType  String?
+  referenceId    String?
+  createdBy      Staff                  @relation("StoreStockMovementCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime               @default(now())
+
+  @@index([itemId])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@index([departmentId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PURCHASES MODULE (purchase notes from departments)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PurchaseNote {
+  id                     String             @id @default(uuid())
+  requestingDepartment   Department         @relation(fields: [requestingDepartmentId], references: [id], onDelete: Restrict)
+  requestingDepartmentId String
+  requestedBy            Staff              @relation("PurchaseNoteRequestedBy", fields: [requestedById], references: [id])
+  requestedById          String
+  status                 PurchaseNoteStatus @default(PENDING)
+  remarks                String?
+  neededByDate           DateTime?
+  totalEstimatedCost     Decimal            @default(0) @db.Decimal(12, 2)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  items PurchaseNoteItem[]
+
+  @@index([requestingDepartmentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PurchaseNoteItem {
+  id                 String               @id @default(uuid())
+  purchaseNote       PurchaseNote         @relation(fields: [purchaseNoteId], references: [id], onDelete: Cascade)
+  purchaseNoteId     String
+  storeItem          StoreItem?           @relation(fields: [storeItemId], references: [id], onDelete: SetNull)
+  storeItemId        String?
+  description        String
+  quantity           Decimal              @db.Decimal(12, 2)
+  estimatedUnitCost  Decimal?             @db.Decimal(12, 2)
+  totalEstimatedCost Decimal?             @db.Decimal(12, 2)
+  priority           PurchaseNotePriority @default(NORMAL)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@index([purchaseNoteId])
+  @@index([storeItemId])
 }

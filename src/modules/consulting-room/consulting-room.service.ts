@@ -24,13 +24,7 @@ export class ConsultingRoomService {
       }
     }
 
-    const {
-      name,
-      description,
-      location,
-      capacity,
-      staffId,
-    } = dto;
+    const { name, description, location, capacity, staffId } = dto;
 
     return this.prisma.consultingRoom.create({
       data: {
@@ -154,13 +148,7 @@ export class ConsultingRoomService {
       }
     }
 
-    const {
-      name,
-      description,
-      location,
-      capacity,
-      staffId,
-    } = dto;
+    const { name, description, location, capacity, staffId } = dto;
 
     return this.prisma.consultingRoom.update({
       where: { id },
@@ -216,4 +204,3 @@ export class ConsultingRoomService {
     return { message: 'Consulting room deleted successfully.' };
   }
 }
-

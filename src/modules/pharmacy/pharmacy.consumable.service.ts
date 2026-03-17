@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateConsumableDto, UpdateConsumableDto } from './dto/consumable.dto';
 import { ListConsumableDto } from './dto/list-consumable.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 const ALLOWED_SORT = new Set(['name', 'category', 'createdAt']);
 
@@ -27,16 +28,30 @@ export class PharmacyConsumableService {
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A consumable with this name may already exist.');
+        throw new ConflictException(
+          'A consumable with this name may already exist.',
+        );
       }
       throw new BadRequestException('Invalid consumable data.');
     }
   }
 
   async findAll(query: ListConsumableDto) {
-    const { search, category, sortBy, sortOrder = 'desc', skip = 0, limit = 20 } = query;
+    const {
+      search,
+      category,
+      sortBy,
+      sortOrder = 'desc',
+      skip = 0,
+      limit = 20,
+      fromDate,
+      toDate,
+    } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const take = Math.min(Math.max(1, limit), 100);
-    const where: Prisma.ConsumableWhereInput = {};
+    const where: Prisma.ConsumableWhereInput = {
+      createdAt: { gte: from, lte: to },
+    };
 
     if (search?.trim()) {
       const term = search.trim();
@@ -87,14 +102,20 @@ export class PharmacyConsumableService {
         where: { id },
         data: {
           ...(dto.name !== undefined && { name: dto.name.trim() }),
-          ...(dto.category !== undefined && { category: dto.category?.trim() ?? null }),
-          ...(dto.reorderLevel !== undefined && { reorderLevel: dto.reorderLevel }),
+          ...(dto.category !== undefined && {
+            category: dto.category?.trim() ?? null,
+          }),
+          ...(dto.reorderLevel !== undefined && {
+            reorderLevel: dto.reorderLevel,
+          }),
           ...(dto.isBillable !== undefined && { isBillable: dto.isBillable }),
         },
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A consumable with this name may already exist.');
+        throw new ConflictException(
+          'A consumable with this name may already exist.',
+        );
       }
       throw new BadRequestException('Invalid consumable data.');
     }
@@ -103,12 +124,17 @@ export class PharmacyConsumableService {
   async remove(id: string) {
     const consumable = await this.prisma.consumable.findUnique({
       where: { id },
-      include: { _count: { select: { batches: true, prescriptionItems: true } } },
+      include: {
+        _count: { select: { batches: true, prescriptionItems: true } },
+      },
     });
     if (!consumable) {
       throw new NotFoundException(`Consumable "${id}" not found.`);
     }
-    if (consumable._count.batches > 0 || consumable._count.prescriptionItems > 0) {
+    if (
+      consumable._count.batches > 0 ||
+      consumable._count.prescriptionItems > 0
+    ) {
       throw new BadRequestException(
         'Cannot delete consumable with linked batches or prescription items. Remove them first.',
       );

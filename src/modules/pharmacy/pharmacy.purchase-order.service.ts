@@ -7,6 +7,7 @@ import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePurchaseOrderDto } from './dto/purchase-order.dto';
 import { ListPurchaseOrderDto } from './dto/list-purchase-order.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 const ALLOWED_SORT = new Set(['createdAt', 'totalAmount', 'status']);
 
@@ -22,7 +23,9 @@ export class PharmacyPurchaseOrderService {
       throw new NotFoundException(`Supplier "${dto.supplierId}" not found.`);
     }
     if (supplier.isBlacklisted) {
-      throw new BadRequestException('Cannot create PO for a blacklisted supplier.');
+      throw new BadRequestException(
+        'Cannot create PO for a blacklisted supplier.',
+      );
     }
     if (!dto.items?.length) {
       throw new BadRequestException('At least one item is required.');
@@ -44,7 +47,9 @@ export class PharmacyPurchaseOrderService {
           drugId: item.drugId,
           quantity: qty,
           unitPrice: price,
-          expectedExpiry: item.expectedExpiry ? new Date(item.expectedExpiry) : null,
+          expectedExpiry: item.expectedExpiry
+            ? new Date(item.expectedExpiry)
+            : null,
         };
       }),
     );
@@ -60,16 +65,32 @@ export class PharmacyPurchaseOrderService {
       },
       include: {
         supplier: true,
-        items: { include: { drug: { select: { id: true, genericName: true, brandName: true } } } },
+        items: {
+          include: {
+            drug: { select: { id: true, genericName: true, brandName: true } },
+          },
+        },
         createdBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
   }
 
   async findAll(query: ListPurchaseOrderDto) {
-    const { status, supplierId, sortBy, sortOrder = 'desc', skip = 0, limit = 20 } = query;
+    const {
+      status,
+      supplierId,
+      sortBy,
+      sortOrder = 'desc',
+      skip = 0,
+      limit = 20,
+      fromDate,
+      toDate,
+    } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const take = Math.min(Math.max(1, limit), 100);
-    const where: Prisma.PurchaseOrderWhereInput = {};
+    const where: Prisma.PurchaseOrderWhereInput = {
+      createdAt: { gte: from, lte: to },
+    };
 
     if (status) where.status = status;
     if (supplierId) where.supplierId = supplierId;
@@ -113,7 +134,11 @@ export class PharmacyPurchaseOrderService {
     return po;
   }
 
-  async updateStatus(id: string, status: PurchaseOrderStatus, approvedById?: string) {
+  async updateStatus(
+    id: string,
+    status: PurchaseOrderStatus,
+    approvedById?: string,
+  ) {
     const po = await this.findOne(id);
     if (po.status === 'RECEIVED') {
       throw new BadRequestException('Cannot change status of a received PO.');

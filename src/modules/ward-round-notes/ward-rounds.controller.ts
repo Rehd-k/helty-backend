@@ -13,10 +13,7 @@ export class WardRoundsController {
 
   @Get('today')
   @ApiOperation({ summary: "Today's ward-round patients for a doctor" })
-  getToday(
-    @Query('doctorId') doctorId: string,
-    @Query('date') date?: string,
-  ) {
+  getToday(@Query('doctorId') doctorId: string, @Query('date') date?: string) {
     return this.wardRoundsService.getToday(doctorId, date);
   }
 }

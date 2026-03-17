@@ -8,12 +8,22 @@ import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-que
 @ApiTags('Radiology – Worklist')
 @Controller('radiology/worklist')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('RADIOLOGIST', 'RADIOGRAPHER', 'RADIOLOGY_RECEPTIONIST', 'RADIOLOGY')
+@AccountTypes(
+  'RADIOLOGIST',
+  'RADIOGRAPHER',
+  'RADIOLOGY_RECEPTIONIST',
+  'RADIOLOGY',
+)
 export class RadiologyWorklistController {
-  constructor(private readonly radiologyRequestService: RadiologyRequestService) {}
+  constructor(
+    private readonly radiologyRequestService: RadiologyRequestService,
+  ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get radiology worklist (queue of pending/scheduled/in progress/completed/reported requests)' })
+  @ApiOperation({
+    summary:
+      'Get radiology worklist (queue of pending/scheduled/in progress/completed/reported requests)',
+  })
   getWorklist(@Query() query: ListRadiologyRequestsQueryDto) {
     return this.radiologyRequestService.findAll(query);
   }

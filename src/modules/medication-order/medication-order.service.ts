@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import {
   CreateMedicationOrderDto,
   UpdateMedicationOrderDto,
@@ -11,14 +12,17 @@ import {
 
 @Injectable()
 export class MedicationOrderService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async create(dto: CreateMedicationOrderDto) {
     await this.validateEncounter(dto.encounterId);
     const drug = await this.validateDrug(dto.drugId);
     const patient = await this.validatePatient(dto.patientId);
     const doctor = await this.validateDoctor(dto.doctorId);
-    return this.prisma.medicationOrder.create({
+    const order = await this.prisma.medicationOrder.create({
       data: {
         encounterId: dto.encounterId,
         drugId: dto.drugId,
@@ -33,14 +37,20 @@ export class MedicationOrderService {
       },
       include: this.defaultInclude(),
     });
+    const invoice = await this.invoiceService.ensureInvoiceForEncounter({
+      encounterId: dto.encounterId,
+      patientId: dto.patientId,
+      staffId: dto.doctorId,
+    });
+    await this.invoiceService.addDrugItem({
+      invoiceId: invoice.id,
+      drugId: dto.drugId,
+      quantity: 1,
+    });
+    return order;
   }
 
-  async findAll(
-    skip = 0,
-    take = 20,
-    encounterId?: string,
-    status?: string,
-  ) {
+  async findAll(skip = 0, take = 20, encounterId?: string, status?: string) {
     const where: { encounterId?: string; status?: string } = {};
     if (encounterId) where.encounterId = encounterId;
     if (status) where.status = status;
@@ -65,7 +75,9 @@ export class MedicationOrderService {
       include: this.defaultInclude(),
     });
     if (!order) {
-      throw new NotFoundException(`Medication order with id "${id}" not found.`);
+      throw new NotFoundException(
+        `Medication order with id "${id}" not found.`,
+      );
     }
     return order;
   }
@@ -142,7 +154,6 @@ export class MedicationOrderService {
     return patient;
   }
 
-
   private async validateDoctor(doctorId: string) {
     const doctor = await this.prisma.staff.findUnique({
       where: { id: doctorId },
@@ -152,7 +163,6 @@ export class MedicationOrderService {
     }
     return doctor;
   }
-
 
   private defaultInclude() {
     return {
@@ -167,7 +177,7 @@ export class MedicationOrderService {
       drug: {
         select: {
           id: true,
-          genericName: true
+          genericName: true,
         },
       },
     };

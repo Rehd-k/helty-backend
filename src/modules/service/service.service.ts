@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ServiceService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   // ─── Service CRUD ─────────────────────────────────────────────────────────────
 
@@ -33,7 +33,9 @@ export class ServiceService {
       });
     } catch (error) {
       if (error.code === 'P2002') {
-        throw new BadRequestException('A service with this name already exists');
+        throw new BadRequestException(
+          'A service with this name already exists',
+        );
       }
       throw error;
     }
@@ -42,15 +44,21 @@ export class ServiceService {
   /**
    * Paginated list of all services with category and department info.
    */
-  async findAll(skip = 0, take = 10, search: string = '', filterCategory: string = '', departmentId: string = '', categoryId: string = '') {
-
-    const where: Prisma.ServiceWhereInput = {}
+  async findAll(
+    skip = 0,
+    take = 10,
+    search: string = '',
+    filterCategory: string = '',
+    departmentId: string = '',
+    categoryId: string = '',
+  ) {
+    const where: Prisma.ServiceWhereInput = {};
 
     if (search && search.trim() !== '') {
       where.name = {
         contains: search,
         mode: 'insensitive',
-      }
+      };
     }
 
     if (filterCategory && filterCategory.trim() !== '') {
@@ -59,17 +67,17 @@ export class ServiceService {
           contains: filterCategory,
           mode: 'insensitive',
         },
-      }
+      };
     }
 
     if (departmentId && departmentId.trim() !== '') {
       where.department = {
         id: departmentId,
-      }
+      };
     }
 
     if (categoryId && categoryId.trim() !== '') {
-      where.categoryId = categoryId
+      where.categoryId = categoryId;
     }
 
     const [services, total] = await Promise.all([
@@ -85,7 +93,7 @@ export class ServiceService {
         where,
       }),
       this.prisma.service.count({
-        where
+        where,
       }),
     ]);
     return { services, total, skip, take };

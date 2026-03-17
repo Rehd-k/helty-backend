@@ -1,6 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  Req,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateAdmissionDto, UpdateAdmissionDto } from './dto/create-admission.dto';
+import {
+  CreateAdmissionDto,
+  UpdateAdmissionDto,
+} from './dto/create-admission.dto';
 
 @Injectable()
 export class AdmissionService {
@@ -8,28 +16,44 @@ export class AdmissionService {
 
   async create(createAdmissionDto: CreateAdmissionDto, @Req() req: any) {
     const [patient, encounter] = await Promise.all([
-      this.prisma.patient.findUnique({ where: { id: createAdmissionDto.patientId } }),
-      this.prisma.encounter.findUnique({ where: { id: createAdmissionDto.encounterId } }),
+      this.prisma.patient.findUnique({
+        where: { id: createAdmissionDto.patientId },
+      }),
+      this.prisma.encounter.findUnique({
+        where: { id: createAdmissionDto.encounterId },
+      }),
     ]);
 
     if (!patient) {
-      throw new NotFoundException(`Patient "${createAdmissionDto.patientId}" not found.`);
+      throw new NotFoundException(
+        `Patient "${createAdmissionDto.patientId}" not found.`,
+      );
     }
     if (!encounter) {
-      throw new NotFoundException(`Encounter "${createAdmissionDto.encounterId}" not found.`);
+      throw new NotFoundException(
+        `Encounter "${createAdmissionDto.encounterId}" not found.`,
+      );
     }
     if (encounter.patientId !== createAdmissionDto.patientId) {
-      throw new BadRequestException('Encounter does not belong to the given patient.');
+      throw new BadRequestException(
+        'Encounter does not belong to the given patient.',
+      );
+    }
+    if (encounter.admissionId) {
+      throw new BadRequestException(
+        'This encounter is already linked to an admission. One encounter can only have one admission.',
+      );
     }
 
-    return this.prisma.admission.create({
+    const admission = await this.prisma.admission.create({
       data: {
         patientId: createAdmissionDto.patientId,
-        encounterId: createAdmissionDto.encounterId,
         admissionDate: new Date(Date.now()),
         dischargeDate: createAdmissionDto.dischargeDate
           ? new Date(createAdmissionDto.dischargeDate)
           : null,
+        bedId: createAdmissionDto.bedId,
+        wardId: createAdmissionDto.wardId,
         ward: createAdmissionDto.ward,
         room: createAdmissionDto.room,
         reason: createAdmissionDto.reason,
@@ -37,6 +61,21 @@ export class AdmissionService {
         ...(createAdmissionDto.attendingDoctorId && {
           attendingDoctorId: createAdmissionDto.attendingDoctorId,
         }),
+      },
+    });
+
+    await this.prisma.encounter.update({
+      where: { id: createAdmissionDto.encounterId },
+      data: { admissionId: admission.id },
+    });
+
+    return this.prisma.admission.findUnique({
+      where: { id: admission.id },
+      include: {
+        patient: true,
+        wardEntity: true,
+        bed: true,
+        encounter: true,
       },
     });
   }
@@ -62,6 +101,7 @@ export class AdmissionService {
           patient: true,
           wardEntity: true,
           bed: true,
+          encounter: true,
         },
         orderBy: { admissionDate: 'desc' },
       }),
@@ -75,6 +115,9 @@ export class AdmissionService {
       where: { id },
       include: {
         patient: true,
+        wardEntity: true,
+        bed: true,
+        encounter: true,
       },
     });
   }
@@ -85,6 +128,7 @@ export class AdmissionService {
       orderBy: { admissionDate: 'desc' },
       include: {
         patient: true,
+        encounter: true,
       },
     });
   }
@@ -96,6 +140,7 @@ export class AdmissionService {
       },
       include: {
         patient: true,
+        encounter: true,
       },
       orderBy: { admissionDate: 'asc' },
     });

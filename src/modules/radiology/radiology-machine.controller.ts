@@ -8,13 +8,25 @@ import { RadiologyModality } from '@prisma/client';
 @ApiTags('Radiology – Machines')
 @Controller('radiology/machines')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('RADIOLOGY_RECEPTIONIST', 'RADIOGRAPHER', 'RADIOLOGIST', 'RADIOLOGY')
+@AccountTypes(
+  'RADIOLOGY_RECEPTIONIST',
+  'RADIOGRAPHER',
+  'RADIOLOGIST',
+  'RADIOLOGY',
+)
 export class RadiologyMachineController {
-  constructor(private readonly radiologyMachineService: RadiologyMachineService) {}
+  constructor(
+    private readonly radiologyMachineService: RadiologyMachineService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List radiology machines (for scheduling)' })
-  @ApiQuery({ name: 'activeOnly', required: false, type: Boolean, description: 'Default true' })
+  @ApiQuery({
+    name: 'activeOnly',
+    required: false,
+    type: Boolean,
+    description: 'Default true',
+  })
   findAll(@Query('activeOnly') activeOnly?: string) {
     const active = activeOnly === 'false' ? false : true;
     return this.radiologyMachineService.findAll(active);

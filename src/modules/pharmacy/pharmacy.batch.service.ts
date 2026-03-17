@@ -1,8 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, PharmacyLocationType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBatchDto, UpdateBatchDto } from './dto/batch.dto';
 import { SearchBatchDto } from './dto/search-batch.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 const ALLOWED_SORT_FIELDS = new Set([
   'batchNumber',
@@ -16,7 +21,7 @@ const ALLOWED_SORT_FIELDS = new Set([
 
 @Injectable()
 export class PharmacyBatchService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateBatchDto) {
     const manufacturingDate = new Date(dto.manufacturingDate);
@@ -82,6 +87,8 @@ export class PharmacyBatchService {
       toLocationId,
       locationType,
       inStock,
+      fromDate,
+      toDate,
       limit = 20,
       skip = 0,
       sortBy = 'expiryDate',
@@ -89,7 +96,10 @@ export class PharmacyBatchService {
     } = dto;
 
     const take = Math.min(Math.max(1, Number(limit) || 20), 100);
-    const where: Prisma.DrugBatchWhereInput = {};
+    const { from, to } = parseDateRange(fromDate, toDate);
+    const where: Prisma.DrugBatchWhereInput = {
+      createdAt: { gte: from, lte: to },
+    };
 
     if (drugId) where.drugId = drugId;
     if (batchNumber) {
@@ -99,7 +109,7 @@ export class PharmacyBatchService {
     if (fromLocationId) where.fromLocationId = fromLocationId;
     if (toLocationId) where.toLocationId = toLocationId;
     if (locationType) {
-      const locType = locationType as PharmacyLocationType;
+      const locType = locationType;
       where.OR = [
         { fromLocation: { locationType: locType } },
         { toLocation: { locationType: locType } },
@@ -123,10 +133,14 @@ export class PharmacyBatchService {
     if (expiryDateFrom || expiryDateTo) {
       where.expiryDate = {};
       if (expiryDateFrom) {
-        (where.expiryDate as Prisma.DateTimeFilter).gte = new Date(expiryDateFrom);
+        (where.expiryDate as Prisma.DateTimeFilter).gte = new Date(
+          expiryDateFrom,
+        );
       }
       if (expiryDateTo) {
-        (where.expiryDate as Prisma.DateTimeFilter).lte = new Date(expiryDateTo);
+        (where.expiryDate as Prisma.DateTimeFilter).lte = new Date(
+          expiryDateTo,
+        );
       }
     }
 
@@ -137,7 +151,9 @@ export class PharmacyBatchService {
       where.quantityRemaining = { equals: 0 };
     }
 
-    const orderByField = ALLOWED_SORT_FIELDS.has(sortBy) ? sortBy : 'expiryDate';
+    const orderByField = ALLOWED_SORT_FIELDS.has(sortBy)
+      ? sortBy
+      : 'expiryDate';
     const orderBy: Prisma.DrugBatchOrderByWithRelationInput = {
       [orderByField]: sortOrder === 'desc' ? 'desc' : 'asc',
     };
@@ -180,8 +196,10 @@ export class PharmacyBatchService {
       : existing.expiryDate;
     this.validateDates(nextManufacturingDate, nextExpiryDate);
 
-    const nextQuantityReceived = dto.quantityReceived ?? existing.quantityReceived;
-    const nextQuantityRemaining = dto.quantityRemaining ?? existing.quantityRemaining;
+    const nextQuantityReceived =
+      dto.quantityReceived ?? existing.quantityReceived;
+    const nextQuantityRemaining =
+      dto.quantityRemaining ?? existing.quantityRemaining;
     if (nextQuantityRemaining > nextQuantityReceived) {
       throw new BadRequestException(
         'quantityRemaining cannot be greater than quantityReceived.',
@@ -200,17 +218,33 @@ export class PharmacyBatchService {
       where: { id },
       data: {
         ...(dto.drugId !== undefined && { drugId: dto.drugId }),
-        ...(dto.fromLocationId !== undefined && { fromLocationId: dto.fromLocationId }),
-        ...(dto.toLocationId !== undefined && { toLocationId: dto.toLocationId }),
-        ...(dto.batchNumber !== undefined && { batchNumber: dto.batchNumber.trim() }),
-        ...(dto.manufacturingDate !== undefined && { manufacturingDate: nextManufacturingDate }),
+        ...(dto.fromLocationId !== undefined && {
+          fromLocationId: dto.fromLocationId,
+        }),
+        ...(dto.toLocationId !== undefined && {
+          toLocationId: dto.toLocationId,
+        }),
+        ...(dto.batchNumber !== undefined && {
+          batchNumber: dto.batchNumber.trim(),
+        }),
+        ...(dto.manufacturingDate !== undefined && {
+          manufacturingDate: nextManufacturingDate,
+        }),
         ...(dto.expiryDate !== undefined && { expiryDate: nextExpiryDate }),
         ...(dto.supplierId !== undefined && { supplierId: dto.supplierId }),
         ...(dto.grnId !== undefined && { grnId: dto.grnId }),
-        ...(dto.costPrice !== undefined && { costPrice: new Prisma.Decimal(dto.costPrice) }),
-        ...(dto.sellingPrice !== undefined && { sellingPrice: new Prisma.Decimal(dto.sellingPrice) }),
-        ...(dto.quantityReceived !== undefined && { quantityReceived: dto.quantityReceived }),
-        ...(dto.quantityRemaining !== undefined && { quantityRemaining: dto.quantityRemaining }),
+        ...(dto.costPrice !== undefined && {
+          costPrice: new Prisma.Decimal(dto.costPrice),
+        }),
+        ...(dto.sellingPrice !== undefined && {
+          sellingPrice: new Prisma.Decimal(dto.sellingPrice),
+        }),
+        ...(dto.quantityReceived !== undefined && {
+          quantityReceived: dto.quantityReceived,
+        }),
+        ...(dto.quantityRemaining !== undefined && {
+          quantityRemaining: dto.quantityRemaining,
+        }),
       },
       include: this.defaultBatchInclude(),
     });
@@ -262,7 +296,10 @@ export class PharmacyBatchService {
   }
 
   private validateDates(manufacturingDate: Date, expiryDate: Date) {
-    if (Number.isNaN(manufacturingDate.getTime()) || Number.isNaN(expiryDate.getTime())) {
+    if (
+      Number.isNaN(manufacturingDate.getTime()) ||
+      Number.isNaN(expiryDate.getTime())
+    ) {
       throw new BadRequestException('Invalid manufacturingDate or expiryDate.');
     }
     if (expiryDate <= manufacturingDate) {
@@ -283,62 +320,79 @@ export class PharmacyBatchService {
 
     if (params.drugId) {
       checks.push(
-        this.prisma.drug.findFirst({
-          where: { id: params.drugId, deletedAt: null },
-          select: { id: true },
-        }).then((drug) => {
-          if (!drug) throw new NotFoundException(`Drug "${params.drugId}" not found.`);
-        }),
+        this.prisma.drug
+          .findFirst({
+            where: { id: params.drugId, deletedAt: null },
+            select: { id: true },
+          })
+          .then((drug) => {
+            if (!drug)
+              throw new NotFoundException(`Drug "${params.drugId}" not found.`);
+          }),
       );
     }
     if (params.fromLocationId) {
       checks.push(
-        this.prisma.pharmacyLocation.findUnique({
-          where: { id: params.fromLocationId },
-          select: { id: true },
-        }).then((loc) => {
-          if (!loc) {
-            throw new NotFoundException(
-              `From location "${params.fromLocationId}" not found.`,
-            );
-          }
-        }),
+        this.prisma.pharmacyLocation
+          .findUnique({
+            where: { id: params.fromLocationId },
+            select: { id: true },
+          })
+          .then((loc) => {
+            if (!loc) {
+              throw new NotFoundException(
+                `From location "${params.fromLocationId}" not found.`,
+              );
+            }
+          }),
       );
     }
     if (params.toLocationId) {
       checks.push(
-        this.prisma.pharmacyLocation.findUnique({
-          where: { id: params.toLocationId },
-          select: { id: true },
-        }).then((loc) => {
-          if (!loc) {
-            throw new NotFoundException(`To location "${params.toLocationId}" not found.`);
-          }
-        }),
+        this.prisma.pharmacyLocation
+          .findUnique({
+            where: { id: params.toLocationId },
+            select: { id: true },
+          })
+          .then((loc) => {
+            if (!loc) {
+              throw new NotFoundException(
+                `To location "${params.toLocationId}" not found.`,
+              );
+            }
+          }),
       );
     }
     if (params.supplierId) {
       checks.push(
-        this.prisma.supplier.findUnique({
-          where: { id: params.supplierId },
-          select: { id: true },
-        }).then((supplier) => {
-          if (!supplier) {
-            throw new NotFoundException(`Supplier "${params.supplierId}" not found.`);
-          }
-        }),
+        this.prisma.supplier
+          .findUnique({
+            where: { id: params.supplierId },
+            select: { id: true },
+          })
+          .then((supplier) => {
+            if (!supplier) {
+              throw new NotFoundException(
+                `Supplier "${params.supplierId}" not found.`,
+              );
+            }
+          }),
       );
     }
     if (params.grnId) {
       checks.push(
-        this.prisma.goodsReceipt.findUnique({
-          where: { id: params.grnId },
-          select: { id: true },
-        }).then((grn) => {
-          if (!grn) {
-            throw new NotFoundException(`Goods receipt "${params.grnId}" not found.`);
-          }
-        }),
+        this.prisma.goodsReceipt
+          .findUnique({
+            where: { id: params.grnId },
+            select: { id: true },
+          })
+          .then((grn) => {
+            if (!grn) {
+              throw new NotFoundException(
+                `Goods receipt "${params.grnId}" not found.`,
+              );
+            }
+          }),
       );
     }
 
@@ -362,4 +416,3 @@ export class PharmacyBatchService {
     } satisfies Prisma.DrugBatchInclude;
   }
 }
-

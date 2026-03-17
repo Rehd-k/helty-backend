@@ -11,8 +11,17 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { LabRequestService } from './lab-request.service';
-import { CreateLabRequestDto, UpdateLabRequestDto } from './dto/create-lab-request.dto';
+import {
+  CreateLabRequestDto,
+  UpdateLabRequestDto,
+} from './dto/create-lab-request.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+
+class ListLabRequestQueryDto extends DateRangeSkipTakeDto {
+  encounterId?: string;
+  patientId?: string;
+}
 
 @ApiTags('Lab Request')
 @Controller('lab-requests')
@@ -28,18 +37,8 @@ export class LabRequestController {
 
   @Get()
   @ApiOperation({ summary: 'Get all lab requests with optional filters' })
-  findAll(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '20',
-    @Query('encounterId') encounterId?: string,
-    @Query('patientId') patientId?: string,
-  ) {
-    return this.labRequestService.findAll(
-      parseInt(skip, 10),
-      parseInt(take, 10),
-      encounterId,
-      patientId,
-    );
+  findAll(@Query() query: ListLabRequestQueryDto) {
+    return this.labRequestService.findAll(query);
   }
 
   @Get('encounter/:encounterId')

@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRadiologyReportDto } from './dto/radiology-report.dto';
 import { UpdateRadiologyReportDto } from './dto/radiology-report.dto';
@@ -8,16 +12,24 @@ import { RadiologyRequestStatus } from '@prisma/client';
 export class RadiologyReportService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(requestId: string, dto: CreateRadiologyReportDto, signedById: string) {
+  async create(
+    requestId: string,
+    dto: CreateRadiologyReportDto,
+    signedById: string,
+  ) {
     const request = await this.prisma.radiologyRequest.findUnique({
       where: { id: requestId },
       include: { report: true },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     if (request.report) {
-      throw new BadRequestException('This request already has a report. Use PATCH to update.');
+      throw new BadRequestException(
+        'This request already has a report. Use PATCH to update.',
+      );
     }
     const radiologist = await this.prisma.staff.findUnique({
       where: { id: signedById },
@@ -57,10 +69,14 @@ export class RadiologyReportService {
       include: { report: true },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     if (!request.report) {
-      throw new NotFoundException('No report for this request. Use POST to create.');
+      throw new NotFoundException(
+        'No report for this request. Use POST to create.',
+      );
     }
 
     return this.prisma.radiologyStudyReport.update({
@@ -68,7 +84,9 @@ export class RadiologyReportService {
       data: {
         ...(dto.findings !== undefined && { findings: dto.findings }),
         ...(dto.impression !== undefined && { impression: dto.impression }),
-        ...(dto.recommendations !== undefined && { recommendations: dto.recommendations }),
+        ...(dto.recommendations !== undefined && {
+          recommendations: dto.recommendations,
+        }),
         ...(dto.severity !== undefined && { severity: dto.severity }),
       },
       include: {
@@ -81,7 +99,9 @@ export class RadiologyReportService {
     const report = await this.prisma.radiologyStudyReport.findUnique({
       where: { radiologyRequestId: requestId },
       include: {
-        signedBy: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        signedBy: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
         radiologyRequest: {
           select: {
             id: true,
@@ -89,13 +109,17 @@ export class RadiologyReportService {
             scanType: true,
             bodyPart: true,
             priority: true,
-            patient: { select: { firstName: true, surname: true, patientId: true } },
+            patient: {
+              select: { firstName: true, surname: true, patientId: true },
+            },
           },
         },
       },
     });
     if (!report) {
-      throw new NotFoundException(`No report found for radiology request "${requestId}".`);
+      throw new NotFoundException(
+        `No report found for radiology request "${requestId}".`,
+      );
     }
     return report;
   }

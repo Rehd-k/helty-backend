@@ -33,6 +33,14 @@ export class CreateLabRequestDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Service UUID to bill for this lab request (creates invoice with this service)',
+  })
+  @IsUUID()
+  @IsOptional()
+  serviceId?: string;
 }
 
 export class UpdateLabRequestDto {

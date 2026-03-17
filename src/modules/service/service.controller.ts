@@ -28,7 +28,7 @@ import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 @ApiTags('Services')
 @Controller('services')
 export class ServiceController {
-  constructor(private readonly serviceService: ServiceService) { }
+  constructor(private readonly serviceService: ServiceService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -46,12 +46,37 @@ export class ServiceController {
   @Get()
   @ApiOperation({
     summary: 'List all hospital services (paginated)',
-    description: 'Returns a paginated list of all services ordered by name, with category and department info.',
+    description:
+      'Returns a paginated list of all services ordered by name, with category and department info.',
   })
-  @ApiQuery({ name: 'skip', required: false, type: Number, description: 'Records to skip', example: 0 })
-  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Records to return', example: 10 })
-  @ApiQuery({ name: 'q', required: false, type: String, description: 'Search query', example: 'Blood Test' })
-  @ApiQuery({ name: 'filterCategory', required: false, type: String, description: 'Category filter', example: 'Lab Tests' })
+  @ApiQuery({
+    name: 'skip',
+    required: false,
+    type: Number,
+    description: 'Records to skip',
+    example: 0,
+  })
+  @ApiQuery({
+    name: 'take',
+    required: false,
+    type: Number,
+    description: 'Records to return',
+    example: 10,
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    type: String,
+    description: 'Search query',
+    example: 'Blood Test',
+  })
+  @ApiQuery({
+    name: 'filterCategory',
+    required: false,
+    type: String,
+    description: 'Category filter',
+    example: 'Lab Tests',
+  })
   @ApiOkResponse({ description: 'Paginated list of services' })
   findAll(
     @Query('skip') skip = '0',
@@ -61,13 +86,21 @@ export class ServiceController {
     @Query('departmentId') departmentId: string = '',
     @Query('categoryId') categoryId: string = '',
   ) {
-    return this.serviceService.findAll(+skip, +take, search, filterCategory, departmentId, categoryId);
+    return this.serviceService.findAll(
+      +skip,
+      +take,
+      search,
+      filterCategory,
+      departmentId,
+      categoryId,
+    );
   }
 
   @Get(':id')
   @ApiOperation({
     summary: 'Get a single service by ID',
-    description: 'Returns full service details including category, department, and related invoice items.',
+    description:
+      'Returns full service details including category, department, and related invoice items.',
   })
   @ApiParam({ name: 'id', description: 'Service UUID' })
   @ApiOkResponse({ description: 'Service found' })
@@ -103,7 +136,9 @@ export class ServiceController {
   @ApiParam({ name: 'id', description: 'Service UUID' })
   @ApiNoContentResponse({ description: 'Service deleted' })
   @ApiNotFoundResponse({ description: 'Service not found' })
-  @ApiBadRequestResponse({ description: 'Service is still referenced by invoice items' })
+  @ApiBadRequestResponse({
+    description: 'Service is still referenced by invoice items',
+  })
   remove(@Param('id') id: string) {
     return this.serviceService.remove(id);
   }

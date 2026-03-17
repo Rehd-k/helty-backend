@@ -51,7 +51,8 @@ export class CreateLabTestFieldDto {
   position?: number;
 
   @ApiPropertyOptional({
-    description: 'JSON string for DROPDOWN/MULTISELECT options (e.g. ["A","B"] or [{"value":"a","label":"A"}] )',
+    description:
+      'JSON string for DROPDOWN/MULTISELECT options (e.g. ["A","B"] or [{"value":"a","label":"A"}] )',
   })
   @IsString()
   @IsOptional()

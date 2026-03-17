@@ -19,7 +19,7 @@ import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 @Controller('pharmacy/batches')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PharmacyBatchController {
-  constructor(private readonly batchService: PharmacyBatchService) { }
+  constructor(private readonly batchService: PharmacyBatchService) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a drug batch' })
@@ -51,10 +51,10 @@ export class PharmacyBatchController {
 
   @Delete(':id')
   @ApiOperation({
-    summary: 'Delete a drug batch (only when not linked to movements/transfers/dispensations)',
+    summary:
+      'Delete a drug batch (only when not linked to movements/transfers/dispensations)',
   })
   remove(@Param('id') id: string) {
     return this.batchService.remove(id);
   }
 }
-

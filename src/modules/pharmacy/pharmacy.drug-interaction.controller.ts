@@ -33,10 +33,7 @@ export class PharmacyDrugInteractionController {
 
   @Get()
   @ApiOperation({ summary: 'List all drug interactions (paginated)' })
-  findAll(
-    @Query('skip') skip?: string,
-    @Query('take') take?: string,
-  ) {
+  findAll(@Query('skip') skip?: string, @Query('take') take?: string) {
     return this.service.findAll(Number(skip) || 0, Number(take) || 50);
   }
 

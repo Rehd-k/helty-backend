@@ -11,9 +11,13 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { LabReportService } from './lab-report.service';
-import { CreateLabReportDto, UpdateLabReportDto } from './dto/create-lab-report.dto';
+import {
+  CreateLabReportDto,
+  UpdateLabReportDto,
+} from './dto/create-lab-report.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
 @ApiTags('Lab Report')
 @Roles('laboratory')
@@ -30,11 +34,8 @@ export class LabReportController {
 
   @Get()
   @ApiOperation({ summary: 'Get all lab reports' })
-  findAll(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '10',
-  ) {
-    return this.labReportService.findAll(parseInt(skip), parseInt(take));
+  findAll(@Query() query: DateRangeSkipTakeDto) {
+    return this.labReportService.findAll(query);
   }
 
   @Get('patient/:patientId')

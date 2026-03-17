@@ -48,11 +48,16 @@ export class CreateGoodsReceiptDto {
   @IsUUID()
   purchaseOrderId: string;
 
-  @ApiProperty({ description: 'Pharmacy location where goods are received (toLocation)' })
+  @ApiProperty({
+    description: 'Pharmacy location where goods are received (toLocation)',
+  })
   @IsUUID()
   toLocationId: string;
 
-  @ApiPropertyOptional({ description: 'From location (e.g. receiving dock); defaults to toLocationId if not set' })
+  @ApiPropertyOptional({
+    description:
+      'From location (e.g. receiving dock); defaults to toLocationId if not set',
+  })
   @IsOptional()
   @IsUUID()
   fromLocationId?: string;

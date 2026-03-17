@@ -12,7 +12,7 @@ import {
 
 @Injectable()
 export class PatientVitalsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreatePatientVitalsDto) {
     const {
@@ -35,12 +35,16 @@ export class PatientVitalsService {
     startOfToday.setHours(0, 0, 0, 0);
     const waiting = await this.prisma.waitingPatient.findUnique({
       where: {
-        id: waitingPatientId, seen: false, createdAt: { gte: startOfToday }
+        id: waitingPatientId,
+        seen: false,
+        createdAt: { gte: startOfToday },
       },
       include: { vitals: true },
     });
     if (!waiting) {
-      throw new NotFoundException(`Waiting patient "${waitingPatientId}" not found.`);
+      throw new NotFoundException(
+        `Waiting patient "${waitingPatientId}" not found.`,
+      );
     }
 
     if (patientId && patientId !== waiting.patientId) {
@@ -230,4 +234,3 @@ export class PatientVitalsService {
     return { message: 'Patient vitals record deleted successfully.' };
   }
 }
-

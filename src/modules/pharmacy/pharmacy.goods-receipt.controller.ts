@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { PharmacyGoodsReceiptService } from './pharmacy.goods-receipt.service';
@@ -11,7 +19,9 @@ export class PharmacyGoodsReceiptController {
   constructor(private readonly service: PharmacyGoodsReceiptService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Receive goods against a purchase order (creates GR + batches)' })
+  @ApiOperation({
+    summary: 'Receive goods against a purchase order (creates GR + batches)',
+  })
   create(@Body() dto: CreateGoodsReceiptDto, @Req() req: any) {
     return this.service.create(dto, req.user?.sub);
   }

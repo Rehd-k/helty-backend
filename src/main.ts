@@ -20,11 +20,8 @@ async function bootstrap() {
 
   app.enableCors({});
 
-
   app.useGlobalFilters(new PrismaExceptionFilter());
-  app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, transform: true }),
-  );
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // Swagger
   const config = new DocumentBuilder()

@@ -92,8 +92,7 @@ export class UpdateConsultingRoomDto {
 
 export class QueryConsultingRoomDto {
   @ApiPropertyOptional({
-    description:
-      'Free-text search across name and location of the room',
+    description: 'Free-text search across name and location of the room',
     example: 'outpatient',
   })
   @IsString()
@@ -117,4 +116,3 @@ export class QueryConsultingRoomDto {
   @IsOptional()
   take?: number = 20;
 }
-

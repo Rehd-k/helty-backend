@@ -14,7 +14,10 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { GynaeProcedureService } from './gynae-procedure.service';
-import { CreateGynaeProcedureDto, UpdateGynaeProcedureDto } from './dto/create-gynae-procedure.dto';
+import {
+  CreateGynaeProcedureDto,
+  UpdateGynaeProcedureDto,
+} from './dto/create-gynae-procedure.dto';
 import { ListGynaeProceduresQueryDto } from './dto/list-gynae-procedures-query.dto';
 
 @ApiTags('Obstetrics – Gynaecology')
@@ -32,7 +35,10 @@ export class GynaeProcedureController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List gynae procedures (optional: patientId, fromDate, toDate, procedureType)' })
+  @ApiOperation({
+    summary:
+      'List gynae procedures (optional: patientId, fromDate, toDate, procedureType)',
+  })
   findAll(@Query() query: ListGynaeProceduresQueryDto) {
     return this.gynaeProcedureService.findAll(query);
   }

@@ -1,6 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateBabyDto, UpdateBabyDto, RegisterBabyAsPatientDto } from './dto/create-baby.dto';
+import {
+  CreateBabyDto,
+  UpdateBabyDto,
+  RegisterBabyAsPatientDto,
+} from './dto/create-baby.dto';
 import { ListBabiesQueryDto } from './dto/list-babies-query.dto';
 
 @Injectable()
@@ -9,15 +17,21 @@ export class BabyService {
 
   async create(dto: CreateBabyDto, createdById: string) {
     const [labourDelivery, mother, createdBy] = await Promise.all([
-      this.prisma.labourDelivery.findUnique({ where: { id: dto.labourDeliveryId } }),
+      this.prisma.labourDelivery.findUnique({
+        where: { id: dto.labourDeliveryId },
+      }),
       this.prisma.patient.findUnique({ where: { id: dto.motherId } }),
       this.prisma.staff.findUnique({ where: { id: createdById } }),
     ]);
     if (!labourDelivery) {
-      throw new NotFoundException(`Labour/delivery "${dto.labourDeliveryId}" not found.`);
+      throw new NotFoundException(
+        `Labour/delivery "${dto.labourDeliveryId}" not found.`,
+      );
     }
     if (!mother) {
-      throw new NotFoundException(`Mother/patient "${dto.motherId}" not found.`);
+      throw new NotFoundException(
+        `Mother/patient "${dto.motherId}" not found.`,
+      );
     }
     if (!createdBy) {
       throw new NotFoundException(`Staff "${dto.createdById}" not found.`);
@@ -26,7 +40,9 @@ export class BabyService {
       where: { id: labourDelivery.pregnancyId },
     });
     if (!pregnancy || pregnancy.patientId !== dto.motherId) {
-      throw new BadRequestException('Mother does not match the pregnancy for this delivery.');
+      throw new BadRequestException(
+        'Mother does not match the pregnancy for this delivery.',
+      );
     }
 
     return this.prisma.baby.create({
@@ -94,11 +110,17 @@ export class BabyService {
     return this.prisma.baby.update({
       where: { id },
       data: {
-        ...(dto.birthWeightG !== undefined && { birthWeightG: dto.birthWeightG }),
-        ...(dto.birthLengthCm !== undefined && { birthLengthCm: dto.birthLengthCm }),
+        ...(dto.birthWeightG !== undefined && {
+          birthWeightG: dto.birthWeightG,
+        }),
+        ...(dto.birthLengthCm !== undefined && {
+          birthLengthCm: dto.birthLengthCm,
+        }),
         ...(dto.apgar1 !== undefined && { apgar1: dto.apgar1 }),
         ...(dto.apgar5 !== undefined && { apgar5: dto.apgar5 }),
-        ...(dto.resuscitation !== undefined && { resuscitation: dto.resuscitation }),
+        ...(dto.resuscitation !== undefined && {
+          resuscitation: dto.resuscitation,
+        }),
       },
       include: {
         mother: { select: { id: true, firstName: true, surname: true } },
@@ -107,7 +129,11 @@ export class BabyService {
     });
   }
 
-  async registerAsPatient(babyId: string, dto: RegisterBabyAsPatientDto, createdById: string) {
+  async registerAsPatient(
+    babyId: string,
+    dto: RegisterBabyAsPatientDto,
+    createdById: string,
+  ) {
     const baby = await this.prisma.baby.findUnique({
       where: { id: babyId },
       include: { labourDelivery: true },
@@ -120,7 +146,9 @@ export class BabyService {
     }
 
     const dob = baby.labourDelivery.deliveryDateTime;
-    const gender = dto.gender ?? (baby.sex === 'M' ? 'Male' : baby.sex === 'F' ? 'Female' : 'Unknown');
+    const gender =
+      dto.gender ??
+      (baby.sex === 'M' ? 'Male' : baby.sex === 'F' ? 'Female' : 'Unknown');
 
     const patient = await this.prisma.patient.create({
       data: {

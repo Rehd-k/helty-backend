@@ -2,7 +2,6 @@ import { IsString, IsOptional, IsBoolean, IsNotEmpty } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateEncounterDiagnosisDto {
-
   @ApiProperty({ description: 'ICD-10 code' })
   @IsString()
   @IsNotEmpty()
@@ -18,7 +17,10 @@ export class CreateEncounterDiagnosisDto {
   @IsNotEmpty()
   secondaryDiagnosesJson: string;
 
-  @ApiPropertyOptional({ description: 'Whether this is the primary diagnosis', default: false })
+  @ApiPropertyOptional({
+    description: 'Whether this is the primary diagnosis',
+    default: false,
+  })
   @IsBoolean()
   @IsOptional()
   isPrimary?: boolean;
@@ -49,7 +51,10 @@ export class UpdateEncounterDiagnosisDto {
   @IsOptional()
   secondaryDiagnosesJson: string;
 
-  @ApiPropertyOptional({ description: 'Whether this is the primary diagnosis', default: false })
+  @ApiPropertyOptional({
+    description: 'Whether this is the primary diagnosis',
+    default: false,
+  })
   @IsBoolean()
   @IsOptional()
   @IsOptional()

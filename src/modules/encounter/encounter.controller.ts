@@ -27,7 +27,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Encounter')
 @Controller('encounters')
 export class EncounterController {
-  constructor(private readonly encounterService: EncounterService) { }
+  constructor(private readonly encounterService: EncounterService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -38,7 +38,9 @@ export class EncounterController {
 
   @Post('start-outpatient')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Start an outpatient encounter (e.g. when doctor begins consult)' })
+  @ApiOperation({
+    summary: 'Start an outpatient encounter (e.g. when doctor begins consult)',
+  })
   startOutpatient(@Body() dto: StartOutpatientEncounterDto) {
     return this.encounterService.startOutpatient(dto);
   }
@@ -94,12 +96,10 @@ export class EncounterController {
   @Get(':id')
   @ApiOperation({
     summary: 'Get encounter by ID',
-    description: 'Optional query: expand=medicationOrders,labOrders,imagingOrders,appointment (or * for all)',
+    description:
+      'Optional query: expand=medicationOrders,labOrders,imagingOrders,appointment (or * for all)',
   })
-  findOne(
-    @Param('id') id: string,
-    @Query('expand') expand?: string,
-  ) {
+  findOne(@Param('id') id: string, @Query('expand') expand?: string) {
     return this.encounterService.findOne(id, expand);
   }
 
@@ -113,11 +113,10 @@ export class EncounterController {
   }
 
   @Patch(':id/complete')
-  @ApiOperation({ summary: 'Mark encounter as completed (sets endTime and status)' })
-  complete(
-    @Param('id') id: string,
-    @Body() body: { updatedById?: string },
-  ) {
+  @ApiOperation({
+    summary: 'Mark encounter as completed (sets endTime and status)',
+  })
+  complete(@Param('id') id: string, @Body() body: { updatedById?: string }) {
     return this.encounterService.complete(id, body?.updatedById);
   }
 

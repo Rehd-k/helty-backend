@@ -9,11 +9,9 @@ export class PatientService {
   private nanoid = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
   private readonly logger = new Logger(PatientService.name);
 
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(createPatientDto: CreatePatientDto, req: any) {
-
-
     const patientId = `${this.nanoid()}`;
     const data: any = {
       patientId: createPatientDto.email ? patientId : null,
@@ -35,16 +33,25 @@ export class PatientService {
     if (createPatientDto.otherName) data.otherName = createPatientDto.otherName;
     if (createPatientDto.religion) data.religion = createPatientDto.religion;
     if (createPatientDto.email) data.email = createPatientDto.email;
-    if (createPatientDto.preferredLanguage) data.preferredLanguage = createPatientDto.preferredLanguage;
-    if (createPatientDto.phoneNumber) data.phoneNumber = createPatientDto.phoneNumber;
-    if (createPatientDto.addressOfResidence) data.addressOfResidence = createPatientDto.addressOfResidence;
-    if (createPatientDto.profession) data.profession = createPatientDto.profession;
-    if (createPatientDto.nextOfKinName) data.nextOfKinName = createPatientDto.nextOfKinName;
-    if (createPatientDto.nextOfKinPhone) data.nextOfKinPhone = createPatientDto.nextOfKinPhone;
-    if (createPatientDto.nextOfKinAddress) data.nextOfKinAddress = createPatientDto.nextOfKinAddress;
-    if (createPatientDto.nextOfKinRelationship) data.nextOfKinRelationship = createPatientDto.nextOfKinRelationship;
+    if (createPatientDto.preferredLanguage)
+      data.preferredLanguage = createPatientDto.preferredLanguage;
+    if (createPatientDto.phoneNumber)
+      data.phoneNumber = createPatientDto.phoneNumber;
+    if (createPatientDto.addressOfResidence)
+      data.addressOfResidence = createPatientDto.addressOfResidence;
+    if (createPatientDto.profession)
+      data.profession = createPatientDto.profession;
+    if (createPatientDto.nextOfKinName)
+      data.nextOfKinName = createPatientDto.nextOfKinName;
+    if (createPatientDto.nextOfKinPhone)
+      data.nextOfKinPhone = createPatientDto.nextOfKinPhone;
+    if (createPatientDto.nextOfKinAddress)
+      data.nextOfKinAddress = createPatientDto.nextOfKinAddress;
+    if (createPatientDto.nextOfKinRelationship)
+      data.nextOfKinRelationship = createPatientDto.nextOfKinRelationship;
     if (createPatientDto.hmo) data.hmo = createPatientDto.hmo;
-    if (createPatientDto.fingerprintData) data.fingerprintData = createPatientDto.fingerprintData;
+    if (createPatientDto.fingerprintData)
+      data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
 
     const newPatient = this.prisma.patient.create({
@@ -54,20 +61,44 @@ export class PatientService {
   }
 
   private readonly ALLOWED_FILTER_FIELDS = new Set([
-    'patientId', 'firstName', 'surname', 'otherName', 'email',
-    'phoneNumber', 'gender', 'maritalStatus', 'nationality',
-    'stateOfOrigin', 'lga', 'town', 'permanentAddress', 'profession',
-    'nextOfKinName', 'nextOfKinPhone', 'nextOfKinRelationship',
+    'patientId',
+    'firstName',
+    'surname',
+    'otherName',
+    'email',
+    'phoneNumber',
+    'gender',
+    'maritalStatus',
+    'nationality',
+    'stateOfOrigin',
+    'lga',
+    'town',
+    'permanentAddress',
+    'profession',
+    'nextOfKinName',
+    'nextOfKinPhone',
+    'nextOfKinRelationship',
   ]);
 
   private readonly ALLOWED_SORT_FIELDS = new Set([
-    'patientId', 'firstName', 'surname', 'otherName', 'email',
-    'phoneNumber', 'gender', 'maritalStatus', 'nationality',
-    'stateOfOrigin', 'lga', 'town', 'permanentAddress', 'profession',
-    'nextOfKinName', 'nextOfKinPhone', 'nextOfKinRelationship',
+    'patientId',
+    'firstName',
+    'surname',
+    'otherName',
+    'email',
+    'phoneNumber',
+    'gender',
+    'maritalStatus',
+    'nationality',
+    'stateOfOrigin',
+    'lga',
+    'town',
+    'permanentAddress',
+    'profession',
+    'nextOfKinName',
+    'nextOfKinPhone',
+    'nextOfKinRelationship',
   ]);
-
-
 
   async findAll(
     skip = 0,
@@ -79,23 +110,17 @@ export class PatientService {
     sortBy?: string,
     isAscending = false,
   ) {
-
-
-    const where: Prisma.PatientWhereInput = {
-
-    }
+    const where: Prisma.PatientWhereInput = {};
 
     if (search && search.trim() !== '') {
-      const trimmedSearch = search.trim()
+      const trimmedSearch = search.trim();
 
       if (filterCategory === 'patientId') {
         where.patientId = {
           contains: trimmedSearch.toUpperCase(),
           mode: 'insensitive',
-        }
-      }
-
-      else if (filterCategory === 'fullName') {
+        };
+      } else if (filterCategory === 'fullName') {
         where.AND = [
           { patientId: { not: null } },
           {
@@ -114,11 +139,8 @@ export class PatientService {
               },
             ],
           },
-        ]
-      }
-
-
-      else if (filterCategory === 'nameIdPhonenumber') {
+        ];
+      } else if (filterCategory === 'nameIdPhonenumber') {
         // Only patients with patientId, AND search must match one of the fields
         where.AND = [
           { patientId: { not: null } },
@@ -150,31 +172,28 @@ export class PatientService {
               },
             ],
           },
-        ]
-      }
-
-      else if (
+        ];
+      } else if (
         filterCategory &&
         this.ALLOWED_FILTER_FIELDS.has(filterCategory)
       ) {
         where[filterCategory] = {
           contains: trimmedSearch,
           mode: 'insensitive',
-        }
+        };
       }
     }
-
 
     if (fromDate && toDate) {
       where.createdAt = {
         gte: new Date(fromDate),
         lte: new Date(toDate),
-      }
+      };
     }
 
     let orderBy: Prisma.PatientOrderByWithRelationInput = {
       createdAt: Prisma.SortOrder.desc,
-    }
+    };
 
     if (
       sortBy &&
@@ -182,10 +201,8 @@ export class PatientService {
       this.ALLOWED_SORT_FIELDS.has(sortBy)
     ) {
       orderBy = {
-        [sortBy]: isAscending
-          ? Prisma.SortOrder.asc
-          : Prisma.SortOrder.desc,
-      }
+        [sortBy]: isAscending ? Prisma.SortOrder.asc : Prisma.SortOrder.desc,
+      };
     }
 
     const [patients, total] = await Promise.all([
@@ -199,14 +216,14 @@ export class PatientService {
             select: {
               id: true,
               firstName: true,
-              lastName: true
+              lastName: true,
             },
           },
           updatedBy: {
             select: {
               id: true,
               firstName: true,
-              lastName: true
+              lastName: true,
             },
           },
           appointments: {
@@ -227,15 +244,14 @@ export class PatientService {
       this.prisma.patient.count({
         where,
       }),
-    ])
-
+    ]);
 
     return {
       patients,
       total,
       skip,
       take,
-    }
+    };
   }
 
   async findOne(id: string) {
@@ -267,7 +283,6 @@ export class PatientService {
           orderBy: { startDate: 'desc' },
         },
         invoice: {
-
           orderBy: { createdAt: 'desc' },
         },
       },

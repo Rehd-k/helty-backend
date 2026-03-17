@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRadiologyProcedureDto } from './dto/radiology-procedure.dto';
 import { UpdateRadiologyProcedureDto } from './dto/radiology-procedure.dto';
@@ -14,13 +18,22 @@ export class RadiologyProcedureService {
       include: { procedure: true },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     if (request.procedure) {
-      throw new BadRequestException('This request already has a procedure record. Use PATCH to update.');
+      throw new BadRequestException(
+        'This request already has a procedure record. Use PATCH to update.',
+      );
     }
-    if (request.status !== RadiologyRequestStatus.SCHEDULED && request.status !== RadiologyRequestStatus.PENDING) {
-      throw new BadRequestException('Only SCHEDULED or PENDING requests can start a procedure.');
+    if (
+      request.status !== RadiologyRequestStatus.SCHEDULED &&
+      request.status !== RadiologyRequestStatus.PENDING
+    ) {
+      throw new BadRequestException(
+        'Only SCHEDULED or PENDING requests can start a procedure.',
+      );
     }
     const staff = await this.prisma.staff.findUnique({
       where: { id: dto.performedById },
@@ -33,7 +46,9 @@ export class RadiologyProcedureService {
         where: { id: dto.machineId },
       });
       if (!machine) {
-        throw new NotFoundException(`Radiology machine "${dto.machineId}" not found.`);
+        throw new NotFoundException(
+          `Radiology machine "${dto.machineId}" not found.`,
+        );
       }
     }
 
@@ -48,7 +63,9 @@ export class RadiologyProcedureService {
           notes: dto.notes ?? null,
         },
         include: {
-          performedBy: { select: { id: true, firstName: true, lastName: true } },
+          performedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
           machine: true,
         },
       }),
@@ -66,10 +83,14 @@ export class RadiologyProcedureService {
       include: { procedure: true },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     if (!request.procedure) {
-      throw new NotFoundException('No procedure record for this request. Use POST to create.');
+      throw new NotFoundException(
+        'No procedure record for this request. Use POST to create.',
+      );
     }
 
     const updateData: { endTime?: Date; notes?: string } = {};
@@ -104,7 +125,9 @@ export class RadiologyProcedureService {
       },
     });
     if (!procedure) {
-      throw new NotFoundException(`No procedure record for radiology request "${requestId}".`);
+      throw new NotFoundException(
+        `No procedure record for radiology request "${requestId}".`,
+      );
     }
     return procedure;
   }

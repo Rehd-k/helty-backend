@@ -11,7 +11,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { MedicalHistoryService } from './medical-history.service';
-import { CreateMedicalHistoryDto, UpdateMedicalHistoryDto } from './dto/create-medical-history.dto';
+import {
+  CreateMedicalHistoryDto,
+  UpdateMedicalHistoryDto,
+} from './dto/create-medical-history.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Medical History')

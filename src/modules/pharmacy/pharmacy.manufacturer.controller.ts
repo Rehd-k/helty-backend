@@ -12,7 +12,10 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { PharmacyManufacturerService } from './pharmacy.manufacturer.service';
-import { CreateManufacturerDto, UpdateManufacturerDto } from './dto/manufacturer.dto';
+import {
+  CreateManufacturerDto,
+  UpdateManufacturerDto,
+} from './dto/manufacturer.dto';
 import { ListManufacturerDto } from './dto/list-manufacturer.dto';
 
 @ApiTags('Pharmacy - Manufacturers')
@@ -46,7 +49,9 @@ export class PharmacyManufacturerController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete a manufacturer (fails if drugs are linked)' })
+  @ApiOperation({
+    summary: 'Delete a manufacturer (fails if drugs are linked)',
+  })
   remove(@Param('id') id: string) {
     return this.service.remove(id);
   }

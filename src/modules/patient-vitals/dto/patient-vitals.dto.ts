@@ -208,4 +208,3 @@ export class QueryPatientVitalsDto {
   @IsOptional()
   take?: number = 20;
 }
-

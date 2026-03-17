@@ -10,4 +10,3 @@ import { WardController } from './ward.controller';
   exports: [WardService],
 })
 export class WardModule {}
-

@@ -10,4 +10,3 @@ import { ConsultingRoomController } from './consulting-room.controller';
   exports: [ConsultingRoomService],
 })
 export class ConsultingRoomModule {}
-

@@ -11,8 +11,12 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { AppointmentService } from './appointment.service';
-import { CreateAppointmentDto, UpdateAppointmentDto } from './dto/create-appointment.dto';
+import {
+  CreateAppointmentDto,
+  UpdateAppointmentDto,
+} from './dto/create-appointment.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
 @ApiTags('Appointment')
 @Controller('appointments')
@@ -28,11 +32,8 @@ export class AppointmentController {
 
   @Get()
   @ApiOperation({ summary: 'Get all appointments' })
-  findAll(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '10',
-  ) {
-    return this.appointmentService.findAll(parseInt(skip), parseInt(take));
+  findAll(@Query() query: DateRangeSkipTakeDto) {
+    return this.appointmentService.findAll(query);
   }
 
   @Get('upcoming')

@@ -32,7 +32,9 @@ export class PharmacyLocationController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List pharmacy locations with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List pharmacy locations with filtering and pagination',
+  })
   findAll(@Query() query: ListPharmacyLocationDto) {
     return this.service.findAll(query);
   }

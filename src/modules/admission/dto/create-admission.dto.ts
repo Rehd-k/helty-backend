@@ -15,6 +15,14 @@ export class CreateAdmissionDto {
   @IsNotEmpty()
   encounterId: string;
 
+  @IsUUID()
+  @IsNotEmpty()
+  wardId: string;
+  
+  @IsUUID()
+  @IsNotEmpty()
+  bedId: string;
+
   @IsDateString()
   @IsOptional()
   admissionDate: string;

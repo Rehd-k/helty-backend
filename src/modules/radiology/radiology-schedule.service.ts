@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRadiologyScheduleDto } from './dto/radiology-schedule.dto';
 import { UpdateRadiologyScheduleDto } from './dto/radiology-schedule.dto';
@@ -14,10 +18,14 @@ export class RadiologyScheduleService {
       include: { schedule: true },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     if (request.schedule) {
-      throw new BadRequestException('This request already has a schedule. Use PATCH to update.');
+      throw new BadRequestException(
+        'This request already has a schedule. Use PATCH to update.',
+      );
     }
     if (request.status !== RadiologyRequestStatus.PENDING) {
       throw new BadRequestException('Only PENDING requests can be scheduled.');
@@ -35,7 +43,9 @@ export class RadiologyScheduleService {
         where: { id: dto.machineId },
       });
       if (!machine) {
-        throw new NotFoundException(`Radiology machine "${dto.machineId}" not found.`);
+        throw new NotFoundException(
+          `Radiology machine "${dto.machineId}" not found.`,
+        );
       }
     }
 
@@ -48,7 +58,9 @@ export class RadiologyScheduleService {
           machineId: dto.machineId ?? null,
         },
         include: {
-          radiographer: { select: { id: true, firstName: true, lastName: true } },
+          radiographer: {
+            select: { id: true, firstName: true, lastName: true },
+          },
           machine: true,
         },
       }),
@@ -66,10 +78,14 @@ export class RadiologyScheduleService {
       include: { schedule: true },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     if (!request.schedule) {
-      throw new NotFoundException('No schedule found for this request. Use POST to create.');
+      throw new NotFoundException(
+        'No schedule found for this request. Use POST to create.',
+      );
     }
     if (dto.radiographerId !== undefined) {
       const staff = await this.prisma.staff.findUnique({
@@ -84,7 +100,9 @@ export class RadiologyScheduleService {
         where: { id: dto.machineId },
       });
       if (!machine) {
-        throw new NotFoundException(`Radiology machine "${dto.machineId}" not found.`);
+        throw new NotFoundException(
+          `Radiology machine "${dto.machineId}" not found.`,
+        );
       }
     }
 
@@ -92,8 +110,12 @@ export class RadiologyScheduleService {
       where: { radiologyRequestId: requestId },
       data: {
         ...(dto.scheduledAt && { scheduledAt: new Date(dto.scheduledAt) }),
-        ...(dto.radiographerId !== undefined && { radiographerId: dto.radiographerId ?? null }),
-        ...(dto.machineId !== undefined && { machineId: dto.machineId ?? null }),
+        ...(dto.radiographerId !== undefined && {
+          radiographerId: dto.radiographerId ?? null,
+        }),
+        ...(dto.machineId !== undefined && {
+          machineId: dto.machineId ?? null,
+        }),
       },
       include: {
         radiographer: { select: { id: true, firstName: true, lastName: true } },
@@ -111,7 +133,9 @@ export class RadiologyScheduleService {
       },
     });
     if (!schedule) {
-      throw new NotFoundException(`No schedule found for radiology request "${requestId}".`);
+      throw new NotFoundException(
+        `No schedule found for radiology request "${requestId}".`,
+      );
     }
     return schedule;
   }

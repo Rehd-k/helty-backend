@@ -1,10 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateLabReportDto, UpdateLabReportDto } from './dto/create-lab-report.dto';
+import {
+  CreateLabReportDto,
+  UpdateLabReportDto,
+} from './dto/create-lab-report.dto';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class LabReportService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(createLabReportDto: CreateLabReportDto) {
     if (createLabReportDto.encounterId) {
@@ -23,9 +32,12 @@ export class LabReportService {
     });
   }
 
-  async findAll(skip = 0, take = 10) {
+  async findAll(query: DateRangeSkipTakeDto) {
+    const { skip = 0, take = 20, fromDate, toDate } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const [reports, total] = await Promise.all([
       this.prisma.labReport.findMany({
+        where: { date: { gte: from, lte: to } },
         skip,
         take,
         include: {
@@ -33,7 +45,7 @@ export class LabReportService {
         },
         orderBy: { date: 'desc' },
       }),
-      this.prisma.labReport.count(),
+      this.prisma.labReport.count({ where: { date: { gte: from, lte: to } } }),
     ]);
 
     return { reports, total, skip, take };
@@ -75,7 +87,10 @@ export class LabReportService {
     });
   }
 
-  private async validateEncounterForPatient(encounterId: string, patientId: string) {
+  private async validateEncounterForPatient(
+    encounterId: string,
+    patientId: string,
+  ) {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: encounterId },
     });
@@ -83,7 +98,9 @@ export class LabReportService {
       throw new BadRequestException(`Encounter "${encounterId}" not found.`);
     }
     if (encounter.patientId !== patientId) {
-      throw new BadRequestException('Encounter does not belong to the given patient.');
+      throw new BadRequestException(
+        'Encounter does not belong to the given patient.',
+      );
     }
   }
 

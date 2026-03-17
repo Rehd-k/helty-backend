@@ -9,10 +9,15 @@ import { RadiologyDashboardService } from './radiology-dashboard.service';
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('RADIOLOGIST', 'RADIOLOGY_RECEPTIONIST', 'RADIOLOGY')
 export class RadiologyDashboardController {
-  constructor(private readonly radiologyDashboardService: RadiologyDashboardService) {}
+  constructor(
+    private readonly radiologyDashboardService: RadiologyDashboardService,
+  ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get radiology dashboard counts (today, pending, completed, waiting reports, urgent)' })
+  @ApiOperation({
+    summary:
+      'Get radiology dashboard counts (today, pending, completed, waiting reports, urgent)',
+  })
   getDashboard() {
     return this.radiologyDashboardService.getDashboard();
   }

@@ -23,13 +23,18 @@ import {
 @ApiTags('Medication Order')
 @Controller('medication-orders')
 export class MedicationOrderController {
-  constructor(private readonly medicationOrderService: MedicationOrderService) {}
+  constructor(
+    private readonly medicationOrderService: MedicationOrderService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new medication order' })
   @ApiResponse({ status: 201, description: 'Medication order created.' })
-  @ApiResponse({ status: 400, description: 'Invalid input or validation failed.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid input or validation failed.',
+  })
   @ApiResponse({ status: 404, description: 'Encounter or drug not found.' })
   create(@Body() dto: CreateMedicationOrderDto) {
     return this.medicationOrderService.create(dto);
@@ -37,7 +42,10 @@ export class MedicationOrderController {
 
   @Get()
   @ApiOperation({ summary: 'List medication orders with optional filters' })
-  @ApiResponse({ status: 200, description: 'Paginated list of medication orders.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of medication orders.',
+  })
   findAll(
     @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
     @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
@@ -51,9 +59,7 @@ export class MedicationOrderController {
   @ApiOperation({ summary: 'Get all medication orders for an encounter' })
   @ApiResponse({ status: 200, description: 'List of medication orders.' })
   @ApiResponse({ status: 404, description: 'Encounter not found.' })
-  findByEncounterId(
-    @Param('encounterId', ParseUUIDPipe) encounterId: string,
-  ) {
+  findByEncounterId(@Param('encounterId', ParseUUIDPipe) encounterId: string) {
     return this.medicationOrderService.findByEncounterId(encounterId);
   }
 

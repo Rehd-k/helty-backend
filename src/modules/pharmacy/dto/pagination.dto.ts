@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsNumberString, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsIn,
+  IsNumberString,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -40,7 +47,9 @@ export class CursorPaginationDto {
   @IsString()
   cursorId?: string;
 
-  @ApiPropertyOptional({ description: 'Cursor createdAt from previous response (ISO)' })
+  @ApiPropertyOptional({
+    description: 'Cursor createdAt from previous response (ISO)',
+  })
   @IsOptional()
   @IsString()
   cursorCreatedAt?: string;

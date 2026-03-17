@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { PharmacyLocationType } from '@prisma/client';
 
 export class CreatePharmacyLocationDto {
@@ -17,7 +23,9 @@ export class CreatePharmacyLocationDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ description: 'Staff ID assigned to this location (unique)' })
+  @ApiPropertyOptional({
+    description: 'Staff ID assigned to this location (unique)',
+  })
   @IsOptional()
   @IsUUID()
   staffId?: string;

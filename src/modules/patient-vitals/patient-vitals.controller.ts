@@ -21,9 +21,7 @@ import {
 @ApiTags('Patient Vitals')
 @Controller('patient-vitals')
 export class PatientVitalsController {
-  constructor(
-    private readonly patientVitalsService: PatientVitalsService,
-  ) {}
+  constructor(private readonly patientVitalsService: PatientVitalsService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -34,8 +32,7 @@ export class PatientVitalsController {
 
   @Get()
   @ApiOperation({
-    summary:
-      'List vitals records with optional patient filter and pagination',
+    summary: 'List vitals records with optional patient filter and pagination',
   })
   findAll(@Query() query: QueryPatientVitalsDto) {
     return this.patientVitalsService.findAll(query);
@@ -69,10 +66,7 @@ export class PatientVitalsController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update an existing vitals record' })
   @ApiParam({ name: 'id', description: 'Vitals record UUID' })
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdatePatientVitalsDto,
-  ) {
+  update(@Param('id') id: string, @Body() dto: UpdatePatientVitalsDto) {
     return this.patientVitalsService.update(id, dto);
   }
 
@@ -84,4 +78,3 @@ export class PatientVitalsController {
     await this.patientVitalsService.remove(id);
   }
 }
-

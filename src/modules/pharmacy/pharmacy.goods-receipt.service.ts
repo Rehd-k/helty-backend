@@ -17,10 +17,14 @@ export class PharmacyGoodsReceiptService {
       include: { items: true },
     });
     if (!po) {
-      throw new NotFoundException(`Purchase order "${dto.purchaseOrderId}" not found.`);
+      throw new NotFoundException(
+        `Purchase order "${dto.purchaseOrderId}" not found.`,
+      );
     }
     if (po.status === 'CANCELLED') {
-      throw new BadRequestException('Cannot receive a cancelled purchase order.');
+      throw new BadRequestException(
+        'Cannot receive a cancelled purchase order.',
+      );
     }
 
     const toLocation = await this.prisma.pharmacyLocation.findUnique({
@@ -34,7 +38,9 @@ export class PharmacyGoodsReceiptService {
       where: { id: fromLocationId },
     });
     if (!fromLocation) {
-      throw new NotFoundException(`From location "${fromLocationId}" not found.`);
+      throw new NotFoundException(
+        `From location "${fromLocationId}" not found.`,
+      );
     }
 
     if (!dto.items?.length) {
@@ -101,7 +107,9 @@ export class PharmacyGoodsReceiptService {
       where: { id: purchaseOrderId },
     });
     if (!po) {
-      throw new NotFoundException(`Purchase order "${purchaseOrderId}" not found.`);
+      throw new NotFoundException(
+        `Purchase order "${purchaseOrderId}" not found.`,
+      );
     }
     const receipts = await this.prisma.goodsReceipt.findMany({
       where: { purchaseOrderId },
@@ -121,7 +129,9 @@ export class PharmacyGoodsReceiptService {
         purchaseOrder: { include: { supplier: true } },
         items: { include: { drug: true } },
         receivedBy: { select: { id: true, firstName: true, lastName: true } },
-        batches: { include: { drug: true, fromLocation: true, toLocation: true } },
+        batches: {
+          include: { drug: true, fromLocation: true, toLocation: true },
+        },
       },
     });
     if (!gr) {

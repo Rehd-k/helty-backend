@@ -11,7 +11,10 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 // ─── Service DTOs ──────────────────────────────────────────────────────────────
 
 export class CreateServiceDto {
-  @ApiProperty({ description: 'Name of the hospital service', example: 'Blood Test' })
+  @ApiProperty({
+    description: 'Name of the hospital service',
+    example: 'Blood Test',
+  })
   @IsString()
   @IsNotEmpty()
   name: string;
@@ -19,9 +22,12 @@ export class CreateServiceDto {
   @ApiProperty({ description: 'The Service Code', example: 'CE90XXXXXXX' })
   @IsString()
   @IsNotEmpty()
-  searviceCode: string
+  searviceCode: string;
 
-  @ApiPropertyOptional({ description: 'Brief description of the service', example: 'Full blood count (FBC)' })
+  @ApiPropertyOptional({
+    description: 'Brief description of the service',
+    example: 'Full blood count (FBC)',
+  })
   @IsString()
   @IsOptional()
   description?: string;
@@ -36,10 +42,12 @@ export class CreateServiceDto {
   @IsOptional()
   categoryId?: string;
 
-  @ApiPropertyOptional({ description: 'UUID of the department offering this service' })
+  @ApiPropertyOptional({
+    description: 'UUID of the department offering this service',
+  })
   @IsUUID()
   @IsOptional()
   departmentId?: string;
 }
 
-export class UpdateServiceDto extends PartialType(CreateServiceDto) { }
+export class UpdateServiceDto extends PartialType(CreateServiceDto) {}

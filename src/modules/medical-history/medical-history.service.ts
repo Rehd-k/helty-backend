@@ -1,14 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateMedicalHistoryDto, UpdateMedicalHistoryDto } from './dto/create-medical-history.dto';
+import {
+  CreateMedicalHistoryDto,
+  UpdateMedicalHistoryDto,
+} from './dto/create-medical-history.dto';
 
 @Injectable()
 export class MedicalHistoryService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(createMedicalHistoryDto: CreateMedicalHistoryDto) {
     return this.prisma.medicalHistory.create({
-      data: { ...createMedicalHistoryDto, createdById: '', },
+      data: { ...createMedicalHistoryDto, createdById: '' },
     });
   }
 

@@ -13,6 +13,7 @@ import {
 import { PaymentService } from './payment.service';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto/create-payment.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
 @ApiTags('Payment')
 @Controller('payments')
@@ -28,11 +29,8 @@ export class PaymentController {
 
   @Get()
   @ApiOperation({ summary: 'Get all payments' })
-  findAll(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '10',
-  ) {
-    return this.paymentService.findAll(parseInt(skip), parseInt(take));
+  findAll(@Query() query: DateRangeSkipTakeDto) {
+    return this.paymentService.findAll(query);
   }
 
   @Get('patient/:patientId')
@@ -55,10 +53,7 @@ export class PaymentController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update payment record' })
-  update(
-    @Param('id') id: string,
-    @Body() updatePaymentDto: UpdatePaymentDto,
-  ) {
+  update(@Param('id') id: string, @Body() updatePaymentDto: UpdatePaymentDto) {
     return this.paymentService.update(id, updatePaymentDto);
   }
 

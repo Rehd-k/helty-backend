@@ -5,17 +5,19 @@ import { CreateDepartmentDto } from './dto/create-department.dto';
 
 @Injectable()
 export class DepartmentService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(data: CreateDepartmentDto, req) {
-    data.createdById = req.user.sub
-    return this.prisma.department.create({ data: data as Prisma.DepartmentCreateInput });
+    data.createdById = req.user.sub;
+    return this.prisma.department.create({
+      data: data as Prisma.DepartmentCreateInput,
+    });
   }
 
   async findAll() {
     const [departments, total] = await Promise.all([
       this.prisma.department.findMany({
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
       }),
       this.prisma.department.count(),
     ]);

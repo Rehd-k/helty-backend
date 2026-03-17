@@ -29,7 +29,9 @@ export class PharmacyPurchaseOrderController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List purchase orders with filtering and pagination' })
+  @ApiOperation({
+    summary: 'List purchase orders with filtering and pagination',
+  })
   findAll(@Query() query: ListPurchaseOrderDto) {
     return this.service.findAll(query);
   }

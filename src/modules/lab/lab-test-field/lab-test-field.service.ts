@@ -27,7 +27,9 @@ export class LabTestFieldService {
         optionsJson: dto.optionsJson,
       },
       include: {
-        testVersion: { select: { id: true, versionNumber: true, testId: true } },
+        testVersion: {
+          select: { id: true, versionNumber: true, testId: true },
+        },
       },
     });
   }
@@ -37,9 +39,7 @@ export class LabTestFieldService {
       where: { id: versionId },
     });
     if (!version) {
-      throw new NotFoundException(
-        `Lab test version "${versionId}" not found.`,
-      );
+      throw new NotFoundException(`Lab test version "${versionId}" not found.`);
     }
     return this.prisma.labTestField.findMany({
       where: { testVersionId: versionId },

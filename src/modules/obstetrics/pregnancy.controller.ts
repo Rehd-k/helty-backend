@@ -15,7 +15,10 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { PregnancyService } from './pregnancy.service';
-import { CreatePregnancyDto, UpdatePregnancyDto } from './dto/create-pregnancy.dto';
+import {
+  CreatePregnancyDto,
+  UpdatePregnancyDto,
+} from './dto/create-pregnancy.dto';
 import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 
 @ApiTags('Obstetrics – Antenatal')

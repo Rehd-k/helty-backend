@@ -18,7 +18,9 @@ export class RadiologyImageService {
       where: { id: requestId },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     const staff = await this.prisma.staff.findUnique({
       where: { id: uploadedById },
@@ -55,7 +57,9 @@ export class RadiologyImageService {
       where: { id: requestId },
     });
     if (!request) {
-      throw new NotFoundException(`Radiology request "${requestId}" not found.`);
+      throw new NotFoundException(
+        `Radiology request "${requestId}" not found.`,
+      );
     }
     return this.prisma.radiologyImage.findMany({
       where: { radiologyRequestId: requestId },
@@ -66,7 +70,9 @@ export class RadiologyImageService {
     });
   }
 
-  async getFile(id: string): Promise<{ filePath: string; fileName: string; mimeType: string | null }> {
+  async getFile(
+    id: string,
+  ): Promise<{ filePath: string; fileName: string; mimeType: string | null }> {
     const image = await this.prisma.radiologyImage.findUnique({
       where: { id },
     });

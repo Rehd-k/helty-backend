@@ -7,7 +7,7 @@ import { UpdateBedDto } from './dto/update-bed.dto';
 
 @Injectable()
 export class WardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   createWard(dto: CreateWardDto) {
     return this.prisma.ward.create({
@@ -36,9 +36,38 @@ export class WardService {
         beds: true,
         admissions: {
           where: { status: 'ACTIVE' },
+
           include: {
-            patient: true,
-            bed: true,
+            encounter: {
+              include: {
+                patient: {
+                  select: {
+                    firstName: true,
+                    surname: true,
+                    patientId: true,
+                  }
+                },
+                doctor: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    staffId: true,
+                  }
+                }
+              }
+            },
+            patient: {
+              select: {
+                firstName: true,
+                surname: true,
+                patientId: true,
+              }
+            },
+            bed: {
+              select: {
+                bedNumber: true,
+              }
+            },
           },
         },
       },
@@ -47,6 +76,7 @@ export class WardService {
     if (!ward) {
       throw new NotFoundException('Ward not found');
     }
+    console.log(ward);
     return ward;
   }
 
@@ -97,4 +127,3 @@ export class WardService {
     });
   }
 }
-

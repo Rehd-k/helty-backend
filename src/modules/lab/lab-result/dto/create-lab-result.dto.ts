@@ -7,7 +7,9 @@ export class CreateLabResultDto {
   @IsNotEmpty()
   orderItemId: string;
 
-  @ApiProperty({ description: 'Lab test field UUID (must belong to order item test version)' })
+  @ApiProperty({
+    description: 'Lab test field UUID (must belong to order item test version)',
+  })
   @IsUUID()
   @IsNotEmpty()
   fieldId: string;

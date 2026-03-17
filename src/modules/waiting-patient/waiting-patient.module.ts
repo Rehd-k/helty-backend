@@ -10,4 +10,3 @@ import { WaitingPatientController } from './waiting-patient.controller';
   exports: [WaitingPatientService],
 })
 export class WaitingPatientModule {}
-

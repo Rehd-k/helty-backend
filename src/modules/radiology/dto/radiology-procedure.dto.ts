@@ -2,7 +2,9 @@ import { IsUUID, IsOptional, IsDateString, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateRadiologyProcedureDto {
-  @ApiProperty({ description: 'Staff UUID of radiographer performing the scan' })
+  @ApiProperty({
+    description: 'Staff UUID of radiographer performing the scan',
+  })
   @IsUUID()
   performedById: string;
 

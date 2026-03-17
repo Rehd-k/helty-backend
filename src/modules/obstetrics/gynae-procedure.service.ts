@@ -1,6 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateGynaeProcedureDto, UpdateGynaeProcedureDto } from './dto/create-gynae-procedure.dto';
+import {
+  CreateGynaeProcedureDto,
+  UpdateGynaeProcedureDto,
+} from './dto/create-gynae-procedure.dto';
 import { ListGynaeProceduresQueryDto } from './dto/list-gynae-procedures-query.dto';
 
 @Injectable()
@@ -22,19 +25,28 @@ export class GynaeProcedureService {
       const encounter = await this.prisma.encounter.findUnique({
         where: { id: dto.encounterId },
       });
-      if (!encounter) throw new NotFoundException(`Encounter "${dto.encounterId}" not found.`);
+      if (!encounter)
+        throw new NotFoundException(
+          `Encounter "${dto.encounterId}" not found.`,
+        );
     }
     if (dto.admissionId) {
       const admission = await this.prisma.admission.findUnique({
         where: { id: dto.admissionId },
       });
-      if (!admission) throw new NotFoundException(`Admission "${dto.admissionId}" not found.`);
+      if (!admission)
+        throw new NotFoundException(
+          `Admission "${dto.admissionId}" not found.`,
+        );
     }
     if (dto.assistantId) {
       const assistant = await this.prisma.staff.findUnique({
         where: { id: dto.assistantId },
       });
-      if (!assistant) throw new NotFoundException(`Assistant "${dto.assistantId}" not found.`);
+      if (!assistant)
+        throw new NotFoundException(
+          `Assistant "${dto.assistantId}" not found.`,
+        );
     }
 
     return this.prisma.gynaeProcedure.create({
@@ -68,7 +80,11 @@ export class GynaeProcedureService {
     } = {};
     if (query.patientId) where.patientId = query.patientId;
     if (query.procedureType) where.procedureType = query.procedureType;
-    if (query.fromDate) where.procedureDate = { ...where.procedureDate, gte: new Date(query.fromDate) };
+    if (query.fromDate)
+      where.procedureDate = {
+        ...where.procedureDate,
+        gte: new Date(query.fromDate),
+      };
     if (query.toDate) {
       const to = new Date(query.toDate);
       to.setDate(to.getDate() + 1);
@@ -113,23 +129,39 @@ export class GynaeProcedureService {
   async update(id: string, dto: UpdateGynaeProcedureDto) {
     await this.findOne(id);
     if (dto.surgeonId) {
-      const surgeon = await this.prisma.staff.findUnique({ where: { id: dto.surgeonId } });
-      if (!surgeon) throw new NotFoundException(`Surgeon "${dto.surgeonId}" not found.`);
+      const surgeon = await this.prisma.staff.findUnique({
+        where: { id: dto.surgeonId },
+      });
+      if (!surgeon)
+        throw new NotFoundException(`Surgeon "${dto.surgeonId}" not found.`);
     }
     if (dto.assistantId) {
-      const assistant = await this.prisma.staff.findUnique({ where: { id: dto.assistantId } });
-      if (!assistant) throw new NotFoundException(`Assistant "${dto.assistantId}" not found.`);
+      const assistant = await this.prisma.staff.findUnique({
+        where: { id: dto.assistantId },
+      });
+      if (!assistant)
+        throw new NotFoundException(
+          `Assistant "${dto.assistantId}" not found.`,
+        );
     }
 
     return this.prisma.gynaeProcedure.update({
       where: { id },
       data: {
-        ...(dto.procedureDate !== undefined && { procedureDate: new Date(dto.procedureDate) }),
-        ...(dto.procedureType !== undefined && { procedureType: dto.procedureType }),
+        ...(dto.procedureDate !== undefined && {
+          procedureDate: new Date(dto.procedureDate),
+        }),
+        ...(dto.procedureType !== undefined && {
+          procedureType: dto.procedureType,
+        }),
         ...(dto.surgeonId !== undefined && { surgeonId: dto.surgeonId }),
-        ...(dto.assistantId !== undefined && { assistantId: dto.assistantId ?? null }),
+        ...(dto.assistantId !== undefined && {
+          assistantId: dto.assistantId ?? null,
+        }),
         ...(dto.findings !== undefined && { findings: dto.findings }),
-        ...(dto.complications !== undefined && { complications: dto.complications }),
+        ...(dto.complications !== undefined && {
+          complications: dto.complications,
+        }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
       include: {

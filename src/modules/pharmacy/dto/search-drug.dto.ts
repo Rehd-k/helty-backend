@@ -1,5 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBooleanString, IsEnum, IsNumberString, IsOptional, IsString } from 'class-validator';
+import {
+  IsBooleanString,
+  IsEnum,
+  IsNumberString,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { PharmacyLocationType } from '@prisma/client';
 
 export class SearchDrugDto {
@@ -78,7 +84,9 @@ export class SearchDrugDto {
   @IsOptional()
   isControlled?: string;
 
-  @ApiPropertyOptional({ description: 'Full-text search across generic and brand names' })
+  @ApiPropertyOptional({
+    description: 'Full-text search across generic and brand names',
+  })
   @IsString()
   @IsOptional()
   search?: string;
@@ -108,4 +116,3 @@ export class SearchDrugDto {
   @IsOptional()
   sortOrder?: 'asc' | 'desc';
 }
-

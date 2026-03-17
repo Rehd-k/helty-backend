@@ -12,7 +12,10 @@ import {
   Req,
 } from '@nestjs/common';
 import { AdmissionService } from './admission.service';
-import { CreateAdmissionDto, UpdateAdmissionDto } from './dto/create-admission.dto';
+import {
+  CreateAdmissionDto,
+  UpdateAdmissionDto,
+} from './dto/create-admission.dto';
 import { ListAdmissionsQueryDto } from './dto/list-admissions-query.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
@@ -29,10 +32,15 @@ export class AdmissionController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all admissions (optional: status, attendingDoctorId)' })
+  @ApiOperation({
+    summary: 'Get all admissions (optional: status, attendingDoctorId)',
+  })
   findAll(@Query() query: ListAdmissionsQueryDto) {
     const skip = Math.max(0, parseInt(query.skip ?? '0', 10) || 0);
-    const take = Math.min(100, Math.max(1, parseInt(query.take ?? '10', 10) || 10));
+    const take = Math.min(
+      100,
+      Math.max(1, parseInt(query.take ?? '10', 10) || 10),
+    );
     return this.admissionService.findAll(skip, take, {
       status: query.status,
       attendingDoctorId: query.attendingDoctorId,

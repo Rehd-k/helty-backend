@@ -45,10 +45,21 @@ const radiologyFileInterceptor = FileInterceptor('file', {
   }),
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    const allowed = [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/pdf',
+    ];
     const mime = file.mimetype?.toLowerCase();
     if (mime && !allowed.includes(mime)) {
-      return cb(new Error('File type not allowed. Use image (JPEG, PNG, GIF, WebP) or PDF.'), false);
+      return cb(
+        new Error(
+          'File type not allowed. Use image (JPEG, PNG, GIF, WebP) or PDF.',
+        ),
+        false,
+      );
     }
     cb(null, true);
   },
@@ -57,7 +68,13 @@ const radiologyFileInterceptor = FileInterceptor('file', {
 @ApiTags('Radiology – Images')
 @Controller('radiology')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('CONSULTANT', 'INPATIENT_DOCTOR', 'RADIOLOGIST', 'RADIOGRAPHER', 'RADIOLOGY')
+@AccountTypes(
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+  'RADIOLOGIST',
+  'RADIOGRAPHER',
+  'RADIOLOGY',
+)
 export class RadiologyImageController {
   constructor(private readonly radiologyImageService: RadiologyImageService) {}
 
@@ -66,7 +83,12 @@ export class RadiologyImageController {
   @UseInterceptors(radiologyFileInterceptor)
   @ApiOperation({ summary: 'Upload an image/file for a radiology request' })
   @ApiConsumes('multipart/form-data')
-  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
   upload(
     @Param('requestId') requestId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -87,13 +109,14 @@ export class RadiologyImageController {
 
   @Get('images/:id/file')
   @ApiOperation({ summary: 'Download/serve image file' })
-  async getFile(
-    @Param('id') id: string,
-    @Res() res: express.Response,
-  ) {
-    const { filePath, fileName, mimeType } = await this.radiologyImageService.getFile(id);
+  async getFile(@Param('id') id: string, @Res() res: express.Response) {
+    const { filePath, fileName, mimeType } =
+      await this.radiologyImageService.getFile(id);
     res.setHeader('Content-Type', mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(fileName)}"`,
+    );
     res.sendFile(filePath);
   }
 

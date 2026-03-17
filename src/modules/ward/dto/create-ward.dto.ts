@@ -6,7 +6,10 @@ export class CreateWardDto {
   @IsString()
   name: string;
 
-  @ApiProperty({ description: 'Maximum number of beds in the ward', minimum: 0 })
+  @ApiProperty({
+    description: 'Maximum number of beds in the ward',
+    minimum: 0,
+  })
   @IsInt()
   @Min(0)
   capacity: number;
@@ -26,4 +29,3 @@ export class CreateWardDto {
   @IsString()
   departmentId?: string;
 }
-

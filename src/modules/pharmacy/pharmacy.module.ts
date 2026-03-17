@@ -61,4 +61,3 @@ import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service'
   ],
 })
 export class PharmacyModule {}
-

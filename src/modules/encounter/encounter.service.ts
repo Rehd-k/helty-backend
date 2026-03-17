@@ -15,6 +15,7 @@ import {
   UpdateEncounterDiagnosisDto,
 } from './dto/encounter-diagnosis.dto';
 import { EncounterType, EncounterStatus } from '@prisma/client';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class EncounterService {
@@ -40,9 +41,15 @@ export class EncounterService {
         createdById: req.user.sub,
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
-        admission: dto.admissionId ? { select: { id: true, status: true } } : false,
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
+        admission: dto.admissionId
+          ? { select: { id: true, status: true } }
+          : false,
       },
     });
   }
@@ -64,8 +71,12 @@ export class EncounterService {
         createdById,
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
       },
     });
 
@@ -84,17 +95,29 @@ export class EncounterService {
   }
 
   async findAll(query: QueryEncounterDto) {
-    const { patientId, doctorId, encounterType, status, skip = 0, take = 20 } = query;
+    const {
+      patientId,
+      doctorId,
+      encounterType,
+      status,
+      skip = 0,
+      take = 20,
+      fromDate,
+      toDate,
+    } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const where: {
       patientId?: string;
       doctorId?: string;
       encounterType?: EncounterType;
       status?: EncounterStatus;
+      startTime?: { gte: Date; lte: Date };
     } = {};
     if (patientId) where.patientId = patientId;
     if (doctorId) where.doctorId = doctorId;
     if (encounterType) where.encounterType = encounterType;
     if (status) where.status = status;
+    where.startTime = { gte: from, lte: to };
 
     const [data, total] = await Promise.all([
       this.prisma.encounter.findMany({
@@ -103,8 +126,22 @@ export class EncounterService {
         take,
         orderBy: { startTime: 'desc' },
         include: {
-          patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-          doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
+          },
+          doctor: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffId: true,
+            },
+          },
           admission: { select: { id: true, status: true } },
         },
       }),
@@ -114,12 +151,22 @@ export class EncounterService {
   }
 
   async findOne(id: string, expand?: string) {
-    const expandSet = expand ? new Set(expand.split(',').map((s) => s.trim().toLowerCase())) : new Set<string>();
+    const expandSet = expand
+      ? new Set(expand.split(',').map((s) => s.trim().toLowerCase()))
+      : new Set<string>();
     const encounter = await this.prisma.encounter.findUnique({
       where: { id },
       include: {
         patient: true,
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true, role: true } },
+        doctor: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffId: true,
+            role: true,
+          },
+        },
         admission: true,
         appointment: expandSet.has('appointment') || expandSet.has('*'),
         doctorReports: true,
@@ -129,7 +176,8 @@ export class EncounterService {
         diagnoses: true,
         labRequests: true,
         imagingRequests: true,
-        medicationOrders: expandSet.has('medicationorders') || expandSet.has('*'),
+        medicationOrders:
+          expandSet.has('medicationorders') || expandSet.has('*'),
         legacyLabOrders: expandSet.has('laborders') || expandSet.has('*'),
         imagingOrders: expandSet.has('imagingorders') || expandSet.has('*'),
       },
@@ -145,7 +193,9 @@ export class EncounterService {
       where: { patientId },
       orderBy: { startTime: 'desc' },
       include: {
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
       },
     });
   }
@@ -161,17 +211,22 @@ export class EncounterService {
       updatedById?: string;
     } = {};
     if (dto.endTime !== undefined) data.endTime = new Date(dto.endTime);
-    if (dto.chiefComplaint !== undefined) data.chiefComplaint = dto.chiefComplaint;
+    if (dto.chiefComplaint !== undefined)
+      data.chiefComplaint = dto.chiefComplaint;
     if (dto.triageNotes !== undefined) data.triageNotes = dto.triageNotes;
-    if (dto.status !== undefined) data.status = dto.status;
+    dto.status === undefined ? data.status = 'ONGOING' : data.status = dto.status;
     if (dto.updatedById !== undefined) data.updatedById = dto.updatedById;
 
     return this.prisma.encounter.update({
       where: { id },
       data,
       include: {
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
         admission: { select: { id: true, status: true } },
       },
     });
@@ -188,8 +243,12 @@ export class EncounterService {
         ...(updatedById && { updatedById }),
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        doctor: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
       },
     });
   }
@@ -213,9 +272,13 @@ export class EncounterService {
     }
   }
 
-  private async validateAdmissionForPatient(admissionId: string, patientId: string) {
+  private async validateAdmissionForPatient(
+    admissionId: string,
+    patientId: string,
+  ) {
     const admission = await this.prisma.admission.findUnique({
       where: { id: admissionId },
+      include: { encounter: true },
     });
     if (!admission) {
       throw new NotFoundException(`Admission "${admissionId}" not found.`);
@@ -223,6 +286,11 @@ export class EncounterService {
     if (admission.patientId !== patientId) {
       throw new BadRequestException(
         'Admission does not belong to the given patient.',
+      );
+    }
+    if (admission.encounter) {
+      throw new BadRequestException(
+        'This admission is already linked to an encounter. One admission can only have one encounter.',
       );
     }
   }
@@ -236,7 +304,6 @@ export class EncounterService {
         primaryIcdCode: dto.primaryIcdCode,
         primaryIcdDescription: dto.primaryIcdDescription,
         secondaryDiagnosesJson: dto.secondaryDiagnosesJson,
-
       },
       include: { encounter: { select: { id: true, patientId: true } } },
     });

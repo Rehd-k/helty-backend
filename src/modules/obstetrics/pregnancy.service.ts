@@ -1,12 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PregnancyStatus } from '@prisma/client';
-import { CreatePregnancyDto, UpdatePregnancyDto } from './dto/create-pregnancy.dto';
+import {
+  CreatePregnancyDto,
+  UpdatePregnancyDto,
+} from './dto/create-pregnancy.dto';
 import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 
 @Injectable()
 export class PregnancyService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreatePregnancyDto, createdById: string) {
     const patient = await this.prisma.patient.findUnique({
@@ -17,7 +20,6 @@ export class PregnancyService {
     }
     return this.prisma.pregnancy.create({
       data: {
-
         patientId: patient.id,
         gravida: dto.gravida,
         para: dto.para,
@@ -40,7 +42,7 @@ export class PregnancyService {
     const take = query.take ?? 20;
     const where: { patientId?: string; status?: PregnancyStatus } = {};
     if (query.patientId) where.patientId = query.patientId;
-    if (query.status) where.status = query.status as PregnancyStatus;
+    if (query.status) where.status = query.status;
 
     const [pregnancies, total] = await Promise.all([
       this.prisma.pregnancy.findMany({

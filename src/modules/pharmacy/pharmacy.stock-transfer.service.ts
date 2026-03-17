@@ -8,6 +8,7 @@ import { StockTransferStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateStockTransferDto } from './dto/stock-transfer.dto';
 import { ListStockTransferDto } from './dto/list-stock-transfer.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 const ALLOWED_SORT = new Set(['createdAt', 'status', 'completedAt']);
 
@@ -20,11 +21,21 @@ export class PharmacyStockTransferService {
       throw new BadRequestException('From and to locations must be different.');
     }
     const [fromLoc, toLoc] = await Promise.all([
-      this.prisma.pharmacyLocation.findUnique({ where: { id: dto.fromLocationId } }),
-      this.prisma.pharmacyLocation.findUnique({ where: { id: dto.toLocationId } }),
+      this.prisma.pharmacyLocation.findUnique({
+        where: { id: dto.fromLocationId },
+      }),
+      this.prisma.pharmacyLocation.findUnique({
+        where: { id: dto.toLocationId },
+      }),
     ]);
-    if (!fromLoc) throw new NotFoundException(`From location "${dto.fromLocationId}" not found.`);
-    if (!toLoc) throw new NotFoundException(`To location "${dto.toLocationId}" not found.`);
+    if (!fromLoc)
+      throw new NotFoundException(
+        `From location "${dto.fromLocationId}" not found.`,
+      );
+    if (!toLoc)
+      throw new NotFoundException(
+        `To location "${dto.toLocationId}" not found.`,
+      );
 
     if (!dto.items?.length) {
       throw new BadRequestException('At least one transfer item is required.');
@@ -72,9 +83,22 @@ export class PharmacyStockTransferService {
   }
 
   async findAll(query: ListStockTransferDto) {
-    const { status, fromLocationId, toLocationId, sortBy, sortOrder = 'desc', skip = 0, limit = 20 } = query;
+    const {
+      status,
+      fromLocationId,
+      toLocationId,
+      sortBy,
+      sortOrder = 'desc',
+      skip = 0,
+      limit = 20,
+      fromDate,
+      toDate,
+    } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const take = Math.min(Math.max(1, limit), 100);
-    const where: Prisma.StockTransferWhereInput = {};
+    const where: Prisma.StockTransferWhereInput = {
+      createdAt: { gte: from, lte: to },
+    };
 
     if (status) where.status = status;
     if (fromLocationId) where.fromLocationId = fromLocationId;
@@ -91,7 +115,9 @@ export class PharmacyStockTransferService {
         skip: Math.max(0, skip),
         take,
         include: {
-          fromLocation: { select: { id: true, name: true, locationType: true } },
+          fromLocation: {
+            select: { id: true, name: true, locationType: true },
+          },
           toLocation: { select: { id: true, name: true, locationType: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           _count: { select: { items: true } },
@@ -139,12 +165,16 @@ export class PharmacyStockTransferService {
   async complete(id: string) {
     const transfer = await this.findOne(id);
     if (transfer.status !== 'APPROVED') {
-      throw new BadRequestException('Only approved transfers can be completed.');
+      throw new BadRequestException(
+        'Only approved transfers can be completed.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
       for (const item of transfer.items) {
-        const batch = await tx.drugBatch.findUnique({ where: { id: item.batchId } });
+        const batch = await tx.drugBatch.findUnique({
+          where: { id: item.batchId },
+        });
         if (!batch || batch.quantityRemaining < item.quantity) {
           throw new BadRequestException(
             `Insufficient quantity for batch "${item.batchId}" to complete transfer.`,

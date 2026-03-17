@@ -4,11 +4,20 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateLabRequestDto, UpdateLabRequestDto } from './dto/create-lab-request.dto';
+import { InvoiceService } from '../invoice/invoice.service';
+import {
+  CreateLabRequestDto,
+  UpdateLabRequestDto,
+} from './dto/create-lab-request.dto';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class LabRequestService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) { }
 
   async create(dto: CreateLabRequestDto) {
     const encounter = await this.prisma.encounter.findUnique({
@@ -20,7 +29,7 @@ export class LabRequestService {
     if (encounter.patientId !== dto.patientId) {
       throw new BadRequestException('Patient does not match the encounter.');
     }
-    return this.prisma.labRequest.create({
+    const labRequest = await this.prisma.labRequest.create({
       data: {
         encounterId: dto.encounterId,
         patientId: dto.patientId,
@@ -30,16 +39,46 @@ export class LabRequestService {
       },
       include: {
         encounter: { select: { id: true, encounterType: true, status: true } },
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        requestedBy: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
       },
     });
+    if (dto.serviceId) {
+      await this.invoiceService.createWithServiceItem({
+        patientId: dto.patientId,
+        encounterId: dto.encounterId,
+        staffId: dto.requestedByDoctorId,
+        serviceId: dto.serviceId,
+      });
+    }
+    return labRequest;
   }
 
-  async findAll(skip = 0, take = 20, encounterId?: string, patientId?: string) {
-    const where: { encounterId?: string; patientId?: string } = {};
+  async findAll(
+    query: DateRangeSkipTakeDto & { encounterId?: string; patientId?: string },
+  ) {
+    const {
+      skip = 0,
+      take = 20,
+      encounterId,
+      patientId,
+      fromDate,
+      toDate,
+    } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
+
+    const where: {
+      encounterId?: string;
+      patientId?: string;
+      createdAt?: { gte: Date; lte: Date };
+    } = {};
     if (encounterId) where.encounterId = encounterId;
     if (patientId) where.patientId = patientId;
+    if (fromDate && toDate) where.createdAt = { gte: from, lte: to };
 
     const [data, total] = await Promise.all([
       this.prisma.labRequest.findMany({
@@ -48,9 +87,20 @@ export class LabRequestService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          encounter: { select: { id: true, encounterType: true, status: true } },
-          patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-          requestedBy: { select: { id: true, firstName: true, lastName: true } },
+          encounter: {
+            select: { id: true, encounterType: true, status: true },
+          },
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
+          },
+          requestedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
         },
       }),
       this.prisma.labRequest.count({ where }),
@@ -64,7 +114,9 @@ export class LabRequestService {
       include: {
         encounter: true,
         patient: true,
-        requestedBy: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        requestedBy: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
       },
     });
     if (!request) {

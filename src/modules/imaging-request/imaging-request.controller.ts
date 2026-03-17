@@ -11,8 +11,17 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ImagingRequestService } from './imaging-request.service';
-import { CreateImagingRequestDto, UpdateImagingRequestDto } from './dto/create-imaging-request.dto';
+import {
+  CreateImagingRequestDto,
+  UpdateImagingRequestDto,
+} from './dto/create-imaging-request.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+
+class ListImagingRequestQueryDto extends DateRangeSkipTakeDto {
+  encounterId?: string;
+  patientId?: string;
+}
 
 @ApiTags('Imaging Request')
 @Controller('imaging-requests')
@@ -21,25 +30,17 @@ export class ImagingRequestController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create an imaging request (order) for an encounter' })
+  @ApiOperation({
+    summary: 'Create an imaging request (order) for an encounter',
+  })
   create(@Body() dto: CreateImagingRequestDto) {
     return this.imagingRequestService.create(dto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Get all imaging requests with optional filters' })
-  findAll(
-    @Query('skip') skip: string = '0',
-    @Query('take') take: string = '20',
-    @Query('encounterId') encounterId?: string,
-    @Query('patientId') patientId?: string,
-  ) {
-    return this.imagingRequestService.findAll(
-      parseInt(skip, 10),
-      parseInt(take, 10),
-      encounterId,
-      patientId,
-    );
+  findAll(@Query() query: ListImagingRequestQueryDto) {
+    return this.imagingRequestService.findAll(query);
   }
 
   @Get('encounter/:encounterId')

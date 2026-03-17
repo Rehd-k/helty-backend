@@ -19,4 +19,3 @@ export class CreateBedDto {
   @IsEnum(['AVAILABLE', 'OCCUPIED', 'CLEANING', 'RESERVED'])
   status?: 'AVAILABLE' | 'OCCUPIED' | 'CLEANING' | 'RESERVED';
 }
-

@@ -1,7 +1,14 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PostnatalVisitType } from '@prisma/client';
-import { CreatePostnatalVisitDto, UpdatePostnatalVisitDto } from './dto/create-postnatal-visit.dto';
+import {
+  CreatePostnatalVisitDto,
+  UpdatePostnatalVisitDto,
+} from './dto/create-postnatal-visit.dto';
 import { ListPostnatalVisitsQueryDto } from './dto/list-postnatal-visits-query.dto';
 
 @Injectable()
@@ -10,24 +17,35 @@ export class PostnatalVisitService {
 
   async create(dto: CreatePostnatalVisitDto) {
     const [labourDelivery, staff] = await Promise.all([
-      this.prisma.labourDelivery.findUnique({ where: { id: dto.labourDeliveryId } }),
+      this.prisma.labourDelivery.findUnique({
+        where: { id: dto.labourDeliveryId },
+      }),
       this.prisma.staff.findUnique({ where: { id: dto.staffId } }),
     ]);
     if (!labourDelivery) {
-      throw new NotFoundException(`Labour/delivery "${dto.labourDeliveryId}" not found.`);
+      throw new NotFoundException(
+        `Labour/delivery "${dto.labourDeliveryId}" not found.`,
+      );
     }
     if (!staff) {
       throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
     }
     if (dto.type === 'MOTHER' && !dto.patientId) {
-      throw new BadRequestException('patientId is required for MOTHER postnatal visits.');
+      throw new BadRequestException(
+        'patientId is required for MOTHER postnatal visits.',
+      );
     }
     if (dto.type === 'BABY' && !dto.babyId) {
-      throw new BadRequestException('babyId is required for BABY postnatal visits.');
+      throw new BadRequestException(
+        'babyId is required for BABY postnatal visits.',
+      );
     }
     if (dto.patientId) {
-      const patient = await this.prisma.patient.findUnique({ where: { id: dto.patientId } });
-      if (!patient) throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
+      const patient = await this.prisma.patient.findUnique({
+        where: { id: dto.patientId },
+      });
+      if (!patient)
+        throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
     }
     if (dto.babyId) {
       const baby = await this.prisma.baby.findUnique({
@@ -36,7 +54,9 @@ export class PostnatalVisitService {
       });
       if (!baby) throw new NotFoundException(`Baby "${dto.babyId}" not found.`);
       if (baby.labourDeliveryId !== dto.labourDeliveryId) {
-        throw new BadRequestException('Baby does not belong to this labour/delivery.');
+        throw new BadRequestException(
+          'Baby does not belong to this labour/delivery.',
+        );
       }
     }
 
@@ -78,8 +98,9 @@ export class PostnatalVisitService {
       visitDate?: { gte?: Date; lte?: Date };
     } = {};
     if (query.labourDeliveryId) where.labourDeliveryId = query.labourDeliveryId;
-    if (query.type) where.type = query.type as PostnatalVisitType;
-    if (query.fromDate) where.visitDate = { ...where.visitDate, gte: new Date(query.fromDate) };
+    if (query.type) where.type = query.type;
+    if (query.fromDate)
+      where.visitDate = { ...where.visitDate, gte: new Date(query.fromDate) };
     if (query.toDate) {
       const to = new Date(query.toDate);
       to.setDate(to.getDate() + 1);
@@ -109,7 +130,9 @@ export class PostnatalVisitService {
     const visit = await this.prisma.postnatalVisit.findUnique({
       where: { id },
       include: {
-        labourDelivery: { include: { pregnancy: { include: { patient: true } } } },
+        labourDelivery: {
+          include: { pregnancy: { include: { patient: true } } },
+        },
         patient: true,
         baby: true,
         staff: true,
@@ -126,17 +149,27 @@ export class PostnatalVisitService {
     return this.prisma.postnatalVisit.update({
       where: { id },
       data: {
-        ...(dto.visitDate !== undefined && { visitDate: new Date(dto.visitDate) }),
-        ...(dto.uterusInvolution !== undefined && { uterusInvolution: dto.uterusInvolution }),
+        ...(dto.visitDate !== undefined && {
+          visitDate: new Date(dto.visitDate),
+        }),
+        ...(dto.uterusInvolution !== undefined && {
+          uterusInvolution: dto.uterusInvolution,
+        }),
         ...(dto.lochia !== undefined && { lochia: dto.lochia }),
         ...(dto.perineum !== undefined && { perineum: dto.perineum }),
-        ...(dto.bloodPressure !== undefined && { bloodPressure: dto.bloodPressure }),
+        ...(dto.bloodPressure !== undefined && {
+          bloodPressure: dto.bloodPressure,
+        }),
         ...(dto.temperature !== undefined && { temperature: dto.temperature }),
-        ...(dto.breastfeeding !== undefined && { breastfeeding: dto.breastfeeding }),
+        ...(dto.breastfeeding !== undefined && {
+          breastfeeding: dto.breastfeeding,
+        }),
         ...(dto.weight !== undefined && { weight: dto.weight }),
         ...(dto.feeding !== undefined && { feeding: dto.feeding }),
         ...(dto.jaundice !== undefined && { jaundice: dto.jaundice }),
-        ...(dto.immunisationGiven !== undefined && { immunisationGiven: dto.immunisationGiven }),
+        ...(dto.immunisationGiven !== undefined && {
+          immunisationGiven: dto.immunisationGiven,
+        }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
       include: {

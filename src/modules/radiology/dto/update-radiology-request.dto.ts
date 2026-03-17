@@ -1,6 +1,10 @@
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { RadiologyRequestStatus, RadiologyPriority, RadiologyModality } from '@prisma/client';
+import {
+  RadiologyRequestStatus,
+  RadiologyPriority,
+  RadiologyModality,
+} from '@prisma/client';
 
 export class UpdateRadiologyRequestDto {
   @ApiPropertyOptional({ enum: RadiologyRequestStatus })

@@ -11,7 +11,7 @@ import { CreateDrugDto, UpdateDrugDto } from './dto/drug.dto';
 
 @Injectable()
 export class PharmacyDrugService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateDrugDto, createdById: string) {
     try {
@@ -29,7 +29,10 @@ export class PharmacyDrugService {
           isControlled: dto.isControlled ?? false,
           isRefrigerated: dto.isRefrigerated ?? false,
           isHighAlert: dto.isHighAlert ?? false,
-          maxDailyDose: dto.maxDailyDose != null ? new Prisma.Decimal(dto.maxDailyDose) : null,
+          maxDailyDose:
+            dto.maxDailyDose != null
+              ? new Prisma.Decimal(dto.maxDailyDose)
+              : null,
           reorderLevel: dto.reorderLevel ?? 0,
           reorderQuantity: dto.reorderQuantity ?? 0,
           createdById,
@@ -39,7 +42,9 @@ export class PharmacyDrugService {
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A drug with this service code may already exist.');
+        throw new ConflictException(
+          'A drug with this service code may already exist.',
+        );
       }
       if (e.code === 'P2003') {
         throw new BadRequestException('Invalid manufacturer ID.');
@@ -68,23 +73,48 @@ export class PharmacyDrugService {
     await this.findOne(id);
     try {
       const data: Prisma.DrugUpdateInput = {
-        ...(dto.genericName !== undefined && { genericName: dto.genericName.trim() }),
-        ...(dto.searviceCode !== undefined && { searviceCode: dto.searviceCode.trim() }),
+        ...(dto.genericName !== undefined && {
+          genericName: dto.genericName.trim(),
+        }),
+        ...(dto.searviceCode !== undefined && {
+          searviceCode: dto.searviceCode.trim(),
+        }),
         ...(dto.brandName !== undefined && { brandName: dto.brandName.trim() }),
-        ...(dto.strength !== undefined && { strength: dto.strength?.trim() ?? null }),
-        ...(dto.dosageForm !== undefined && { dosageForm: dto.dosageForm?.trim() ?? null }),
+        ...(dto.strength !== undefined && {
+          strength: dto.strength?.trim() ?? null,
+        }),
+        ...(dto.dosageForm !== undefined && {
+          dosageForm: dto.dosageForm?.trim() ?? null,
+        }),
         ...(dto.route !== undefined && { route: dto.route?.trim() ?? null }),
-        ...(dto.therapeuticClass !== undefined && { therapeuticClass: dto.therapeuticClass?.trim() ?? null }),
-        ...(dto.atcCode !== undefined && { atcCode: dto.atcCode?.trim() ?? null }),
-        ...(dto.manufacturerId !== undefined && { manufacturerId: dto.manufacturerId }),
-        ...(dto.isControlled !== undefined && { isControlled: dto.isControlled }),
-        ...(dto.isRefrigerated !== undefined && { isRefrigerated: dto.isRefrigerated }),
+        ...(dto.therapeuticClass !== undefined && {
+          therapeuticClass: dto.therapeuticClass?.trim() ?? null,
+        }),
+        ...(dto.atcCode !== undefined && {
+          atcCode: dto.atcCode?.trim() ?? null,
+        }),
+        ...(dto.manufacturerId !== undefined && {
+          manufacturerId: dto.manufacturerId,
+        }),
+        ...(dto.isControlled !== undefined && {
+          isControlled: dto.isControlled,
+        }),
+        ...(dto.isRefrigerated !== undefined && {
+          isRefrigerated: dto.isRefrigerated,
+        }),
         ...(dto.isHighAlert !== undefined && { isHighAlert: dto.isHighAlert }),
         ...(dto.maxDailyDose !== undefined && {
-          maxDailyDose: dto.maxDailyDose != null ? new Prisma.Decimal(dto.maxDailyDose) : null,
+          maxDailyDose:
+            dto.maxDailyDose != null
+              ? new Prisma.Decimal(dto.maxDailyDose)
+              : null,
         }),
-        ...(dto.reorderLevel !== undefined && { reorderLevel: dto.reorderLevel }),
-        ...(dto.reorderQuantity !== undefined && { reorderQuantity: dto.reorderQuantity }),
+        ...(dto.reorderLevel !== undefined && {
+          reorderLevel: dto.reorderLevel,
+        }),
+        ...(dto.reorderQuantity !== undefined && {
+          reorderQuantity: dto.reorderQuantity,
+        }),
         updatedBy: { connect: { id: updatedById } },
       };
       return await this.prisma.drug.update({
@@ -94,7 +124,9 @@ export class PharmacyDrugService {
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A drug with this service code may already exist.');
+        throw new ConflictException(
+          'A drug with this service code may already exist.',
+        );
       }
       if (e.code === 'P2003') {
         throw new BadRequestException('Invalid manufacturer ID.');
@@ -164,7 +196,7 @@ export class PharmacyDrugService {
     const batchFilters: Prisma.DrugBatchWhereInput = {};
 
     if (locationType) {
-      const locType = locationType as PharmacyLocationType;
+      const locType = locationType;
       batchFilters.OR = [
         { fromLocation: { locationType: locType } },
         { toLocation: { locationType: locType } },
@@ -185,56 +217,56 @@ export class PharmacyDrugService {
     if (manufacturingDateFrom || manufacturingDateTo) {
       batchFilters.manufacturingDate = {};
       if (manufacturingDateFrom) {
-        (batchFilters.manufacturingDate as Prisma.DateTimeFilter).gte = new Date(
-          manufacturingDateFrom,
-        );
+        (batchFilters.manufacturingDate as Prisma.DateTimeFilter).gte =
+          new Date(manufacturingDateFrom);
       }
       if (manufacturingDateTo) {
-        (batchFilters.manufacturingDate as Prisma.DateTimeFilter).lte = new Date(
-          manufacturingDateTo,
-        );
+        (batchFilters.manufacturingDate as Prisma.DateTimeFilter).lte =
+          new Date(manufacturingDateTo);
       }
     }
 
     if (expiryDateFrom || expiryDateTo) {
       batchFilters.expiryDate = {};
       if (expiryDateFrom) {
-        (batchFilters.expiryDate as Prisma.DateTimeFilter).gte = new Date(expiryDateFrom);
+        (batchFilters.expiryDate as Prisma.DateTimeFilter).gte = new Date(
+          expiryDateFrom,
+        );
       }
       if (expiryDateTo) {
-        (batchFilters.expiryDate as Prisma.DateTimeFilter).lte = new Date(expiryDateTo);
+        (batchFilters.expiryDate as Prisma.DateTimeFilter).lte = new Date(
+          expiryDateTo,
+        );
       }
     }
 
     if (minCostPrice || maxCostPrice) {
       batchFilters.costPrice = {};
       if (minCostPrice) {
-        (batchFilters.costPrice as Prisma.DecimalFilter).gte = new Prisma.Decimal(minCostPrice);
+        (batchFilters.costPrice as Prisma.DecimalFilter).gte =
+          new Prisma.Decimal(minCostPrice);
       }
       if (maxCostPrice) {
-        (batchFilters.costPrice as Prisma.DecimalFilter).lte = new Prisma.Decimal(maxCostPrice);
+        (batchFilters.costPrice as Prisma.DecimalFilter).lte =
+          new Prisma.Decimal(maxCostPrice);
       }
     }
 
     if (minSellingPrice || maxSellingPrice) {
       batchFilters.sellingPrice = {};
       if (minSellingPrice) {
-        (batchFilters.sellingPrice as Prisma.DecimalFilter).gte = new Prisma.Decimal(
-          minSellingPrice,
-        );
+        (batchFilters.sellingPrice as Prisma.DecimalFilter).gte =
+          new Prisma.Decimal(minSellingPrice);
       }
       if (maxSellingPrice) {
-        (batchFilters.sellingPrice as Prisma.DecimalFilter).lte = new Prisma.Decimal(
-          maxSellingPrice,
-        );
+        (batchFilters.sellingPrice as Prisma.DecimalFilter).lte =
+          new Prisma.Decimal(maxSellingPrice);
       }
     }
 
     if (inStock !== undefined) {
       const positive = inStock === 'true';
-      batchFilters.quantityRemaining = positive
-        ? { gt: 0 }
-        : { equals: 0 };
+      batchFilters.quantityRemaining = positive ? { gt: 0 } : { equals: 0 };
     }
 
     if (Object.keys(batchFilters).length) {
@@ -253,11 +285,11 @@ export class PharmacyDrugService {
     const cursor =
       cursorId && cursorCreatedAt
         ? {
-          id_createdAt: {
-            id: cursorId,
-            createdAt: new Date(cursorCreatedAt),
-          },
-        }
+            id_createdAt: {
+              id: cursorId,
+              createdAt: new Date(cursorCreatedAt),
+            },
+          }
         : undefined;
 
     // Full-text search via raw query when `search` provided
@@ -307,20 +339,20 @@ export class PharmacyDrugService {
       );
       const earliestBatch = batches.length
         ? batches.reduce((earliest, b) =>
-          b.createdAt < earliest.createdAt ? b : earliest,
-        )
+            b.createdAt < earliest.createdAt ? b : earliest,
+          )
         : null;
       const sellingPrice = earliestBatch?.sellingPrice ?? null;
       const expiryDateClosest = batches.length
         ? batches.reduce((closest, b) => {
-          const diff = Math.abs(
-            new Date(b.expiryDate).getTime() - today.getTime(),
-          );
-          const closestDiff = Math.abs(
-            new Date(closest.expiryDate).getTime() - today.getTime(),
-          );
-          return diff < closestDiff ? b : closest;
-        }).expiryDate
+            const diff = Math.abs(
+              new Date(b.expiryDate).getTime() - today.getTime(),
+            );
+            const closestDiff = Math.abs(
+              new Date(closest.expiryDate).getTime() - today.getTime(),
+            );
+            return diff < closestDiff ? b : closest;
+          }).expiryDate
         : null;
 
       const { batches: _batches, ...rest } = drug;
@@ -332,11 +364,10 @@ export class PharmacyDrugService {
         expiryDate: expiryDateClosest,
       };
     });
-    console.log({ data, nextCursor })
+    console.log({ data, nextCursor });
     return {
       data,
       nextCursor,
     };
   }
 }
-

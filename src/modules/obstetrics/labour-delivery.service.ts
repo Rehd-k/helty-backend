@@ -1,6 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateLabourDeliveryDto, UpdateLabourDeliveryDto } from './dto/create-labour-delivery.dto';
+import {
+  CreateLabourDeliveryDto,
+  UpdateLabourDeliveryDto,
+} from './dto/create-labour-delivery.dto';
 
 @Injectable()
 export class LabourDeliveryService {
@@ -27,10 +34,14 @@ export class LabourDeliveryService {
         where: { id: dto.admissionId },
       });
       if (!admission) {
-        throw new NotFoundException(`Admission "${dto.admissionId}" not found.`);
+        throw new NotFoundException(
+          `Admission "${dto.admissionId}" not found.`,
+        );
       }
       if (admission.patientId !== pregnancy.patientId) {
-        throw new BadRequestException('Admission does not belong to the same patient as the pregnancy.');
+        throw new BadRequestException(
+          'Admission does not belong to the same patient as the pregnancy.',
+        );
       }
     }
 
@@ -83,7 +94,9 @@ export class LabourDeliveryService {
       },
     });
     if (!delivery) {
-      throw new NotFoundException(`No labour/delivery found for admission "${admissionId}".`);
+      throw new NotFoundException(
+        `No labour/delivery found for admission "${admissionId}".`,
+      );
     }
     return delivery;
   }
@@ -93,13 +106,19 @@ export class LabourDeliveryService {
     return this.prisma.labourDelivery.update({
       where: { id },
       data: {
-        ...(dto.deliveryDateTime !== undefined && { deliveryDateTime: new Date(dto.deliveryDateTime) }),
+        ...(dto.deliveryDateTime !== undefined && {
+          deliveryDateTime: new Date(dto.deliveryDateTime),
+        }),
         ...(dto.mode !== undefined && { mode: dto.mode }),
         ...(dto.outcome !== undefined && { outcome: dto.outcome }),
         ...(dto.bloodLossMl !== undefined && { bloodLossMl: dto.bloodLossMl }),
-        ...(dto.placentaComplete !== undefined && { placentaComplete: dto.placentaComplete }),
+        ...(dto.placentaComplete !== undefined && {
+          placentaComplete: dto.placentaComplete,
+        }),
         ...(dto.episiotomy !== undefined && { episiotomy: dto.episiotomy }),
-        ...(dto.perinealTearGrade !== undefined && { perinealTearGrade: dto.perinealTearGrade }),
+        ...(dto.perinealTearGrade !== undefined && {
+          perinealTearGrade: dto.perinealTearGrade,
+        }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
       include: {

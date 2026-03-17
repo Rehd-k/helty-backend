@@ -1,9 +1,4 @@
-import {
-  IsString,
-  IsDateString,
-  IsEnum,
-  IsOptional,
-} from 'class-validator';
+import { IsString, IsDateString, IsEnum, IsOptional } from 'class-validator';
 
 export enum AppointmentStatus {
   SCHEDULED = 'scheduled',

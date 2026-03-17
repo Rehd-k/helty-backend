@@ -11,7 +11,9 @@ export class PartogramService {
       where: { id: dto.labourDeliveryId },
     });
     if (!labourDelivery) {
-      throw new NotFoundException(`Labour/delivery "${dto.labourDeliveryId}" not found.`);
+      throw new NotFoundException(
+        `Labour/delivery "${dto.labourDeliveryId}" not found.`,
+      );
     }
     const recordedBy = await this.prisma.staff.findUnique({
       where: { id: dto.recordedById },
@@ -46,7 +48,9 @@ export class PartogramService {
       where: { id: labourDeliveryId },
     });
     if (!delivery) {
-      throw new NotFoundException(`Labour/delivery "${labourDeliveryId}" not found.`);
+      throw new NotFoundException(
+        `Labour/delivery "${labourDeliveryId}" not found.`,
+      );
     }
 
     return this.prisma.partogramEntry.findMany({

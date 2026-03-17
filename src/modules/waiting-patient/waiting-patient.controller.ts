@@ -10,11 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import {
-  ApiOperation,
-  ApiParam,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { WaitingPatientService } from './waiting-patient.service';
 import {
   CreateWaitingPatientDto,
@@ -26,9 +22,7 @@ import {
 @ApiTags('Waiting Patients')
 @Controller('waiting-patients')
 export class WaitingPatientController {
-  constructor(
-    private readonly waitingPatientService: WaitingPatientService,
-  ) {}
+  constructor(private readonly waitingPatientService: WaitingPatientService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -56,12 +50,8 @@ export class WaitingPatientController {
     name: 'consultingRoomId',
     description: 'Consulting room UUID',
   })
-  findByConsultingRoom(
-    @Param('consultingRoomId') consultingRoomId: string,
-  ) {
-    return this.waitingPatientService.findByConsultingRoom(
-      consultingRoomId,
-    );
+  findByConsultingRoom(@Param('consultingRoomId') consultingRoomId: string) {
+    return this.waitingPatientService.findByConsultingRoom(consultingRoomId);
   }
 
   @Post(':id/send-to-room')
@@ -90,10 +80,7 @@ export class WaitingPatientController {
       'Update a waiting patient entry (e.g., assign or move to a room; vitals required before assigning a room)',
   })
   @ApiParam({ name: 'id', description: 'Waiting patient UUID' })
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdateWaitingPatientDto,
-  ) {
+  update(@Param('id') id: string, @Body() dto: UpdateWaitingPatientDto) {
     return this.waitingPatientService.update(id, dto);
   }
 
@@ -105,4 +92,3 @@ export class WaitingPatientController {
     await this.waitingPatientService.remove(id);
   }
 }
-

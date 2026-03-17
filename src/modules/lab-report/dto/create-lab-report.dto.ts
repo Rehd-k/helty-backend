@@ -1,9 +1,4 @@
-import {
-  IsString,
-  IsOptional,
-  IsNotEmpty,
-  IsUUID,
-} from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsUUID } from 'class-validator';
 
 export class CreateLabReportDto {
   @IsString()

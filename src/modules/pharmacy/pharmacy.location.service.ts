@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePharmacyLocationDto, UpdatePharmacyLocationDto } from './dto/pharmacy-location.dto';
+import {
+  CreatePharmacyLocationDto,
+  UpdatePharmacyLocationDto,
+} from './dto/pharmacy-location.dto';
 import { ListPharmacyLocationDto } from './dto/list-pharmacy-location.dto';
 
 const ALLOWED_SORT = new Set(['name', 'locationType', 'createdAt']);
@@ -43,14 +46,23 @@ export class PharmacyLocationService {
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A location with this name may already exist.');
+        throw new ConflictException(
+          'A location with this name may already exist.',
+        );
       }
       throw new BadRequestException('Invalid pharmacy location data.');
     }
   }
 
   async findAll(query: ListPharmacyLocationDto) {
-    const { search, locationType, sortBy, sortOrder = 'desc', skip = 0, limit = 20 } = query;
+    const {
+      search,
+      locationType,
+      sortBy,
+      sortOrder = 'desc',
+      skip = 0,
+      limit = 20,
+    } = query;
     const take = Math.min(Math.max(1, limit), 100);
     const where: Prisma.PharmacyLocationWhereInput = {};
 
@@ -98,7 +110,11 @@ export class PharmacyLocationService {
     return location;
   }
 
-  async update(id: string, dto: UpdatePharmacyLocationDto, updatedById: string) {
+  async update(
+    id: string,
+    dto: UpdatePharmacyLocationDto,
+    updatedById: string,
+  ) {
     const location = await this.findOne(id);
     if (dto.staffId !== undefined && dto.staffId !== null) {
       const existing = await this.prisma.pharmacyLocation.findFirst({
@@ -115,8 +131,12 @@ export class PharmacyLocationService {
         where: { id },
         data: {
           ...(dto.name !== undefined && { name: dto.name.trim() }),
-          ...(dto.locationType !== undefined && { locationType: dto.locationType }),
-          ...(dto.description !== undefined && { description: dto.description?.trim() ?? null }),
+          ...(dto.locationType !== undefined && {
+            locationType: dto.locationType,
+          }),
+          ...(dto.description !== undefined && {
+            description: dto.description?.trim() ?? null,
+          }),
           ...(dto.staffId !== undefined && { staffId: dto.staffId }),
           updatedById,
         },
@@ -126,7 +146,9 @@ export class PharmacyLocationService {
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A location with this name may already exist.');
+        throw new ConflictException(
+          'A location with this name may already exist.',
+        );
       }
       throw new BadRequestException('Invalid pharmacy location data.');
     }

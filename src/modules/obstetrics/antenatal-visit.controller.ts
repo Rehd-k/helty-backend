@@ -14,7 +14,10 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { AntenatalVisitService } from './antenatal-visit.service';
-import { CreateAntenatalVisitDto, UpdateAntenatalVisitDto } from './dto/create-antenatal-visit.dto';
+import {
+  CreateAntenatalVisitDto,
+  UpdateAntenatalVisitDto,
+} from './dto/create-antenatal-visit.dto';
 import { ListAntenatalVisitsQueryDto } from './dto/list-antenatal-visits-query.dto';
 
 @ApiTags('Obstetrics - Antenatal')
@@ -22,7 +25,7 @@ import { ListAntenatalVisitsQueryDto } from './dto/list-antenatal-visits-query.d
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')
 export class AntenatalVisitController {
-  constructor(private readonly antenatalVisitService: AntenatalVisitService) { }
+  constructor(private readonly antenatalVisitService: AntenatalVisitService) {}
 
   @Post('pregnancies/:pregnancyId/visits')
   @HttpCode(HttpStatus.CREATED)

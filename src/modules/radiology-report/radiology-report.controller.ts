@@ -11,7 +11,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { RadiologyReportService } from './radiology-report.service';
-import { CreateRadiologyReportDto, UpdateRadiologyReportDto } from './dto/create-radiology-report.dto';
+import {
+  CreateRadiologyReportDto,
+  UpdateRadiologyReportDto,
+} from './dto/create-radiology-report.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators';
 
@@ -19,7 +22,9 @@ import { Roles } from '../../common/decorators';
 @Roles('radiology')
 @Controller('radiology-reports')
 export class RadiologyReportController {
-  constructor(private readonly radiologyReportService: RadiologyReportService) {}
+  constructor(
+    private readonly radiologyReportService: RadiologyReportService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

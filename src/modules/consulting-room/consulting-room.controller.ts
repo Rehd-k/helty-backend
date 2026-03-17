@@ -10,11 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import {
-  ApiOperation,
-  ApiParam,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { ConsultingRoomService } from './consulting-room.service';
 import {
   CreateConsultingRoomDto,
@@ -26,9 +22,7 @@ import { Roles } from 'src/common/decorators';
 @ApiTags('Consulting Rooms')
 @Controller('consulting-rooms')
 export class ConsultingRoomController {
-  constructor(
-    private readonly consultingRoomService: ConsultingRoomService,
-  ) { }
+  constructor(private readonly consultingRoomService: ConsultingRoomService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -37,12 +31,10 @@ export class ConsultingRoomController {
     return this.consultingRoomService.create(dto);
   }
 
-
   @Roles('admin', 'doctor', 'nurse')
   @Get()
   @ApiOperation({
-    summary:
-      'List consulting rooms with optional search and pagination',
+    summary: 'List consulting rooms with optional search and pagination',
   })
   findAll(@Query() query: QueryConsultingRoomDto) {
     return this.consultingRoomService.findAll(query);
@@ -58,10 +50,7 @@ export class ConsultingRoomController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update a consulting room' })
   @ApiParam({ name: 'id', description: 'Consulting room UUID' })
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdateConsultingRoomDto,
-  ) {
+  update(@Param('id') id: string, @Body() dto: UpdateConsultingRoomDto) {
     return this.consultingRoomService.update(id, dto);
   }
 
@@ -73,4 +62,3 @@ export class ConsultingRoomController {
     await this.consultingRoomService.remove(id);
   }
 }
-

@@ -48,7 +48,10 @@ export class LabResultService {
 
     return this.prisma.labResult.upsert({
       where: {
-        orderItemId_fieldId: { orderItemId: dto.orderItemId, fieldId: dto.fieldId },
+        orderItemId_fieldId: {
+          orderItemId: dto.orderItemId,
+          fieldId: dto.fieldId,
+        },
       },
       create: {
         orderItemId: dto.orderItemId,
@@ -104,9 +107,7 @@ export class LabResultService {
       where: { id: orderItemId },
     });
     if (!orderItem) {
-      throw new NotFoundException(
-        `Lab order item "${orderItemId}" not found.`,
-      );
+      throw new NotFoundException(`Lab order item "${orderItemId}" not found.`);
     }
     return this.prisma.labResult.findMany({
       where: { orderItemId },

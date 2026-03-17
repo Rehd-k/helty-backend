@@ -15,4 +15,3 @@ export class UpdateBedDto {
   @IsEnum(['AVAILABLE', 'OCCUPIED', 'CLEANING', 'RESERVED'])
   status?: 'AVAILABLE' | 'OCCUPIED' | 'CLEANING' | 'RESERVED';
 }
-

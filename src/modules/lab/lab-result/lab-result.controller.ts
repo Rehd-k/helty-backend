@@ -26,7 +26,9 @@ export class LabResultController {
 
   @Post('batch')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create or update multiple results for one order item' })
+  @ApiOperation({
+    summary: 'Create or update multiple results for one order item',
+  })
   createBatch(@Body() dto: CreateLabResultBatchDto) {
     return this.labResultService.createBatch(dto);
   }

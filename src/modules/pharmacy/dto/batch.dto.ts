@@ -20,7 +20,9 @@ export class CreateBatchDto {
   @IsOptional()
   fromLocationId: string;
 
-  @ApiProperty({ description: 'Current destination/holding location of this batch' })
+  @ApiProperty({
+    description: 'Current destination/holding location of this batch',
+  })
   @IsUUID()
   @IsOptional()
   toLocationId: string;
@@ -42,7 +44,9 @@ export class CreateBatchDto {
   @IsUUID()
   supplierId?: string;
 
-  @ApiPropertyOptional({ description: 'Goods receipt ID if batch was created from GRN' })
+  @ApiPropertyOptional({
+    description: 'Goods receipt ID if batch was created from GRN',
+  })
   @IsOptional()
   @IsUUID()
   grnId?: string;
@@ -52,9 +56,14 @@ export class CreateBatchDto {
   @IsNumberString()
   costPrice: string;
 
-  @ApiPropertyOptional({ example: '20.00', description: 'Defaults to costPrice if omitted' })
+  @ApiPropertyOptional({
+    example: '20.00',
+    description: 'Defaults to costPrice if omitted',
+  })
   @IsOptional()
-  @Transform(({ value }) => (value == null ? value : typeof value === 'number' ? String(value) : value))
+  @Transform(({ value }) =>
+    value == null ? value : typeof value === 'number' ? String(value) : value,
+  )
   @IsNumberString()
   sellingPrice?: string;
 

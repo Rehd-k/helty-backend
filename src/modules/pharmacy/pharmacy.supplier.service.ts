@@ -21,7 +21,9 @@ export class PharmacySupplierService {
         data: {
           name: dto.name.trim(),
           licenseNumber: dto.licenseNumber?.trim() ?? null,
-          contactInfo: (dto.contactInfo ?? undefined) as Prisma.InputJsonValue | undefined,
+          contactInfo: (dto.contactInfo ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
           creditTerms: dto.creditTerms?.trim() ?? null,
           leadTimeDays: dto.leadTimeDays ?? null,
           rating: dto.rating ?? null,
@@ -30,14 +32,23 @@ export class PharmacySupplierService {
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A supplier with this name or license may already exist.');
+        throw new ConflictException(
+          'A supplier with this name or license may already exist.',
+        );
       }
       throw new BadRequestException('Invalid supplier data.');
     }
   }
 
   async findAll(query: ListSupplierDto) {
-    const { search, isBlacklisted, sortBy, sortOrder = 'desc', skip = 0, limit = 20 } = query;
+    const {
+      search,
+      isBlacklisted,
+      sortBy,
+      sortOrder = 'desc',
+      skip = 0,
+      limit = 20,
+    } = query;
     const take = Math.min(Math.max(1, limit), 100);
     const where: Prisma.SupplierWhereInput = {};
 
@@ -91,17 +102,29 @@ export class PharmacySupplierService {
         where: { id },
         data: {
           ...(dto.name !== undefined && { name: dto.name.trim() }),
-          ...(dto.licenseNumber !== undefined && { licenseNumber: dto.licenseNumber?.trim() ?? null }),
-          ...(dto.contactInfo !== undefined && { contactInfo: dto.contactInfo as Prisma.InputJsonValue }),
-          ...(dto.creditTerms !== undefined && { creditTerms: dto.creditTerms?.trim() ?? null }),
-          ...(dto.leadTimeDays !== undefined && { leadTimeDays: dto.leadTimeDays }),
+          ...(dto.licenseNumber !== undefined && {
+            licenseNumber: dto.licenseNumber?.trim() ?? null,
+          }),
+          ...(dto.contactInfo !== undefined && {
+            contactInfo: dto.contactInfo as Prisma.InputJsonValue,
+          }),
+          ...(dto.creditTerms !== undefined && {
+            creditTerms: dto.creditTerms?.trim() ?? null,
+          }),
+          ...(dto.leadTimeDays !== undefined && {
+            leadTimeDays: dto.leadTimeDays,
+          }),
           ...(dto.rating !== undefined && { rating: dto.rating }),
-          ...(dto.isBlacklisted !== undefined && { isBlacklisted: dto.isBlacklisted }),
+          ...(dto.isBlacklisted !== undefined && {
+            isBlacklisted: dto.isBlacklisted,
+          }),
         },
       });
     } catch (e) {
       if (e.code === 'P2002') {
-        throw new ConflictException('A supplier with this name or license may already exist.');
+        throw new ConflictException(
+          'A supplier with this name or license may already exist.',
+        );
       }
       throw new BadRequestException('Invalid supplier data.');
     }

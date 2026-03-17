@@ -8,7 +8,7 @@ export class AuthService {
   constructor(
     private readonly staffService: StaffService,
     private readonly jwtService: JwtService,
-  ) { }
+  ) {}
 
   async validateUser(email: string, pass: string) {
     const user = await this.staffService.findByEmail(email);
@@ -34,7 +34,7 @@ export class AuthService {
     };
     return {
       accessToken: this.jwtService.sign(payload),
-      staff: user
+      staff: user,
     };
   }
 }

@@ -14,10 +14,13 @@ import { PrismaPg } from '@prisma/adapter-pg';
  * warnings from eslint/TS.
  */
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     super({
-      log: ["error", "warn"],
+      log: ['error', 'warn'],
       adapter: new PrismaPg({
         connectionString: process.env.DATABASE_URL,
       }),

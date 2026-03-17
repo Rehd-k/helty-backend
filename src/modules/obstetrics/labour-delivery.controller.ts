@@ -13,7 +13,10 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { LabourDeliveryService } from './labour-delivery.service';
-import { CreateLabourDeliveryDto, UpdateLabourDeliveryDto } from './dto/create-labour-delivery.dto';
+import {
+  CreateLabourDeliveryDto,
+  UpdateLabourDeliveryDto,
+} from './dto/create-labour-delivery.dto';
 
 @ApiTags('Obstetrics - Labour & delivery')
 @Controller('obstetrics')

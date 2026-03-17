@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import { WardRoundNote } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateWardRoundNoteDto, hasAtLeastOneSoapField } from './dto/create-ward-round-note.dto';
+import {
+  CreateWardRoundNoteDto,
+  hasAtLeastOneSoapField,
+} from './dto/create-ward-round-note.dto';
 import { ListWardRoundNotesQueryDto } from './dto/list-ward-round-notes-query.dto';
 
 function formatRoundDate(d: Date): string {
@@ -68,9 +71,7 @@ export class WardRoundNotesService {
   }
 
   async findAll(query: ListWardRoundNotesQueryDto) {
-    const fromDate = query.fromDate
-      ? new Date(query.fromDate)
-      : undefined;
+    const fromDate = query.fromDate ? new Date(query.fromDate) : undefined;
     const toDate = query.toDate ? new Date(query.toDate) : undefined;
 
     if (fromDate) fromDate.setUTCHours(0, 0, 0, 0);

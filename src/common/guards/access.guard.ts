@@ -29,11 +29,10 @@ export class AccessGuard implements CanActivate {
       return true;
     }
 
-    const allowedAccountTypes =
-      this.reflector.getAllAndOverride<string[]>(ACCOUNT_TYPES_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]);
+    const allowedAccountTypes = this.reflector.getAllAndOverride<string[]>(
+      ACCOUNT_TYPES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
     if (allowedAccountTypes?.length) {
       const hasAccountType = allowedAccountTypes.some(
         (t) => t === user.accountType,
@@ -47,11 +46,10 @@ export class AccessGuard implements CanActivate {
       return true;
     }
 
-    const allowedRoles =
-      this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]);
+    const allowedRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
     if (!allowedRoles?.length) return true;
 
     const hasRole = allowedRoles.some(

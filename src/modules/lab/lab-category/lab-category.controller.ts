@@ -26,10 +26,7 @@ export class LabCategoryController {
 
   @Get()
   @ApiOperation({ summary: 'List lab categories' })
-  findAll(
-    @Query('skip') skip?: string,
-    @Query('take') take?: string,
-  ) {
+  findAll(@Query('skip') skip?: string, @Query('take') take?: string) {
     return this.labCategoryService.findAll(
       skip ? parseInt(skip, 10) : 0,
       take ? parseInt(take, 10) : 50,

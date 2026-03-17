@@ -13,7 +13,9 @@ export class CreateManufacturerDto {
   @MaxLength(100)
   country?: string;
 
-  @ApiPropertyOptional({ description: 'JSON contact info (phone, email, etc.)' })
+  @ApiPropertyOptional({
+    description: 'JSON contact info (phone, email, etc.)',
+  })
   @IsOptional()
   @IsObject()
   contactInfo?: Record<string, unknown>;

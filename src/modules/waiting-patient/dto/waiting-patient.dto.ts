@@ -7,6 +7,7 @@ import {
   IsInt,
   IsPositive,
   Min,
+  IsDateString,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
@@ -62,8 +63,7 @@ export class UpdateWaitingPatientDto {
   seen?: boolean;
 
   @ApiPropertyOptional({
-    description:
-      'Staff UUID of the user updating this waiting patient entry',
+    description: 'Staff UUID of the user updating this waiting patient entry',
   })
   @IsString()
   @IsOptional()
@@ -89,6 +89,16 @@ export class QueryWaitingPatientDto {
   unassignedOnly?: boolean;
 
   @ApiPropertyOptional({
+    description: 'If true, return only seen patients',
+  })
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  @IsOptional()
+  seen?: boolean;
+
+  @ApiPropertyOptional({
     description: 'Filter by patient UUID',
   })
   @IsString()
@@ -111,5 +121,20 @@ export class QueryWaitingPatientDto {
   @IsPositive()
   @IsOptional()
   take?: number = 20;
-}
 
+  @ApiProperty({
+    description: 'Start date (ISO 8601). Will be normalized to start-of-day.',
+    example: '2025-01-01',
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  fromDate!: string;
+
+  @ApiProperty({
+    description: 'End date (ISO 8601). Will be normalized to end-of-day.',
+    example: '2025-12-31',
+  })
+  @IsNotEmpty()
+  @IsDateString()
+  toDate!: string;
+}

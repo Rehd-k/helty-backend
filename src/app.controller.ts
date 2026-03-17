@@ -7,9 +7,7 @@ import { AppService } from './app.service';
 export class AppController {
   private readonly log = new Logger(AppController.name);
 
-  constructor(
-    private readonly appService: AppService
-  ) { }
+  constructor(private readonly appService: AppService) {}
 
   @Get()
   @Render('index')

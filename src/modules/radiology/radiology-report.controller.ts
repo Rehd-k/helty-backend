@@ -14,18 +14,25 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { RadiologyReportService } from './radiology-report.service';
-import { CreateRadiologyReportDto, UpdateRadiologyReportDto } from './dto/radiology-report.dto';
+import {
+  CreateRadiologyReportDto,
+  UpdateRadiologyReportDto,
+} from './dto/radiology-report.dto';
 
 @ApiTags('Radiology – Reporting')
 @Controller('radiology/requests/:requestId/report')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('CONSULTANT', 'INPATIENT_DOCTOR', 'RADIOLOGIST', 'RADIOLOGY')
 export class RadiologyReportController {
-  constructor(private readonly radiologyReportService: RadiologyReportService) {}
+  constructor(
+    private readonly radiologyReportService: RadiologyReportService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create radiology report (digitally signed by radiologist)' })
+  @ApiOperation({
+    summary: 'Create radiology report (digitally signed by radiologist)',
+  })
   create(
     @Param('requestId') requestId: string,
     @Body() dto: CreateRadiologyReportDto,

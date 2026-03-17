@@ -35,7 +35,7 @@ export class ChatService {
       displayNameOverride ??
       (staff.firstName && staff.lastName
         ? `${staff.firstName} ${staff.lastName}`.trim()
-        : staff.displayName ?? userId);
+        : (staff.displayName ?? userId));
     const staffInfo: OnlineUserInfo = {
       id: staff.id,
       displayName,
@@ -56,7 +56,12 @@ export class ChatService {
   /** For test mode: connect with username only (no JWT). */
   registerGuestSocket(socketId: string, username: string): string {
     const userId = `guest-${nanoid()}`;
-    this.registerSocket(userId, socketId, { id: userId }, username.trim() || 'Guest');
+    this.registerSocket(
+      userId,
+      socketId,
+      { id: userId },
+      username.trim() || 'Guest',
+    );
     return userId;
   }
 
@@ -82,7 +87,11 @@ export class ChatService {
     return entry ? Array.from(entry.socketIds) : [];
   }
 
-  registerMessage(messageId: string, senderId: string, recipientId: string): void {
+  registerMessage(
+    messageId: string,
+    senderId: string,
+    recipientId: string,
+  ): void {
     this.messageMeta.set(messageId, { senderId, recipientId });
   }
 

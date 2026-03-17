@@ -21,12 +21,16 @@ export class RadiologyHistoryService {
         schedule: {
           include: {
             machine: true,
-            radiographer: { select: { id: true, firstName: true, lastName: true } },
+            radiographer: {
+              select: { id: true, firstName: true, lastName: true },
+            },
           },
         },
         procedure: {
           include: {
-            performedBy: { select: { id: true, firstName: true, lastName: true } },
+            performedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
             machine: true,
           },
         },

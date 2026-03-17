@@ -8,34 +8,43 @@ export class RadiologyDashboardService {
 
   async getDashboard() {
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0,
+      0,
+    );
 
-    const [
-      totalToday,
-      pending,
-      completed,
-      waitingReports,
-      urgentCount,
-    ] = await Promise.all([
-      this.prisma.radiologyRequest.count({
-        where: { createdAt: { gte: startOfToday } },
-      }),
-      this.prisma.radiologyRequest.count({
-        where: { status: RadiologyRequestStatus.PENDING },
-      }),
-      this.prisma.radiologyRequest.count({
-        where: { status: RadiologyRequestStatus.COMPLETED },
-      }),
-      this.prisma.radiologyRequest.count({
-        where: { status: RadiologyRequestStatus.COMPLETED },
-      }),
-      this.prisma.radiologyRequest.count({
-        where: {
-          priority: 'EMERGENCY',
-          status: { in: [RadiologyRequestStatus.PENDING, RadiologyRequestStatus.SCHEDULED, RadiologyRequestStatus.IN_PROGRESS] },
-        },
-      }),
-    ]);
+    const [totalToday, pending, completed, waitingReports, urgentCount] =
+      await Promise.all([
+        this.prisma.radiologyRequest.count({
+          where: { createdAt: { gte: startOfToday } },
+        }),
+        this.prisma.radiologyRequest.count({
+          where: { status: RadiologyRequestStatus.PENDING },
+        }),
+        this.prisma.radiologyRequest.count({
+          where: { status: RadiologyRequestStatus.COMPLETED },
+        }),
+        this.prisma.radiologyRequest.count({
+          where: { status: RadiologyRequestStatus.COMPLETED },
+        }),
+        this.prisma.radiologyRequest.count({
+          where: {
+            priority: 'EMERGENCY',
+            status: {
+              in: [
+                RadiologyRequestStatus.PENDING,
+                RadiologyRequestStatus.SCHEDULED,
+                RadiologyRequestStatus.IN_PROGRESS,
+              ],
+            },
+          },
+        }),
+      ]);
 
     const completedWithoutReport = await this.prisma.radiologyRequest.count({
       where: {

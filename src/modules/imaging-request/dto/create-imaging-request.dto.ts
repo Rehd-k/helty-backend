@@ -38,6 +38,14 @@ export class CreateImagingRequestDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Service UUID to bill for this imaging request (creates invoice with this service)',
+  })
+  @IsUUID()
+  @IsOptional()
+  serviceId?: string;
 }
 
 export class UpdateImagingRequestDto {

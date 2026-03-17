@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateWaitingPatientDto,
@@ -10,6 +11,7 @@ import {
   SendToConsultingRoomDto,
   UpdateWaitingPatientDto,
 } from './dto/waiting-patient.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class WaitingPatientService {
@@ -72,23 +74,30 @@ export class WaitingPatientService {
       consultingRoomId,
       patientId,
       unassignedOnly,
+      seen,
       skip = 0,
       take = 20,
+      toDate,
+      fromDate,
     } = query;
 
-    const where: {
-      patient: { patientId: { not: null } };
-      consultingRoomId?: string | null;
-      patientId?: string;
-    } = {
-      patient: { patientId: { not: null } },
+    const { from, to } = parseDateRange(fromDate, toDate);
+
+    const where: Prisma.WaitingPatientWhereInput = {
+      createdAt: { gte: from, lte: to },
     };
 
     if (unassignedOnly) {
       where.consultingRoomId = null;
+    }
+    else if (seen) {
+      where.seen = true;
     } else if (consultingRoomId) {
       where.consultingRoomId = consultingRoomId;
+    } else if (unassignedOnly === false) {
+      where.consultingRoomId = { not: null };
     }
+
     if (patientId) {
       where.patientId = patientId;
     }
@@ -101,7 +110,7 @@ export class WaitingPatientService {
         orderBy: { createdAt: 'asc' },
         include: {
           patient: true,
-        
+
           vitals: true,
           consultingRoom: {
             select: {
@@ -311,4 +320,3 @@ export class WaitingPatientService {
     return { message: 'Waiting patient entry removed successfully.' };
   }
 }
-

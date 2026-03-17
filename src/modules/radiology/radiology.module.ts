@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { InvoiceModule } from '../invoice/invoice.module';
 import { RadiologyRequestController } from './radiology-request.controller';
 import { RadiologyRequestService } from './radiology-request.service';
 import { RadiologyWorklistController } from './radiology-worklist.controller';
@@ -19,7 +20,7 @@ import { RadiologyMachineController } from './radiology-machine.controller';
 import { RadiologyMachineService } from './radiology-machine.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, InvoiceModule],
   controllers: [
     RadiologyRequestController,
     RadiologyWorklistController,

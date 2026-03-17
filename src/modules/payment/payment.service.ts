@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto/create-payment.dto';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class PaymentService {
@@ -13,14 +15,17 @@ export class PaymentService {
         amount: createPaymentDto.amount,
         method: createPaymentDto.method,
         description: createPaymentDto.description,
-        createdById : '',
+        createdById: '',
       },
     });
   }
 
-  async findAll(skip = 0, take = 10) {
+  async findAll(query: DateRangeSkipTakeDto) {
+    const { skip = 0, take = 20, fromDate, toDate } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
     const [payments, total] = await Promise.all([
       this.prisma.payment.findMany({
+        where: { date: { gte: from, lte: to } },
         skip,
         take,
         include: {
@@ -28,7 +33,7 @@ export class PaymentService {
         },
         orderBy: { date: 'desc' },
       }),
-      this.prisma.payment.count(),
+      this.prisma.payment.count({ where: { date: { gte: from, lte: to } } }),
     ]);
 
     return { payments, total, skip, take };

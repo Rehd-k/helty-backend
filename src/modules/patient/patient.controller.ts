@@ -21,10 +21,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 @Controller('patients')
 export class PatientController {
   private readonly log = new Logger(PatientController.name);
-  constructor(
-    private readonly patientService: PatientService
-  ) {
-  }
+  constructor(private readonly patientService: PatientService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -56,7 +53,16 @@ export class PatientController {
     @Query('sortBy') sortBy: string = '',
     @Query('isAscending') isAscending: boolean = true,
   ) {
-    return this.patientService.findAll(parseInt(skip), parseInt(take), search, filterCategory, fromDate, toDate, sortBy, isAscending);
+    return this.patientService.findAll(
+      parseInt(skip),
+      parseInt(take),
+      search,
+      filterCategory,
+      fromDate,
+      toDate,
+      sortBy,
+      isAscending,
+    );
   }
 
   @Get('search')
@@ -92,10 +98,7 @@ export class PatientController {
     status: 200,
     description: 'Patient updated successfully',
   })
-  update(
-    @Param('id') id: string,
-    @Body() updatePatientDto: UpdatePatientDto,
-  ) {
+  update(@Param('id') id: string, @Body() updatePatientDto: UpdatePatientDto) {
     return this.patientService.update(id, updatePatientDto);
   }
 

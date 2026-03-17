@@ -37,10 +37,11 @@ import { LabModule } from './modules/lab/lab.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { RadiologyModule } from './modules/radiology/radiology.module';
 import { MedicationOrderModule } from './modules/medication-order/medication-order.module';
+import { StoreModule } from './modules/store/store.module';
+import { PurchasesModule } from './modules/purchases/purchases.module';
 
 @Module({
   imports: [
-
     ConfigModule.forRoot({
       isGlobal: true,
     }),
@@ -64,13 +65,16 @@ import { MedicationOrderModule } from './modules/medication-order/medication-ord
     LoggerModule.forRoot({
       pinoHttp: {
         level: 'info', // Set log level
-        transport: process.env.NODE_ENV !== 'production' ? {
-          target: 'pino-pretty',
-          options: {
-            colorize: true,
-            translateTime: 'HH:MM:ss',
-          },
-        } : undefined, // Pretty logs in development
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? {
+                target: 'pino-pretty',
+                options: {
+                  colorize: true,
+                  translateTime: 'HH:MM:ss',
+                },
+              }
+            : undefined, // Pretty logs in development
       },
     }),
     BankModule,
@@ -88,6 +92,8 @@ import { MedicationOrderModule } from './modules/medication-order/medication-ord
     ChatModule,
     RadiologyModule,
     MedicationOrderModule,
+    StoreModule,
+    PurchasesModule,
   ],
   controllers: [AppController],
   providers: [
@@ -96,4 +102,4 @@ import { MedicationOrderModule } from './modules/medication-order/medication-ord
     { provide: APP_GUARD, useClass: AccessGuard },
   ],
 })
-export class AppModule { }
+export class AppModule {}

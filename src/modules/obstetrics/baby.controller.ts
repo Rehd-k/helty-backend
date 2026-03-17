@@ -15,7 +15,11 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { BabyService } from './baby.service';
-import { CreateBabyDto, UpdateBabyDto, RegisterBabyAsPatientDto } from './dto/create-baby.dto';
+import {
+  CreateBabyDto,
+  UpdateBabyDto,
+  RegisterBabyAsPatientDto,
+} from './dto/create-baby.dto';
 import { ListBabiesQueryDto } from './dto/list-babies-query.dto';
 
 @ApiTags('Obstetrics - Labour & delivery')
@@ -40,7 +44,9 @@ export class BabyController {
   }
 
   @Get('babies')
-  @ApiOperation({ summary: 'List babies (optional: motherId, labourDeliveryId)' })
+  @ApiOperation({
+    summary: 'List babies (optional: motherId, labourDeliveryId)',
+  })
   findAll(@Query() query: ListBabiesQueryDto) {
     return this.babyService.findAll(query);
   }

@@ -4,9 +4,9 @@ import { TransactionController } from './billing.controller';
 import { TransactionService } from './billing.service';
 
 @Module({
-    imports: [PrismaModule],
-    controllers: [TransactionController],
-    providers: [TransactionService],
-    exports: [TransactionService],
+  imports: [PrismaModule],
+  controllers: [TransactionController],
+  providers: [TransactionService],
+  exports: [TransactionService],
 })
-export class TransactionModule { }
+export class TransactionModule {}

@@ -1,16 +1,33 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateImagingRequestDto, UpdateImagingRequestDto } from './dto/create-imaging-request.dto';
+import { InvoiceService } from '../invoice/invoice.service';
+import {
+  CreateImagingRequestDto,
+  UpdateImagingRequestDto,
+} from './dto/create-imaging-request.dto';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class ImagingRequestService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async create(dto: CreateImagingRequestDto) {
-    const encounter = await this.prisma.encounter.findUnique({ where: { id: dto.encounterId } });
-    if (!encounter) throw new NotFoundException(`Encounter "${dto.encounterId}" not found.`);
-    if (encounter.patientId !== dto.patientId) throw new BadRequestException('Patient does not match the encounter.');
-    return this.prisma.imagingRequest.create({
+    const encounter = await this.prisma.encounter.findUnique({
+      where: { id: dto.encounterId },
+    });
+    if (!encounter)
+      throw new NotFoundException(`Encounter "${dto.encounterId}" not found.`);
+    if (encounter.patientId !== dto.patientId)
+      throw new BadRequestException('Patient does not match the encounter.');
+    const imagingRequest = await this.prisma.imagingRequest.create({
       data: {
         encounterId: dto.encounterId,
         patientId: dto.patientId,
@@ -21,16 +38,46 @@ export class ImagingRequestService {
       },
       include: {
         encounter: { select: { id: true, encounterType: true, status: true } },
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        requestedBy: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
       },
     });
+    if (dto.serviceId) {
+      await this.invoiceService.createWithServiceItem({
+        patientId: dto.patientId,
+        encounterId: dto.encounterId,
+        staffId: dto.requestedByDoctorId,
+        serviceId: dto.serviceId,
+      });
+    }
+    return imagingRequest;
   }
 
-  async findAll(skip = 0, take = 20, encounterId?: string, patientId?: string) {
-    const where: { encounterId?: string; patientId?: string } = {};
+  async findAll(
+    query: DateRangeSkipTakeDto & { encounterId?: string; patientId?: string },
+  ) {
+    const {
+      skip = 0,
+      take = 20,
+      encounterId,
+      patientId,
+      fromDate,
+      toDate,
+    } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
+
+    const where: {
+      encounterId?: string;
+      patientId?: string;
+      createdAt?: { gte: Date; lte: Date };
+    } = {};
     if (encounterId) where.encounterId = encounterId;
     if (patientId) where.patientId = patientId;
+    if (fromDate && toDate)  where.createdAt = { gte: from, lte: to };
     const [data, total] = await Promise.all([
       this.prisma.imagingRequest.findMany({
         where,
@@ -38,9 +85,20 @@ export class ImagingRequestService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          encounter: { select: { id: true, encounterType: true, status: true } },
-          patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-          requestedBy: { select: { id: true, firstName: true, lastName: true } },
+          encounter: {
+            select: { id: true, encounterType: true, status: true },
+          },
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
+          },
+          requestedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
         },
       }),
       this.prisma.imagingRequest.count({ where }),
@@ -54,10 +112,13 @@ export class ImagingRequestService {
       include: {
         encounter: true,
         patient: true,
-        requestedBy: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        requestedBy: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
       },
     });
-    if (!request) throw new NotFoundException(`Imaging request "${id}" not found.`);
+    if (!request)
+      throw new NotFoundException(`Imaging request "${id}" not found.`);
     return request;
   }
 

@@ -11,7 +11,10 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { PrescriptionService } from './prescription.service';
-import { CreatePrescriptionDto, UpdatePrescriptionDto } from './dto/create-prescription.dto';
+import {
+  CreatePrescriptionDto,
+  UpdatePrescriptionDto,
+} from './dto/create-prescription.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Prescription')

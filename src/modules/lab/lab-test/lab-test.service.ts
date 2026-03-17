@@ -1,18 +1,24 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateLabTestDto } from './dto/create-lab-test.dto';
 import { ListTestsQueryDto } from './dto/list-tests-query.dto';
 
 @Injectable()
 export class LabTestService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateLabTestDto) {
     const category = await this.prisma.labCategory.findUnique({
       where: { id: dto.categoryId },
     });
     if (!category) {
-      throw new NotFoundException(`Lab category "${dto.categoryId}" not found.`);
+      throw new NotFoundException(
+        `Lab category "${dto.categoryId}" not found.`,
+      );
     }
     return this.prisma.labTest.create({
       data: {
@@ -50,7 +56,6 @@ export class LabTestService {
     } catch (error) {
       throw new BadRequestException(error.message);
     }
-
   }
 
   async findOne(id: string) {

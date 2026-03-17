@@ -2,7 +2,10 @@ import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class SendMessageDto {
-  @ApiProperty({ description: 'User id of the recipient (staff uuid or guest-xxx for test mode)' })
+  @ApiProperty({
+    description:
+      'User id of the recipient (staff uuid or guest-xxx for test mode)',
+  })
   @IsString()
   recipientId: string;
 

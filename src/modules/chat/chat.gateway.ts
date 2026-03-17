@@ -49,7 +49,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (token) {
       try {
         const secret =
-          this.configService.get<string>('JWT_SECRET') || 'hard-to-guess-secret';
+          this.configService.get<string>('JWT_SECRET') ||
+          'hard-to-guess-secret';
         const payload = await this.jwtService.verifyAsync(token, { secret });
         const staff = await this.staffService.findById(payload.sub);
         const user: OnlineUserInfo = {
@@ -66,12 +67,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           firstName: user.firstName,
           lastName: user.lastName,
         });
-        client.emit('user_id', { userId: user.id, displayName: user.displayName });
+        client.emit('user_id', {
+          userId: user.id,
+          displayName: user.displayName,
+        });
         const onlineUsers = this.chatService.getOnlineUsers();
         this.server.emit('online_users', onlineUsers);
         return;
       } catch {
-        this.logger.warn('Chat connection: invalid token, falling back to guest if username provided');
+        this.logger.warn(
+          'Chat connection: invalid token, falling back to guest if username provided',
+        );
       }
     }
 
@@ -106,7 +112,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!user) return;
     const { recipientId, content } = dto;
     if (!recipientId || !content?.trim()) {
-      client.emit('chat_error', { message: 'recipientId and content required' });
+      client.emit('chat_error', {
+        message: 'recipientId and content required',
+      });
       return;
     }
     if (recipientId === user.id) {
@@ -125,7 +133,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       createdAt,
     };
     client.emit('message_sent', payload);
-    const recipientSocketIds = this.chatService.getSocketIdsForUser(recipientId);
+    const recipientSocketIds =
+      this.chatService.getSocketIdsForUser(recipientId);
     recipientSocketIds.forEach((sid) => {
       this.server.to(sid).emit('new_message', payload);
     });
@@ -141,12 +150,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const meta = this.chatService.getMessageMeta(dto.messageId);
     if (!meta) return;
     if (meta.recipientId !== user.id) {
-      client.emit('chat_error', { message: 'Not the recipient of this message' });
+      client.emit('chat_error', {
+        message: 'Not the recipient of this message',
+      });
       return;
     }
     const senderSocketIds = this.chatService.getSocketIdsForUser(meta.senderId);
     senderSocketIds.forEach((sid) => {
-      this.server.to(sid).emit('message_delivered', { messageId: dto.messageId });
+      this.server
+        .to(sid)
+        .emit('message_delivered', { messageId: dto.messageId });
     });
   }
 
@@ -160,7 +173,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const meta = this.chatService.getMessageMeta(dto.messageId);
     if (!meta) return;
     if (meta.recipientId !== user.id) {
-      client.emit('chat_error', { message: 'Not the recipient of this message' });
+      client.emit('chat_error', {
+        message: 'Not the recipient of this message',
+      });
       return;
     }
     const senderSocketIds = this.chatService.getSocketIdsForUser(meta.senderId);
@@ -176,7 +191,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<void> {
     const user = client.data.user;
     if (!user || dto.recipientId === user.id) return;
-    const recipientSocketIds = this.chatService.getSocketIdsForUser(dto.recipientId);
+    const recipientSocketIds = this.chatService.getSocketIdsForUser(
+      dto.recipientId,
+    );
     recipientSocketIds.forEach((sid) => {
       this.server.to(sid).emit('user_typing', { userId: user.id });
     });
@@ -189,7 +206,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<void> {
     const user = client.data.user;
     if (!user || dto.recipientId === user.id) return;
-    const recipientSocketIds = this.chatService.getSocketIdsForUser(dto.recipientId);
+    const recipientSocketIds = this.chatService.getSocketIdsForUser(
+      dto.recipientId,
+    );
     recipientSocketIds.forEach((sid) => {
       this.server.to(sid).emit('typing_stop', { userId: user.id });
     });

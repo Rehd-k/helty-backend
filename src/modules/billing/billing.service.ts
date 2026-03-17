@@ -27,6 +27,7 @@ import {
   UpdateInsuranceClaimDto,
   UpdateTransactionDto,
 } from './dto/create-bill.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 // UUID regex
 const UUID_RE =
@@ -36,7 +37,9 @@ const UUID_RE =
 const nanoid10 = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 10);
 
 // ─── Allowed status transitions ───────────────────────────────────────────────
-const VALID_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>> = {
+const VALID_TRANSITIONS: Partial<
+  Record<TransactionStatus, TransactionStatus[]>
+> = {
   [TransactionStatus.CANCELLED]: [TransactionStatus.DRAFT],
   [TransactionStatus.DRAFT]: [TransactionStatus.ACTIVE],
 };
@@ -45,7 +48,7 @@ const VALID_TRANSITIONS: Partial<Record<TransactionStatus, TransactionStatus[]>>
 export class TransactionService {
   private readonly logger = new Logger(TransactionService.name);
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -58,7 +61,10 @@ export class TransactionService {
    * Uses findFirst with OR so it works for both.
    * Throws 404 with a helpful message if not found.
    */
-  private async getTransactionOrThrow(idOrTransactionID: string, include?: Prisma.TransactionInclude) {
+  private async getTransactionOrThrow(
+    idOrTransactionID: string,
+    include?: Prisma.TransactionInclude,
+  ) {
     const isUUID = UUID_RE.test(idOrTransactionID);
 
     const where: Prisma.TransactionWhereInput = isUUID
@@ -79,22 +85,30 @@ export class TransactionService {
     if (!transaction) {
       throw new NotFoundException(
         `Transaction "${idOrTransactionID}" was not found. ` +
-        `Check that the ID or Transaction Number is correct.`,
+          `Check that the ID or Transaction Number is correct.`,
       );
     }
     return transaction;
   }
 
-  private assertNotCancelled(t: { status: TransactionStatus; id: string; transactionID: string }) {
+  private assertNotCancelled(t: {
+    status: TransactionStatus;
+    id: string;
+    transactionID: string;
+  }) {
     if (t.status === TransactionStatus.CANCELLED) {
       throw new BadRequestException(
         `Transaction ${t.transactionID} is cancelled and cannot be modified. ` +
-        `Reopen the transaction first if you need to make changes.`,
+          `Reopen the transaction first if you need to make changes.`,
       );
     }
   }
 
-  private assertNotPaid(t: { status: TransactionStatus; id: string; transactionID: string }) {
+  private assertNotPaid(t: {
+    status: TransactionStatus;
+    id: string;
+    transactionID: string;
+  }) {
     if (t.status === TransactionStatus.PAID) {
       throw new BadRequestException(
         `Transaction ${t.transactionID} is already fully paid.`,
@@ -240,7 +254,9 @@ export class TransactionService {
       { transactionID, patientId: dto.patientId },
     );
 
-    this.logger.log(`Transaction ${transactionID} created by staff ${dto.staffId}`);
+    this.logger.log(
+      `Transaction ${transactionID} created by staff ${dto.staffId}`,
+    );
     return transaction;
   }
 
@@ -287,16 +303,10 @@ export class TransactionService {
       andConditions.push({ createdById: createdById.trim() });
     }
 
-    // ── date range filter ──
-    if (fromDate || toDate) {
-      const dateFilter: Prisma.DateTimeFilter = {};
-      if (fromDate) dateFilter.gte = new Date(fromDate);
-      if (toDate) {
-        const endDate = new Date(toDate);
-        endDate.setHours(23, 59, 59, 999);
-        dateFilter.lte = endDate;
-      }
-      andConditions.push({ createdAt: dateFilter });
+    // ── date range filter (required) ──
+    {
+      const { from, to } = parseDateRange(fromDate, toDate);
+      andConditions.push({ createdAt: { gte: from, lte: to } });
     }
 
     // ── patient name / phone filter ──
@@ -333,7 +343,12 @@ export class TransactionService {
                 { surname: { contains: term, mode: 'insensitive' } },
                 { otherName: { contains: term, mode: 'insensitive' } },
                 { phoneNumber: { contains: term, mode: 'insensitive' } },
-                { patientId: { contains: term.toUpperCase(), mode: 'insensitive' } },
+                {
+                  patientId: {
+                    contains: term.toUpperCase(),
+                    mode: 'insensitive',
+                  },
+                },
               ],
             },
           },
@@ -358,11 +373,16 @@ export class TransactionService {
     };
 
     const allowedSortFields = new Set([
-      'createdAt', 'updatedAt', 'totalAmount', 'amountPaid', 'status',
+      'createdAt',
+      'updatedAt',
+      'totalAmount',
+      'amountPaid',
+      'status',
     ]);
-    const orderBy: Prisma.TransactionOrderByWithRelationInput = allowedSortFields.has(sortBy ?? '')
-      ? { [sortBy!]: sortOrder ?? 'desc' }
-      : { createdAt: 'desc' };
+    const orderBy: Prisma.TransactionOrderByWithRelationInput =
+      allowedSortFields.has(sortBy ?? '')
+        ? { [sortBy]: sortOrder ?? 'desc' }
+        : { createdAt: 'desc' };
 
     const [data, total] = await Promise.all([
       this.prisma.transaction.findMany({
@@ -385,14 +405,28 @@ export class TransactionService {
           },
           createdBy: {
             select: {
-              id: true, staffId: true, firstName: true, lastName: true, role: true,
+              id: true,
+              staffId: true,
+              firstName: true,
+              lastName: true,
+              role: true,
             },
           },
           updatedBy: {
-            select: { id: true, staffId: true, firstName: true, lastName: true },
+            select: {
+              id: true,
+              staffId: true,
+              firstName: true,
+              lastName: true,
+            },
           },
           _count: {
-            select: { items: true, payments: true, discounts: true, refunds: true },
+            select: {
+              items: true,
+              payments: true,
+              discounts: true,
+              refunds: true,
+            },
           },
         },
       }),
@@ -435,11 +469,7 @@ export class TransactionService {
       sortOrder = 'desc',
     } = query;
 
-    if (!fromDate && !toDate) {
-      throw new BadRequestException(
-        'fromDate or toDate is required when querying unregistered patient transactions.',
-      );
-    }
+    // fromDate/toDate are required by DTO validation
 
     const andConditions: Prisma.TransactionWhereInput[] = [
       {
@@ -463,14 +493,8 @@ export class TransactionService {
       andConditions.push({ createdById: createdById.trim() });
     }
 
-    const dateFilter: Prisma.DateTimeFilter = {};
-    if (fromDate) dateFilter.gte = new Date(fromDate);
-    if (toDate) {
-      const endDate = new Date(toDate);
-      endDate.setHours(23, 59, 59, 999);
-      dateFilter.lte = endDate;
-    }
-    andConditions.push({ createdAt: dateFilter });
+    const { from, to } = parseDateRange(fromDate, toDate);
+    andConditions.push({ createdAt: { gte: from, lte: to } });
 
     if (patientName?.trim() || phoneNumber?.trim()) {
       const patientConditions: Prisma.PatientWhereInput[] = [];
@@ -526,11 +550,16 @@ export class TransactionService {
     };
 
     const allowedSortFields = new Set([
-      'createdAt', 'updatedAt', 'totalAmount', 'amountPaid', 'status',
+      'createdAt',
+      'updatedAt',
+      'totalAmount',
+      'amountPaid',
+      'status',
     ]);
-    const orderBy: Prisma.TransactionOrderByWithRelationInput = allowedSortFields.has(sortBy ?? '')
-      ? { [sortBy!]: sortOrder ?? 'desc' }
-      : { createdAt: 'desc' };
+    const orderBy: Prisma.TransactionOrderByWithRelationInput =
+      allowedSortFields.has(sortBy ?? '')
+        ? { [sortBy]: sortOrder ?? 'desc' }
+        : { createdAt: 'desc' };
 
     const [data, total] = await Promise.all([
       this.prisma.transaction.findMany({
@@ -553,14 +582,28 @@ export class TransactionService {
           },
           createdBy: {
             select: {
-              id: true, staffId: true, firstName: true, lastName: true, role: true,
+              id: true,
+              staffId: true,
+              firstName: true,
+              lastName: true,
+              role: true,
             },
           },
           updatedBy: {
-            select: { id: true, staffId: true, firstName: true, lastName: true },
+            select: {
+              id: true,
+              staffId: true,
+              firstName: true,
+              lastName: true,
+            },
           },
           _count: {
-            select: { items: true, payments: true, discounts: true, refunds: true },
+            select: {
+              items: true,
+              payments: true,
+              discounts: true,
+              refunds: true,
+            },
           },
         },
       }),
@@ -598,43 +641,70 @@ export class TransactionService {
             gender: true,
             dob: true,
           },
-
         },
 
         noIdPatient: true,
         admission: true,
         createdBy: {
-          select: { id: true, staffId: true, firstName: true, lastName: true, role: true },
+          select: {
+            id: true,
+            staffId: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+          },
         },
         updatedBy: {
-          select: { id: true, staffId: true, firstName: true, lastName: true, role: true },
+          select: {
+            id: true,
+            staffId: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+          },
         },
         cancelledBy: {
-          select: { id: true, staffId: true, firstName: true, lastName: true, role: true },
+          select: {
+            id: true,
+            staffId: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+          },
         },
         items: {
           include: {
-            addedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
-            priceEditedBy: { select: { id: true, firstName: true, lastName: true } },
+            addedBy: {
+              select: { id: true, firstName: true, lastName: true, role: true },
+            },
+            priceEditedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
           },
           orderBy: { createdAt: 'asc' },
         },
         payments: {
           include: {
-            receivedBy: { select: { id: true, firstName: true, lastName: true } },
+            receivedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
           },
           orderBy: { paidAt: 'desc' },
         },
         discounts: {
           include: {
-            grantedBy: { select: { id: true, firstName: true, lastName: true } },
+            grantedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
           },
           orderBy: { createdAt: 'desc' },
         },
         insuranceClaims: { orderBy: { createdAt: 'desc' } },
         refunds: {
           include: {
-            processedBy: { select: { id: true, firstName: true, lastName: true } },
+            processedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
           },
           orderBy: { refundedAt: 'desc' },
         },
@@ -653,7 +723,7 @@ export class TransactionService {
     if (!transaction) {
       throw new NotFoundException(
         `Transaction "${idOrTransactionID}" was not found. ` +
-        `Provide either the internal UUID or the Transaction ID (e.g. BILL-2025-00001).`,
+          `Provide either the internal UUID or the Transaction ID (e.g. BILL-2025-00001).`,
       );
     }
 
@@ -685,8 +755,9 @@ export class TransactionService {
       if (!allowed.includes(dto.status)) {
         throw new UnprocessableEntityException(
           `Cannot transition transaction from "${transaction.status}" to "${dto.status}". ` +
-          `Allowed transitions from ${transaction.status}: ${allowed.length ? allowed.join(', ') : 'none'
-          }.`,
+            `Allowed transitions from ${transaction.status}: ${
+              allowed.length ? allowed.join(', ') : 'none'
+            }.`,
         );
       }
     }
@@ -701,17 +772,23 @@ export class TransactionService {
       where: { id: transaction.id },
       data,
       include: {
-        patient: { select: { id: true, patientId: true, firstName: true, surname: true } },
-        updatedBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+        patient: {
+          select: { id: true, patientId: true, firstName: true, surname: true },
+        },
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true, role: true },
+        },
       },
     });
 
     const changes: string[] = [];
     if (dto.notes !== undefined) changes.push(`notes updated`);
-    if (dto.status) changes.push(`status changed from ${transaction.status} → ${dto.status}`);
+    if (dto.status)
+      changes.push(`status changed from ${transaction.status} → ${dto.status}`);
 
     const auditAction =
-      dto.status === TransactionStatus.DRAFT || dto.status === TransactionStatus.ACTIVE
+      dto.status === TransactionStatus.DRAFT ||
+      dto.status === TransactionStatus.ACTIVE
         ? TransactionAuditAction.BILL_REOPENED
         : TransactionAuditAction.BILL_CREATED;
 
@@ -742,7 +819,9 @@ export class TransactionService {
         where: { patientId },
         orderBy: { createdAt: 'desc' },
         include: {
-          createdBy: { select: { id: true, firstName: true, lastName: true, role: true } },
+          createdBy: {
+            select: { id: true, firstName: true, lastName: true, role: true },
+          },
           _count: { select: { items: true, payments: true } },
         },
       }),
@@ -758,8 +837,11 @@ export class TransactionService {
     const transaction = await this.getTransactionOrThrow(transactionId);
     this.assertNotCancelled(transaction);
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     if (dto.quantity < 1) {
       throw new BadRequestException('Quantity must be at least 1.');
@@ -810,7 +892,11 @@ export class TransactionService {
 
   // ─── Edit Item ────────────────────────────────────────────────────────────────────
 
-  async editItemPrice(transactionId: string, itemId: string, dto: EditTransactionItemDto) {
+  async editItemPrice(
+    transactionId: string,
+    itemId: string,
+    dto: EditTransactionItemDto,
+  ) {
     const transaction = await this.getTransactionOrThrow(transactionId);
     this.assertNotCancelled(transaction);
 
@@ -820,18 +906,23 @@ export class TransactionService {
     if (!existing) {
       throw new NotFoundException(
         `Item "${itemId}" was not found on transaction "${transactionId}". ` +
-        `Verify that the item belongs to this transaction.`,
+          `Verify that the item belongs to this transaction.`,
       );
     }
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     const newUnitPrice = new Prisma.Decimal(dto.unitPrice);
     const newQuantity = dto.quantity ?? existing.quantity;
 
-    if (newQuantity < 1) throw new BadRequestException('Quantity must be at least 1.');
-    if (newUnitPrice.lt(0)) throw new BadRequestException('Unit price cannot be negative.');
+    if (newQuantity < 1)
+      throw new BadRequestException('Quantity must be at least 1.');
+    if (newUnitPrice.lt(0))
+      throw new BadRequestException('Unit price cannot be negative.');
 
     const newTotalPrice = newUnitPrice.mul(newQuantity);
 
@@ -853,8 +944,8 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.ITEM_EDITED,
       `Item "${existing.description}" updated — ` +
-      `price: ₦${existing.unitPrice} → ₦${dto.unitPrice}, ` +
-      `qty: ${existing.quantity} → ${newQuantity}`,
+        `price: ₦${existing.unitPrice} → ₦${dto.unitPrice}, ` +
+        `qty: ${existing.quantity} → ${newQuantity}`,
       dto.staffId,
       {
         itemId,
@@ -877,13 +968,16 @@ export class TransactionService {
     this.assertNotCancelled(transaction);
     this.assertNotPaid(transaction);
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     if (transaction.totalAmount.lte(0)) {
       throw new BadRequestException(
         `Transaction ${transaction.transactionID} has no items. ` +
-        `Add items before recording a payment.`,
+          `Add items before recording a payment.`,
       );
     }
 
@@ -894,12 +988,14 @@ export class TransactionService {
 
     const paymentAmount = new Prisma.Decimal(dto.amount);
     if (paymentAmount.lte(0)) {
-      throw new BadRequestException('Payment amount must be greater than zero.');
+      throw new BadRequestException(
+        'Payment amount must be greater than zero.',
+      );
     }
     if (paymentAmount.gt(outstanding)) {
       throw new BadRequestException(
         `Payment amount ₦${dto.amount} exceeds outstanding balance ₦${outstanding.toFixed(2)}. ` +
-        `Reduce the payment amount or issue a refund for previous overpayments.`,
+          `Reduce the payment amount or issue a refund for previous overpayments.`,
       );
     }
 
@@ -912,7 +1008,7 @@ export class TransactionService {
       if (!bank) {
         throw new NotFoundException(
           `No bank found with account number "${dto.bankAccountNumber}". ` +
-          `Register the bank first at POST /bank.`,
+            `Register the bank first at POST /bank.`,
         );
       }
       bankId = bank.id;
@@ -943,15 +1039,19 @@ export class TransactionService {
 
     await this.prisma.transaction.update({
       where: { id: transaction.id },
-      data: { amountPaid: newAmountPaid, status: newStatus, updatedById: dto.staffId },
+      data: {
+        amountPaid: newAmountPaid,
+        status: newStatus,
+        updatedById: dto.staffId,
+      },
     });
 
     await this.log(
       transaction.id,
       TransactionAuditAction.PAYMENT_RECEIVED,
       `Payment of ₦${dto.amount} received via ${dto.method}` +
-      (dto.reference ? ` (ref: ${dto.reference})` : '') +
-      `. Outstanding balance: ₦${newOutstanding.toFixed(2)}`,
+        (dto.reference ? ` (ref: ${dto.reference})` : '') +
+        `. Outstanding balance: ₦${newOutstanding.toFixed(2)}`,
       dto.staffId,
       {
         paymentId: payment.id,
@@ -971,8 +1071,11 @@ export class TransactionService {
     const transaction = await this.getTransactionOrThrow(transactionId);
     this.assertNotCancelled(transaction);
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     if (transaction.totalAmount.lte(0)) {
       throw new BadRequestException(
@@ -983,7 +1086,9 @@ export class TransactionService {
     let computedAmount: Prisma.Decimal;
     if (dto.type === 'PERCENTAGE') {
       if (dto.value > 100) {
-        throw new BadRequestException('Percentage discount cannot exceed 100%.');
+        throw new BadRequestException(
+          'Percentage discount cannot exceed 100%.',
+        );
       }
       computedAmount = transaction.totalAmount.mul(dto.value).div(100);
     } else {
@@ -1020,10 +1125,16 @@ export class TransactionService {
     await this.log(
       transaction.id,
       TransactionAuditAction.DISCOUNT_APPLIED,
-      `Discount applied by ${staff.firstName} ${staff.lastName}: ${dto.type === 'PERCENTAGE' ? `${dto.value}%` : `₦${dto.value} fixed`
+      `Discount applied by ${staff.firstName} ${staff.lastName}: ${
+        dto.type === 'PERCENTAGE' ? `${dto.value}%` : `₦${dto.value} fixed`
       } — computed ₦${computedAmount.toFixed(2)}. Reason: ${dto.reason}`,
       dto.staffId,
-      { discountId: discount.id, type: dto.type, value: dto.value, computedAmount },
+      {
+        discountId: discount.id,
+        type: dto.type,
+        value: dto.value,
+        computedAmount,
+      },
     );
 
     return discount;
@@ -1035,8 +1146,11 @@ export class TransactionService {
     const transaction = await this.getTransactionOrThrow(transactionId);
     this.assertNotCancelled(transaction);
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     const coveredAmount = new Prisma.Decimal(dto.coveredAmount);
 
@@ -1049,12 +1163,11 @@ export class TransactionService {
     if (outstandingAfter.lt(0)) {
       throw new BadRequestException(
         `Insurance coverage of ₦${dto.coveredAmount} would exceed the remaining balance. ` +
-        `Maximum allowed coverage for this transaction is ₦${transaction.totalAmount
-          .sub(transaction.discountAmount)
-          .sub(transaction.insuranceCovered)
-          .sub(transaction.amountPaid)
-          .toFixed(2)
-        }.`,
+          `Maximum allowed coverage for this transaction is ₦${transaction.totalAmount
+            .sub(transaction.discountAmount)
+            .sub(transaction.insuranceCovered)
+            .sub(transaction.amountPaid)
+            .toFixed(2)}.`,
       );
     }
 
@@ -1078,8 +1191,8 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.INSURANCE_APPLIED,
       `Insurance claim applied by ${staff.firstName} ${staff.lastName}: ${dto.provider}` +
-      (dto.policyNumber ? ` (policy: ${dto.policyNumber})` : '') +
-      ` — covered ₦${dto.coveredAmount}`,
+        (dto.policyNumber ? ` (policy: ${dto.policyNumber})` : '') +
+        ` — covered ₦${dto.coveredAmount}`,
       dto.staffId,
       {
         claimId: claim.id,
@@ -1111,8 +1224,11 @@ export class TransactionService {
       );
     }
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     const updateData: Prisma.InsuranceClaimUpdateInput = {
       updatedBy: { connect: { id: dto.staffId } },
@@ -1163,8 +1279,11 @@ export class TransactionService {
   async issueRefund(transactionId: string, dto: CreateRefundDto) {
     const transaction = await this.getTransactionOrThrow(transactionId);
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     const refundAmount = new Prisma.Decimal(dto.amount);
     if (refundAmount.lte(0)) {
@@ -1173,7 +1292,7 @@ export class TransactionService {
     if (refundAmount.gt(transaction.amountPaid)) {
       throw new BadRequestException(
         `Refund amount ₦${dto.amount} exceeds the total amount paid ₦${transaction.amountPaid.toFixed(2)} ` +
-        `on transaction ${transaction.transactionID}.`,
+          `on transaction ${transaction.transactionID}.`,
       );
     }
 
@@ -1196,25 +1315,33 @@ export class TransactionService {
       .sub(transaction.insuranceCovered)
       .sub(newAmountPaid);
 
-    const newStatus =
-      newAmountPaid.lte(0)
-        ? TransactionStatus.REFUNDED
-        : outstanding.lte(0)
-          ? TransactionStatus.PAID
-          : TransactionStatus.PARTIALLY_PAID;
+    const newStatus = newAmountPaid.lte(0)
+      ? TransactionStatus.REFUNDED
+      : outstanding.lte(0)
+        ? TransactionStatus.PAID
+        : TransactionStatus.PARTIALLY_PAID;
 
     await this.prisma.transaction.update({
       where: { id: transaction.id },
-      data: { amountPaid: newAmountPaid, status: newStatus, updatedById: dto.staffId },
+      data: {
+        amountPaid: newAmountPaid,
+        status: newStatus,
+        updatedById: dto.staffId,
+      },
     });
 
     await this.log(
       transaction.id,
       TransactionAuditAction.REFUND_ISSUED,
       `Refund of ₦${dto.amount} issued by ${staff.firstName} ${staff.lastName}. ` +
-      `Reason: ${dto.reason}. New status: ${newStatus}`,
+        `Reason: ${dto.reason}. New status: ${newStatus}`,
       dto.staffId,
-      { refundId: refund.id, amount: dto.amount, reason: dto.reason, newStatus },
+      {
+        refundId: refund.id,
+        amount: dto.amount,
+        reason: dto.reason,
+        newStatus,
+      },
     );
 
     return { ...refund, newStatus, newAmountPaid };
@@ -1226,14 +1353,17 @@ export class TransactionService {
     const transaction = await this.getTransactionOrThrow(transactionId);
     this.assertNotCancelled(transaction);
 
-    const staff = await this.prisma.staff.findUnique({ where: { id: dto.staffId } });
-    if (!staff) throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: dto.staffId },
+    });
+    if (!staff)
+      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
 
     if (transaction.amountPaid.gt(0)) {
       throw new BadRequestException(
         `Cannot cancel transaction ${transaction.transactionID} — ` +
-        `₦${transaction.amountPaid.toFixed(2)} has already been paid. ` +
-        `Issue a full refund first, then cancel.`,
+          `₦${transaction.amountPaid.toFixed(2)} has already been paid. ` +
+          `Issue a full refund first, then cancel.`,
       );
     }
 
@@ -1255,7 +1385,7 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.BILL_CANCELLED,
       `Transaction ${transaction.transactionID} cancelled by ${staff.firstName} ${staff.lastName}. ` +
-      `Reason: ${dto.reason}`,
+        `Reason: ${dto.reason}`,
       dto.staffId,
       { reason: dto.reason },
     );
@@ -1276,7 +1406,13 @@ export class TransactionService {
         take,
         include: {
           performedBy: {
-            select: { id: true, staffId: true, firstName: true, lastName: true, role: true },
+            select: {
+              id: true,
+              staffId: true,
+              firstName: true,
+              lastName: true,
+              role: true,
+            },
           },
         },
       }),
@@ -1298,10 +1434,7 @@ export class TransactionService {
     // ── 1. Validate entities (read-only — outside the transaction) ─────────────
     const patient = await this.prisma.patient.findFirst({
       where: {
-        OR: [
-          { patientId: dto.patientId },
-          { id: dto.patientId }
-        ]
+        OR: [{ patientId: dto.patientId }, { id: dto.patientId }],
       },
       select: { id: true, firstName: true, surname: true, patientId: true },
     });
@@ -1322,7 +1455,9 @@ export class TransactionService {
         where: { id: dto.admissionId },
       });
       if (!admission) {
-        throw new NotFoundException(`Admission "${dto.admissionId}" does not exist.`);
+        throw new NotFoundException(
+          `Admission "${dto.admissionId}" does not exist.`,
+        );
       }
       if (admission.patientId !== dto.patientId) {
         throw new BadRequestException(
@@ -1335,236 +1470,230 @@ export class TransactionService {
     const transactionID = await this.generateTransactionNumber();
 
     // ── 3. Steps below are wrapped in an atomic DB transaction ────────────────
-    const {
-      transaction,
-      finalStatus,
-      totalAmount,
-      amountPaid,
-      itemSnapshots
-    } = await this.prisma.$transaction(async (tx) => {
-      // 3a. Validate items and compute totals
-      let totalAmount = new Prisma.Decimal(0);
-      const itemSnapshots: {
-        description: string;
-        unitPrice: number;
-        quantity: number;
-        total: string;
-      }[] = [];
+    const { transaction, finalStatus, totalAmount, amountPaid, itemSnapshots } =
+      await this.prisma.$transaction(async (tx) => {
+        // 3a. Validate items and compute totals
+        let totalAmount = new Prisma.Decimal(0);
+        const itemSnapshots: {
+          description: string;
+          unitPrice: number;
+          quantity: number;
+          total: string;
+        }[] = [];
 
-      const consultationKeywords = [
-        'consultation'
-      ];
+        const consultationKeywords = ['consultation'];
 
-      const consultationItems: { name: string }[] = [];
+        const consultationItems: { name: string }[] = [];
 
-      for (const [i, item] of dto.items.entries()) {
-        if (item.quantity < 1) {
-          throw new BadRequestException(
-            `items[${i}] "${item.name}": quantity must be at least 1.`,
-          );
-        }
-        if (item.unitPrice < 0) {
-          throw new BadRequestException(
-            `items[${i}] "${item.name}": unit price cannot be negative.`,
-          );
-        }
+        for (const [i, item] of dto.items.entries()) {
+          if (item.quantity < 1) {
+            throw new BadRequestException(
+              `items[${i}] "${item.name}": quantity must be at least 1.`,
+            );
+          }
+          if (item.unitPrice < 0) {
+            throw new BadRequestException(
+              `items[${i}] "${item.name}": unit price cannot be negative.`,
+            );
+          }
 
-        const unitPrice = new Prisma.Decimal(item.unitPrice);
-        const totalPrice = unitPrice.mul(item.quantity);
-        totalAmount = totalAmount.add(totalPrice);
+          const unitPrice = new Prisma.Decimal(item.unitPrice);
+          const totalPrice = unitPrice.mul(item.quantity);
+          totalAmount = totalAmount.add(totalPrice);
 
-        const lowerName = String(item.name ?? '').toLowerCase();
-        if (consultationKeywords.some((kw) => lowerName.includes(kw))) {
-          consultationItems.push({ name: item.name });
-        }
+          const lowerName = String(item.name ?? '').toLowerCase();
+          if (consultationKeywords.some((kw) => lowerName.includes(kw))) {
+            consultationItems.push({ name: item.name });
+          }
 
-
-        itemSnapshots.push({
-          description: item.name,
-          unitPrice: item.unitPrice,
-          quantity: item.quantity,
-          total: totalPrice.toFixed(2),
-        });
-      }
-
-      // 3b. Compute discount (already calculated client-side as a flat amount)
-      const discountAmount = new Prisma.Decimal(dto.discount ?? 0);
-      if (discountAmount.lt(0)) {
-        throw new BadRequestException('Discount cannot be negative.');
-      }
-      if (discountAmount.gt(totalAmount)) {
-        throw new BadRequestException(
-          `Discount ₦${discountAmount.toFixed(
-            2,
-          )} would exceed the total ₦${totalAmount.toFixed(2)}.`,
-        );
-      }
-
-      const insuranceCovered = new Prisma.Decimal(0);
-
-      const billableAfterDiscount = totalAmount
-        .sub(discountAmount)
-        .sub(insuranceCovered);
-
-      // 3c. Determine payment
-      const amountPaid = new Prisma.Decimal(dto.amountPaid ?? 0);
-      if (amountPaid.lt(0)) {
-        throw new BadRequestException('Amount paid cannot be negative.');
-      }
-      if (amountPaid.gt(billableAfterDiscount)) {
-        throw new BadRequestException(
-          `Payment ₦${amountPaid.toFixed(
-            2,
-          )} exceeds the outstanding balance ₦${billableAfterDiscount.toFixed(
-            2,
-          )}.`,
-        );
-      }
-
-      const remainingBalance = billableAfterDiscount.sub(amountPaid);
-
-      let finalStatus: TransactionStatus;
-      if (totalAmount.lte(0)) {
-        finalStatus = TransactionStatus.DRAFT;
-      } else if (remainingBalance.lte(0)) {
-        finalStatus = TransactionStatus.PAID;
-      } else if (amountPaid.gt(0)) {
-        finalStatus = TransactionStatus.PARTIALLY_PAID;
-      } else {
-        finalStatus = TransactionStatus.ACTIVE;
-      }
-
-      // 3d. Create transaction header with final financials
-      const transaction = await tx.transaction.create({
-        data: {
-          transactionID,
-          patientId: patient.id,
-          createdById: dto.staffId,
-          updatedById: dto.staffId,
-          admissionId: dto.admissionId,
-          noIdPatientid: dto.noIdPatientId,
-          amountPaid,
-          totalAmount,
-          discountAmount,
-          insuranceCovered,
-          status: finalStatus,
-          notes: dto.notes,
-        },
-      });
-
-      // 3e. Insert all items now that we have transaction.id
-      for (const item of dto.items) {
-        const unitPrice = new Prisma.Decimal(item.unitPrice);
-        const totalPrice = unitPrice.mul(item.quantity);
-
-        await tx.transactionItem.create({
-          data: {
-            transactionId: transaction.id,
+          itemSnapshots.push({
             description: item.name,
-            source: item.source,
+            unitPrice: item.unitPrice,
             quantity: item.quantity,
-            unitPrice,
-            totalPrice,
-            addedById: dto.staffId,
-            referenceId: item.serviceId ?? item.referenceId,
+            total: totalPrice.toFixed(2),
+          });
+        }
+
+        // 3b. Compute discount (already calculated client-side as a flat amount)
+        const discountAmount = new Prisma.Decimal(dto.discount ?? 0);
+        if (discountAmount.lt(0)) {
+          throw new BadRequestException('Discount cannot be negative.');
+        }
+        if (discountAmount.gt(totalAmount)) {
+          throw new BadRequestException(
+            `Discount ₦${discountAmount.toFixed(
+              2,
+            )} would exceed the total ₦${totalAmount.toFixed(2)}.`,
+          );
+        }
+
+        const insuranceCovered = new Prisma.Decimal(0);
+
+        const billableAfterDiscount = totalAmount
+          .sub(discountAmount)
+          .sub(insuranceCovered);
+
+        // 3c. Determine payment
+        const amountPaid = new Prisma.Decimal(dto.amountPaid ?? 0);
+        if (amountPaid.lt(0)) {
+          throw new BadRequestException('Amount paid cannot be negative.');
+        }
+        if (amountPaid.gt(billableAfterDiscount)) {
+          throw new BadRequestException(
+            `Payment ₦${amountPaid.toFixed(
+              2,
+            )} exceeds the outstanding balance ₦${billableAfterDiscount.toFixed(
+              2,
+            )}.`,
+          );
+        }
+
+        const remainingBalance = billableAfterDiscount.sub(amountPaid);
+
+        let finalStatus: TransactionStatus;
+        if (totalAmount.lte(0)) {
+          finalStatus = TransactionStatus.DRAFT;
+        } else if (remainingBalance.lte(0)) {
+          finalStatus = TransactionStatus.PAID;
+        } else if (amountPaid.gt(0)) {
+          finalStatus = TransactionStatus.PARTIALLY_PAID;
+        } else {
+          finalStatus = TransactionStatus.ACTIVE;
+        }
+
+        // 3d. Create transaction header with final financials
+        const transaction = await tx.transaction.create({
+          data: {
+            transactionID,
+            patientId: patient.id,
             createdById: dto.staffId,
             updatedById: dto.staffId,
+            admissionId: dto.admissionId,
+            noIdPatientid: dto.noIdPatientId,
+            amountPaid,
+            totalAmount,
+            discountAmount,
+            insuranceCovered,
+            status: finalStatus,
+            notes: dto.notes,
           },
         });
-      }
 
-      // 3f. Create payment record if any amount was paid
-      if (amountPaid.gt(0)) {
-        if (!dto.paymentMethod) {
-          throw new BadRequestException(
-            'paymentMethod is required when amountPaid > 0.',
-          );
+        // 3e. Insert all items now that we have transaction.id
+        for (const item of dto.items) {
+          const unitPrice = new Prisma.Decimal(item.unitPrice);
+          const totalPrice = unitPrice.mul(item.quantity);
+
+          await tx.transactionItem.create({
+            data: {
+              transactionId: transaction.id,
+              description: item.name,
+              source: item.source,
+              quantity: item.quantity,
+              unitPrice,
+              totalPrice,
+              addedById: dto.staffId,
+              referenceId: item.serviceId ?? item.referenceId,
+              createdById: dto.staffId,
+              updatedById: dto.staffId,
+            },
+          });
         }
 
-        await tx.transactionPayment.create({
-          data: {
-            transactionId: transaction.id,
-            amount: amountPaid,
-            method: dto.paymentMethod.toUpperCase(),
-            receivedById: dto.staffId,
-            createdById: dto.staffId,
-          },
-        });
-      }
+        // 3f. Create payment record if any amount was paid
+        if (amountPaid.gt(0)) {
+          if (!dto.paymentMethod) {
+            throw new BadRequestException(
+              'paymentMethod is required when amountPaid > 0.',
+            );
+          }
 
-      // 3g. For each consultation item, add the patient to the waiting list,
-      //     linking to the matching Service (by exact name) when found.
-      for (const cItem of consultationItems) {
-        const service = await tx.service.findFirst({
-          where: { name: cItem.name },
-        });
-        await tx.waitingPatient.create({
-          data: {
-            patient: { connect: { id: patient.id } },
-            ...(service && { service: { connect: { id: service.id } } }),
-            ...(dto.staffId && {
-              createdBy: { connect: { id: dto.staffId } },
-              updatedBy: { connect: { id: dto.staffId } },
-            }),
-          },
-        });
-      }
+          await tx.transactionPayment.create({
+            data: {
+              transactionId: transaction.id,
+              amount: amountPaid,
+              method: dto.paymentMethod.toUpperCase(),
+              receivedById: dto.staffId,
+              createdById: dto.staffId,
+            },
+          });
+        }
 
-      // 3h. Single consolidated audit log
-      const payLine =
-        amountPaid.gt(0)
+        // 3g. For each consultation item, add the patient to the waiting list,
+        //     linking to the matching Service (by exact name) when found.
+        for (const cItem of consultationItems) {
+          const service = await tx.service.findFirst({
+            where: { name: cItem.name },
+          });
+          await tx.waitingPatient.create({
+            data: {
+              patient: { connect: { id: patient.id } },
+              ...(service && { service: { connect: { id: service.id } } }),
+              ...(dto.staffId && {
+                createdBy: { connect: { id: dto.staffId } },
+                updatedBy: { connect: { id: dto.staffId } },
+              }),
+            },
+          });
+        }
+
+        // 3h. Single consolidated audit log
+        const payLine = amountPaid.gt(0)
           ? `Payment of ₦${amountPaid.toFixed(
-            2,
-          )} via ${String(dto.paymentMethod).toUpperCase()} received. ` +
-          `Balance remaining: ₦${remainingBalance.toFixed(2)}.`
+              2,
+            )} via ${String(dto.paymentMethod).toUpperCase()} received. ` +
+            `Balance remaining: ₦${remainingBalance.toFixed(2)}.`
           : 'No payment — bill is ACTIVE and awaiting cashier.';
 
-      await this.log(
-        transaction.id,
-        TransactionAuditAction.PAYMENT_RECEIVED,
-        `Quick transaction ${transactionID} created for ` +
-        `${patient.firstName} ${patient.surname} (${patient.patientId}) ` +
-        `by ${staff.firstName} ${staff.lastName}. ` +
-        `${dto.items.length} item(s) — total ₦${totalAmount.toFixed(2)}` +
-        (discountAmount.gt(0)
-          ? `, discount ₦${discountAmount.toFixed(2)}`
-          : '') +
-        `. ${payLine}`,
-        dto.staffId,
-        {
-          transactionID,
-          patientId: dto.patientId,
-          items: itemSnapshots,
-          totalAmount: totalAmount.toFixed(2),
-          discountAmount: discountAmount.toFixed(2),
-          insuranceCovered: insuranceCovered.toFixed(2),
-          amountPaid: amountPaid.toFixed(2),
-          remainingBalance: remainingBalance.toFixed(2),
-          finalStatus,
-          consultationItemCount: consultationItems.length,
-        },
-        tx as any,
-      );
+        await this.log(
+          transaction.id,
+          TransactionAuditAction.PAYMENT_RECEIVED,
+          `Quick transaction ${transactionID} created for ` +
+            `${patient.firstName} ${patient.surname} (${patient.patientId}) ` +
+            `by ${staff.firstName} ${staff.lastName}. ` +
+            `${dto.items.length} item(s) — total ₦${totalAmount.toFixed(2)}` +
+            (discountAmount.gt(0)
+              ? `, discount ₦${discountAmount.toFixed(2)}`
+              : '') +
+            `. ${payLine}`,
+          dto.staffId,
+          {
+            transactionID,
+            patientId: dto.patientId,
+            items: itemSnapshots,
+            totalAmount: totalAmount.toFixed(2),
+            discountAmount: discountAmount.toFixed(2),
+            insuranceCovered: insuranceCovered.toFixed(2),
+            amountPaid: amountPaid.toFixed(2),
+            remainingBalance: remainingBalance.toFixed(2),
+            finalStatus,
+            consultationItemCount: consultationItems.length,
+          },
+          tx as any,
+        );
 
-      return {
-        transaction,
-        finalStatus,
-        totalAmount,
-        discountAmount,
-        amountPaid,
-        remainingBalance,
-        itemSnapshots,
-      };
-    });
+        return {
+          transaction,
+          finalStatus,
+          totalAmount,
+          discountAmount,
+          amountPaid,
+          remainingBalance,
+          itemSnapshots,
+        };
+      });
 
     // ── 4. Post-commit: logger and final hydrated response ─────────────────────
     this.logger.log(
       `Quick transaction ${transactionID} → status: ${finalStatus}, ` +
-      `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
+        `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
     );
 
     const result = {
-      transaction, patient, staff, itemSnapshots
+      transaction,
+      patient,
+      staff,
+      itemSnapshots,
     };
     return result;
   }

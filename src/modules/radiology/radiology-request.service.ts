@@ -1,13 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import { CreateRadiologyRequestDto } from './dto/create-radiology-request.dto';
 import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
 
 @Injectable()
 export class RadiologyRequestService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async create(dto: CreateRadiologyRequestDto) {
     const patient = await this.prisma.patient.findUnique({
@@ -21,10 +29,14 @@ export class RadiologyRequestService {
         where: { id: dto.encounterId },
       });
       if (!encounter) {
-        throw new NotFoundException(`Encounter "${dto.encounterId}" not found.`);
+        throw new NotFoundException(
+          `Encounter "${dto.encounterId}" not found.`,
+        );
       }
       if (encounter.patientId !== dto.patientId) {
-        throw new BadRequestException('Encounter does not belong to the given patient.');
+        throw new BadRequestException(
+          'Encounter does not belong to the given patient.',
+        );
       }
     }
     const doctor = await this.prisma.staff.findUnique({
@@ -38,11 +50,13 @@ export class RadiologyRequestService {
         where: { id: dto.departmentId },
       });
       if (!dept) {
-        throw new NotFoundException(`Department "${dto.departmentId}" not found.`);
+        throw new NotFoundException(
+          `Department "${dto.departmentId}" not found.`,
+        );
       }
     }
 
-    return this.prisma.radiologyRequest.create({
+    const radiologyRequest = await this.prisma.radiologyRequest.create({
       data: {
         patientId: dto.patientId,
         encounterId: dto.encounterId ?? undefined,
@@ -55,12 +69,25 @@ export class RadiologyRequestService {
         bodyPart: dto.bodyPart ?? null,
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
         encounter: { select: { id: true, encounterType: true, status: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        requestedBy: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
         department: { select: { id: true, name: true } },
       },
     });
+    if (dto.encounterId && dto.serviceId) {
+      await this.invoiceService.createWithServiceItem({
+        patientId: dto.patientId,
+        encounterId: dto.encounterId,
+        staffId: dto.requestedById,
+        serviceId: dto.serviceId,
+      });
+    }
+    return radiologyRequest;
   }
 
   async findAll(query: ListRadiologyRequestsQueryDto) {
@@ -84,8 +111,17 @@ export class RadiologyRequestService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          patient: { select: { id: true, firstName: true, surname: true, patientId: true } },
-          requestedBy: { select: { id: true, firstName: true, lastName: true } },
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
+          },
+          requestedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
           schedule: true,
           report: { select: { id: true, signedAt: true } },
         },
@@ -101,18 +137,31 @@ export class RadiologyRequestService {
       where: { id },
       include: {
         patient: true,
-        encounter: { select: { id: true, encounterType: true, status: true, startTime: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true, staffId: true } },
+        encounter: {
+          select: {
+            id: true,
+            encounterType: true,
+            status: true,
+            startTime: true,
+          },
+        },
+        requestedBy: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
         department: { select: { id: true, name: true } },
         schedule: {
           include: {
-            radiographer: { select: { id: true, firstName: true, lastName: true } },
+            radiographer: {
+              select: { id: true, firstName: true, lastName: true },
+            },
             machine: true,
           },
         },
         procedure: {
           include: {
-            performedBy: { select: { id: true, firstName: true, lastName: true } },
+            performedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
             machine: true,
           },
         },
@@ -136,8 +185,12 @@ export class RadiologyRequestService {
       where: { id },
       data: {
         ...(dto.status !== undefined && { status: dto.status }),
-        ...(dto.clinicalNotes !== undefined && { clinicalNotes: dto.clinicalNotes }),
-        ...(dto.reasonForInvestigation !== undefined && { reasonForInvestigation: dto.reasonForInvestigation }),
+        ...(dto.clinicalNotes !== undefined && {
+          clinicalNotes: dto.clinicalNotes,
+        }),
+        ...(dto.reasonForInvestigation !== undefined && {
+          reasonForInvestigation: dto.reasonForInvestigation,
+        }),
         ...(dto.priority !== undefined && { priority: dto.priority }),
         ...(dto.scanType !== undefined && { scanType: dto.scanType }),
         ...(dto.bodyPart !== undefined && { bodyPart: dto.bodyPart }),

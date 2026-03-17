@@ -1,10 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePrescriptionDto, UpdatePrescriptionDto } from './dto/create-prescription.dto';
+import {
+  CreatePrescriptionDto,
+  UpdatePrescriptionDto,
+} from './dto/create-prescription.dto';
 
 @Injectable()
 export class PrescriptionService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(createPrescriptionDto: CreatePrescriptionDto) {
     if (createPrescriptionDto.encounterId) {
@@ -73,7 +80,9 @@ export class PrescriptionService {
   }
 
   async update(id: string, updatePrescriptionDto: UpdatePrescriptionDto) {
-    const existing = await this.prisma.prescription.findUnique({ where: { id } });
+    const existing = await this.prisma.prescription.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException(`Prescription "${id}" not found.`);
     }
@@ -102,7 +111,10 @@ export class PrescriptionService {
     });
   }
 
-  private async validateEncounterForPatient(encounterId: string, patientId: string) {
+  private async validateEncounterForPatient(
+    encounterId: string,
+    patientId: string,
+  ) {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: encounterId },
     });
@@ -110,7 +122,9 @@ export class PrescriptionService {
       throw new BadRequestException(`Encounter "${encounterId}" not found.`);
     }
     if (encounter.patientId !== patientId) {
-      throw new BadRequestException('Encounter does not belong to the given patient.');
+      throw new BadRequestException(
+        'Encounter does not belong to the given patient.',
+      );
     }
   }
 

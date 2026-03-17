@@ -29,11 +29,12 @@ import {
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
 } from './dto/invoice.dto';
+import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
 export class InvoiceController {
-  constructor(private readonly invoiceService: InvoiceService) { }
+  constructor(private readonly invoiceService: InvoiceService) {}
 
   // ─── Invoice Endpoints ────────────────────────────────────────────────────────
 
@@ -53,22 +54,33 @@ export class InvoiceController {
   @Get()
   @ApiOperation({
     summary: 'List all invoices (paginated)',
-    description: 'Returns a paginated list of all invoices ordered most-recent first.',
+    description:
+      'Returns a paginated list of all invoices ordered most-recent first.',
   })
-  @ApiQuery({ name: 'skip', required: false, type: Number, description: 'Records to skip', example: 0 })
-  @ApiQuery({ name: 'take', required: false, type: Number, description: 'Records to return', example: 20 })
+  @ApiQuery({
+    name: 'skip',
+    required: false,
+    type: Number,
+    description: 'Records to skip',
+    example: 0,
+  })
+  @ApiQuery({
+    name: 'take',
+    required: false,
+    type: Number,
+    description: 'Records to return',
+    example: 20,
+  })
   @ApiOkResponse({ description: 'Paginated list of invoices' })
-  findAll(
-    @Query('skip') skip = '0',
-    @Query('take') take = '20',
-  ) {
-    return this.invoiceService.findAll(+skip, +take);
+  findAll(@Query() query: DateRangeSkipTakeDto) {
+    return this.invoiceService.findAll(query);
   }
 
   @Get('patient/:patientId')
   @ApiOperation({
     summary: 'Get all invoices for a specific patient',
-    description: 'Returns every invoice for the given patient, including all line items and service info.',
+    description:
+      'Returns every invoice for the given patient, including all line items and service info.',
   })
   @ApiParam({ name: 'patientId', description: 'Patient UUID' })
   @ApiOkResponse({ description: 'List of patient invoices' })
@@ -140,7 +152,8 @@ export class InvoiceController {
   @Patch(':id/items/:itemId')
   @ApiOperation({
     summary: 'Update an invoice line item',
-    description: 'Update the quantity or price snapshot for a specific line item on an invoice.',
+    description:
+      'Update the quantity or price snapshot for a specific line item on an invoice.',
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID' })

@@ -1,10 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateRadiologyReportDto, UpdateRadiologyReportDto } from './dto/create-radiology-report.dto';
+import {
+  CreateRadiologyReportDto,
+  UpdateRadiologyReportDto,
+} from './dto/create-radiology-report.dto';
 
 @Injectable()
 export class RadiologyReportService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   async create(createRadiologyReportDto: CreateRadiologyReportDto) {
     if (createRadiologyReportDto.encounterId) {
@@ -59,7 +66,9 @@ export class RadiologyReportService {
   }
 
   async update(id: string, updateRadiologyReportDto: UpdateRadiologyReportDto) {
-    const existing = await this.prisma.radiologyReport.findUnique({ where: { id } });
+    const existing = await this.prisma.radiologyReport.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException(`Radiology report "${id}" not found.`);
     }
@@ -75,7 +84,10 @@ export class RadiologyReportService {
     });
   }
 
-  private async validateEncounterForPatient(encounterId: string, patientId: string) {
+  private async validateEncounterForPatient(
+    encounterId: string,
+    patientId: string,
+  ) {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: encounterId },
     });
@@ -83,7 +95,9 @@ export class RadiologyReportService {
       throw new BadRequestException(`Encounter "${encounterId}" not found.`);
     }
     if (encounter.patientId !== patientId) {
-      throw new BadRequestException('Encounter does not belong to the given patient.');
+      throw new BadRequestException(
+        'Encounter does not belong to the given patient.',
+      );
     }
   }
 
