@@ -21,7 +21,7 @@ import { nanoid } from 'nanoid';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { RadiologyImageService } from './radiology-image.service';
-import * as express from 'express';
+// import * as express from 'express';
 
 const UPLOAD_BASE = path.join(process.cwd(), 'uploads', 'radiology');
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -109,7 +109,7 @@ export class RadiologyImageController {
 
   @Get('images/:id/file')
   @ApiOperation({ summary: 'Download/serve image file' })
-  async getFile(@Param('id') id: string, @Res() res: express.Response) {
+  async getFile(@Param('id') id: string, @Res() res: any) {
     const { filePath, fileName, mimeType } =
       await this.radiologyImageService.getFile(id);
     res.setHeader('Content-Type', mimeType || 'application/octet-stream');
