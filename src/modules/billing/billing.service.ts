@@ -48,7 +48,7 @@ const VALID_TRANSITIONS: Partial<
 export class TransactionService {
   private readonly logger = new Logger(TransactionService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ export class TransactionService {
     if (!transaction) {
       throw new NotFoundException(
         `Transaction "${idOrTransactionID}" was not found. ` +
-          `Check that the ID or Transaction Number is correct.`,
+        `Check that the ID or Transaction Number is correct.`,
       );
     }
     return transaction;
@@ -99,7 +99,7 @@ export class TransactionService {
     if (t.status === TransactionStatus.CANCELLED) {
       throw new BadRequestException(
         `Transaction ${t.transactionID} is cancelled and cannot be modified. ` +
-          `Reopen the transaction first if you need to make changes.`,
+        `Reopen the transaction first if you need to make changes.`,
       );
     }
   }
@@ -391,6 +391,7 @@ export class TransactionService {
         take,
         orderBy,
         include: {
+          items: true,
           patient: {
             select: {
               id: true,
@@ -723,7 +724,7 @@ export class TransactionService {
     if (!transaction) {
       throw new NotFoundException(
         `Transaction "${idOrTransactionID}" was not found. ` +
-          `Provide either the internal UUID or the Transaction ID (e.g. BILL-2025-00001).`,
+        `Provide either the internal UUID or the Transaction ID (e.g. BILL-2025-00001).`,
       );
     }
 
@@ -755,9 +756,8 @@ export class TransactionService {
       if (!allowed.includes(dto.status)) {
         throw new UnprocessableEntityException(
           `Cannot transition transaction from "${transaction.status}" to "${dto.status}". ` +
-            `Allowed transitions from ${transaction.status}: ${
-              allowed.length ? allowed.join(', ') : 'none'
-            }.`,
+          `Allowed transitions from ${transaction.status}: ${allowed.length ? allowed.join(', ') : 'none'
+          }.`,
         );
       }
     }
@@ -788,7 +788,7 @@ export class TransactionService {
 
     const auditAction =
       dto.status === TransactionStatus.DRAFT ||
-      dto.status === TransactionStatus.ACTIVE
+        dto.status === TransactionStatus.ACTIVE
         ? TransactionAuditAction.BILL_REOPENED
         : TransactionAuditAction.BILL_CREATED;
 
@@ -906,7 +906,7 @@ export class TransactionService {
     if (!existing) {
       throw new NotFoundException(
         `Item "${itemId}" was not found on transaction "${transactionId}". ` +
-          `Verify that the item belongs to this transaction.`,
+        `Verify that the item belongs to this transaction.`,
       );
     }
 
@@ -944,8 +944,8 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.ITEM_EDITED,
       `Item "${existing.description}" updated — ` +
-        `price: ₦${existing.unitPrice} → ₦${dto.unitPrice}, ` +
-        `qty: ${existing.quantity} → ${newQuantity}`,
+      `price: ₦${existing.unitPrice} → ₦${dto.unitPrice}, ` +
+      `qty: ${existing.quantity} → ${newQuantity}`,
       dto.staffId,
       {
         itemId,
@@ -977,7 +977,7 @@ export class TransactionService {
     if (transaction.totalAmount.lte(0)) {
       throw new BadRequestException(
         `Transaction ${transaction.transactionID} has no items. ` +
-          `Add items before recording a payment.`,
+        `Add items before recording a payment.`,
       );
     }
 
@@ -995,7 +995,7 @@ export class TransactionService {
     if (paymentAmount.gt(outstanding)) {
       throw new BadRequestException(
         `Payment amount ₦${dto.amount} exceeds outstanding balance ₦${outstanding.toFixed(2)}. ` +
-          `Reduce the payment amount or issue a refund for previous overpayments.`,
+        `Reduce the payment amount or issue a refund for previous overpayments.`,
       );
     }
 
@@ -1008,7 +1008,7 @@ export class TransactionService {
       if (!bank) {
         throw new NotFoundException(
           `No bank found with account number "${dto.bankAccountNumber}". ` +
-            `Register the bank first at POST /bank.`,
+          `Register the bank first at POST /bank.`,
         );
       }
       bankId = bank.id;
@@ -1050,8 +1050,8 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.PAYMENT_RECEIVED,
       `Payment of ₦${dto.amount} received via ${dto.method}` +
-        (dto.reference ? ` (ref: ${dto.reference})` : '') +
-        `. Outstanding balance: ₦${newOutstanding.toFixed(2)}`,
+      (dto.reference ? ` (ref: ${dto.reference})` : '') +
+      `. Outstanding balance: ₦${newOutstanding.toFixed(2)}`,
       dto.staffId,
       {
         paymentId: payment.id,
@@ -1125,8 +1125,7 @@ export class TransactionService {
     await this.log(
       transaction.id,
       TransactionAuditAction.DISCOUNT_APPLIED,
-      `Discount applied by ${staff.firstName} ${staff.lastName}: ${
-        dto.type === 'PERCENTAGE' ? `${dto.value}%` : `₦${dto.value} fixed`
+      `Discount applied by ${staff.firstName} ${staff.lastName}: ${dto.type === 'PERCENTAGE' ? `${dto.value}%` : `₦${dto.value} fixed`
       } — computed ₦${computedAmount.toFixed(2)}. Reason: ${dto.reason}`,
       dto.staffId,
       {
@@ -1163,11 +1162,11 @@ export class TransactionService {
     if (outstandingAfter.lt(0)) {
       throw new BadRequestException(
         `Insurance coverage of ₦${dto.coveredAmount} would exceed the remaining balance. ` +
-          `Maximum allowed coverage for this transaction is ₦${transaction.totalAmount
-            .sub(transaction.discountAmount)
-            .sub(transaction.insuranceCovered)
-            .sub(transaction.amountPaid)
-            .toFixed(2)}.`,
+        `Maximum allowed coverage for this transaction is ₦${transaction.totalAmount
+          .sub(transaction.discountAmount)
+          .sub(transaction.insuranceCovered)
+          .sub(transaction.amountPaid)
+          .toFixed(2)}.`,
       );
     }
 
@@ -1191,8 +1190,8 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.INSURANCE_APPLIED,
       `Insurance claim applied by ${staff.firstName} ${staff.lastName}: ${dto.provider}` +
-        (dto.policyNumber ? ` (policy: ${dto.policyNumber})` : '') +
-        ` — covered ₦${dto.coveredAmount}`,
+      (dto.policyNumber ? ` (policy: ${dto.policyNumber})` : '') +
+      ` — covered ₦${dto.coveredAmount}`,
       dto.staffId,
       {
         claimId: claim.id,
@@ -1292,7 +1291,7 @@ export class TransactionService {
     if (refundAmount.gt(transaction.amountPaid)) {
       throw new BadRequestException(
         `Refund amount ₦${dto.amount} exceeds the total amount paid ₦${transaction.amountPaid.toFixed(2)} ` +
-          `on transaction ${transaction.transactionID}.`,
+        `on transaction ${transaction.transactionID}.`,
       );
     }
 
@@ -1334,7 +1333,7 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.REFUND_ISSUED,
       `Refund of ₦${dto.amount} issued by ${staff.firstName} ${staff.lastName}. ` +
-        `Reason: ${dto.reason}. New status: ${newStatus}`,
+      `Reason: ${dto.reason}. New status: ${newStatus}`,
       dto.staffId,
       {
         refundId: refund.id,
@@ -1362,8 +1361,8 @@ export class TransactionService {
     if (transaction.amountPaid.gt(0)) {
       throw new BadRequestException(
         `Cannot cancel transaction ${transaction.transactionID} — ` +
-          `₦${transaction.amountPaid.toFixed(2)} has already been paid. ` +
-          `Issue a full refund first, then cancel.`,
+        `₦${transaction.amountPaid.toFixed(2)} has already been paid. ` +
+        `Issue a full refund first, then cancel.`,
       );
     }
 
@@ -1385,7 +1384,7 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.BILL_CANCELLED,
       `Transaction ${transaction.transactionID} cancelled by ${staff.firstName} ${staff.lastName}. ` +
-        `Reason: ${dto.reason}`,
+      `Reason: ${dto.reason}`,
       dto.staffId,
       { reason: dto.reason },
     );
@@ -1640,22 +1639,22 @@ export class TransactionService {
         // 3h. Single consolidated audit log
         const payLine = amountPaid.gt(0)
           ? `Payment of ₦${amountPaid.toFixed(
-              2,
-            )} via ${String(dto.paymentMethod).toUpperCase()} received. ` +
-            `Balance remaining: ₦${remainingBalance.toFixed(2)}.`
+            2,
+          )} via ${String(dto.paymentMethod).toUpperCase()} received. ` +
+          `Balance remaining: ₦${remainingBalance.toFixed(2)}.`
           : 'No payment — bill is ACTIVE and awaiting cashier.';
 
         await this.log(
           transaction.id,
           TransactionAuditAction.PAYMENT_RECEIVED,
           `Quick transaction ${transactionID} created for ` +
-            `${patient.firstName} ${patient.surname} (${patient.patientId}) ` +
-            `by ${staff.firstName} ${staff.lastName}. ` +
-            `${dto.items.length} item(s) — total ₦${totalAmount.toFixed(2)}` +
-            (discountAmount.gt(0)
-              ? `, discount ₦${discountAmount.toFixed(2)}`
-              : '') +
-            `. ${payLine}`,
+          `${patient.firstName} ${patient.surname} (${patient.patientId}) ` +
+          `by ${staff.firstName} ${staff.lastName}. ` +
+          `${dto.items.length} item(s) — total ₦${totalAmount.toFixed(2)}` +
+          (discountAmount.gt(0)
+            ? `, discount ₦${discountAmount.toFixed(2)}`
+            : '') +
+          `. ${payLine}`,
           dto.staffId,
           {
             transactionID,
@@ -1686,7 +1685,7 @@ export class TransactionService {
     // ── 4. Post-commit: logger and final hydrated response ─────────────────────
     this.logger.log(
       `Quick transaction ${transactionID} → status: ${finalStatus}, ` +
-        `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
+      `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
     );
 
     const result = {

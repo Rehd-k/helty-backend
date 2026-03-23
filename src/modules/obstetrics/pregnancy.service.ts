@@ -73,7 +73,6 @@ export class PregnancyService {
     if (!pregnancy) {
       throw new NotFoundException(`Pregnancy "${id}" not found.`);
     }
-    console.log(pregnancy);
     return pregnancy;
   }
 

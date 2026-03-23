@@ -253,8 +253,7 @@ export class WaitingPatientService {
 
   async update(id: string, dto: UpdateWaitingPatientDto) {
     const waiting = await this.findOne(id);
-    console.log(dto, id);
-    const { consultingRoomId, seen, staffId } = dto;
+     const { consultingRoomId, seen, staffId } = dto;
 
     if (consultingRoomId) {
       await this.assertPatientHasVitals(waiting.patientId);

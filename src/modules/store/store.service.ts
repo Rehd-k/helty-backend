@@ -58,7 +58,6 @@ export class StoreService {
       where,
       orderBy: { name: 'asc' },
     })
-    console.log(categories);
     return categories;
   }
 
@@ -125,7 +124,7 @@ export class StoreService {
       }),
       this.prisma.storeItem.count({ where }),
     ]);
-    console.log({ data, total, skip, take });
+
     return { data, total, skip, take };
   }
 
@@ -171,7 +170,6 @@ export class StoreService {
       where,
       orderBy: { name: 'asc' },
     });
-    console.log(locations);
     return locations;
 
   }

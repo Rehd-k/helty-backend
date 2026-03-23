@@ -24,8 +24,7 @@ export class PharmacyBatchController {
   @Post()
   @ApiOperation({ summary: 'Create a drug batch' })
   create(@Body() dto: any) {
-    console.log(dto);
-    return this.batchService.create(dto);
+     return this.batchService.create(dto);
   }
 
   @Get()

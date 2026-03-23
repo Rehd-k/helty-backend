@@ -11,7 +11,7 @@ import { CreateDrugDto, UpdateDrugDto } from './dto/drug.dto';
 
 @Injectable()
 export class PharmacyDrugService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreateDrugDto, createdById: string) {
     try {
@@ -285,11 +285,11 @@ export class PharmacyDrugService {
     const cursor =
       cursorId && cursorCreatedAt
         ? {
-            id_createdAt: {
-              id: cursorId,
-              createdAt: new Date(cursorCreatedAt),
-            },
-          }
+          id_createdAt: {
+            id: cursorId,
+            createdAt: new Date(cursorCreatedAt),
+          },
+        }
         : undefined;
 
     // Full-text search via raw query when `search` provided
@@ -339,20 +339,20 @@ export class PharmacyDrugService {
       );
       const earliestBatch = batches.length
         ? batches.reduce((earliest, b) =>
-            b.createdAt < earliest.createdAt ? b : earliest,
-          )
+          b.createdAt < earliest.createdAt ? b : earliest,
+        )
         : null;
       const sellingPrice = earliestBatch?.sellingPrice ?? null;
       const expiryDateClosest = batches.length
         ? batches.reduce((closest, b) => {
-            const diff = Math.abs(
-              new Date(b.expiryDate).getTime() - today.getTime(),
-            );
-            const closestDiff = Math.abs(
-              new Date(closest.expiryDate).getTime() - today.getTime(),
-            );
-            return diff < closestDiff ? b : closest;
-          }).expiryDate
+          const diff = Math.abs(
+            new Date(b.expiryDate).getTime() - today.getTime(),
+          );
+          const closestDiff = Math.abs(
+            new Date(closest.expiryDate).getTime() - today.getTime(),
+          );
+          return diff < closestDiff ? b : closest;
+        }).expiryDate
         : null;
 
       const { batches: _batches, ...rest } = drug;
@@ -364,7 +364,6 @@ export class PharmacyDrugService {
         expiryDate: expiryDateClosest,
       };
     });
-    console.log({ data, nextCursor });
     return {
       data,
       nextCursor,

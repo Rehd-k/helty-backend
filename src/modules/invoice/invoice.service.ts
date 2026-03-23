@@ -53,8 +53,7 @@ export class InvoiceService {
   async findAll(query: DateRangeSkipTakeDto) {
     const { skip = 0, take = 20, fromDate, toDate } = query;
     const { from, to } = parseDateRange(fromDate, toDate);
-    console.log({ from, to });
-    const [invoices, total] = await Promise.all([
+     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where: { createdAt: { gte: from, lte: to } },
         skip,
