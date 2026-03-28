@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsArray,
   IsBoolean,
   IsInt,
   IsNumberString,
@@ -7,8 +8,19 @@ import {
   IsString,
   IsUUID,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class DrugPriceDto {
+  @ApiProperty()
+  @IsUUID()
+  wardId: string;
+
+  @ApiProperty({ example: '1500.00' })
+  @IsNumberString()
+  price: string;
+}
 
 export class CreateDrugDto {
   @ApiProperty({ example: 'Paracetamol' })
@@ -89,6 +101,13 @@ export class CreateDrugDto {
   @IsInt()
   @Min(0)
   reorderQuantity?: number;
+
+  @ApiPropertyOptional({ type: [DrugPriceDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DrugPriceDto)
+  prices?: DrugPriceDto[];
 }
 
 export class UpdateDrugDto {
@@ -173,4 +192,11 @@ export class UpdateDrugDto {
   @IsInt()
   @Min(0)
   reorderQuantity?: number;
+
+  @ApiPropertyOptional({ type: [DrugPriceDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DrugPriceDto)
+  prices?: DrugPriceDto[];
 }

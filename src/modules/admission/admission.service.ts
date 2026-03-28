@@ -9,10 +9,65 @@ import {
   CreateAdmissionDto,
   UpdateAdmissionDto,
 } from './dto/create-admission.dto';
+import { EncounterStatus, InvoiceStatus, PatientStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class AdmissionService {
   constructor(private prisma: PrismaService) { }
+
+  private readonly dayMs = 24 * 60 * 60 * 1000;
+
+  private computeRecurringAmount(
+    segments: Array<{ startAt: Date; endAt: Date | null }>,
+    unitPrice: Prisma.Decimal,
+    now: Date,
+  ) {
+    let totalDays = 0;
+    for (const segment of segments) {
+      const endAt = segment.endAt ?? now;
+      const ms = endAt.getTime() - segment.startAt.getTime();
+      if (ms <= 0) continue;
+      totalDays += Math.ceil(ms / this.dayMs);
+    }
+    return unitPrice.mul(totalDays);
+  }
+
+  private async recalculateInvoiceTotalsForDischarge(
+    invoiceId: string,
+    now: Date = new Date(),
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    const invoice = await tx.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        invoiceItems: {
+          include: { usageSegments: true },
+        },
+      },
+    });
+    if (!invoice) return null;
+
+    const totalAmount = invoice.invoiceItems.reduce((sum, item) => {
+      if (item.isRecurringDaily) {
+        return sum.add(
+          this.computeRecurringAmount(item.usageSegments, item.unitPrice, now),
+        );
+      }
+      return sum.add(item.unitPrice.mul(item.quantity));
+    }, new Prisma.Decimal(0));
+
+    let status: InvoiceStatus = InvoiceStatus.PENDING;
+    if (totalAmount.gt(0) && invoice.amountPaid.gte(totalAmount)) {
+      status = InvoiceStatus.PAID;
+    } else if (invoice.amountPaid.gt(0)) {
+      status = InvoiceStatus.PARTIALLY_PAID;
+    }
+
+    return tx.invoice.update({
+      where: { id: invoice.id },
+      data: { totalAmount, status },
+    });
+  }
 
   async create(createAdmissionDto: CreateAdmissionDto, @Req() req: any) {
     const [patient, encounter] = await Promise.all([
@@ -66,7 +121,14 @@ export class AdmissionService {
 
     await this.prisma.encounter.update({
       where: { id: createAdmissionDto.encounterId },
-      data: { admissionId: admission.id },
+      data: { admissionId: admission.id, status: EncounterStatus.COMPLETED },
+    });
+
+    await this.prisma.patient.update({
+      where: { id: createAdmissionDto.patientId },
+      data: {
+        status: PatientStatus.ADMITED,
+      },
     });
 
     return this.prisma.admission.findUnique({
@@ -98,7 +160,14 @@ export class AdmissionService {
         skip,
         take,
         include: {
-          patient: true,
+          patient: {
+            include: {
+              admissions: true,
+              transactions: true,
+              createdBy: true,
+              updatedBy: true,
+            },
+          },
           wardEntity: true,
           bed: true,
           encounter: true,
@@ -107,19 +176,44 @@ export class AdmissionService {
       }),
       this.prisma.admission.count({ where }),
     ]);
+  
     return { admissions, total, skip, take };
   }
 
   async findOne(id: string) {
-    return this.prisma.admission.findUnique({
+    const admission = await this.prisma.admission.findUnique({
       where: { id },
       include: {
         patient: true,
         wardEntity: true,
         bed: true,
         encounter: true,
+        patientVitals: true,
+        medicationOrders: true,
+        medicationAdministrations: true,
+        ivFluidOrders: true,
+        ivMonitorings: true,
+        intakeOutputRecords: true,
+        nursingNotes: true,
+        procedureRecords: true,
+        woundAssessments: true,
+        carePlans: true,
+        monitoringCharts: true,
+        handoverReports: true,
+        alerts: true,
+        auditTrails: true,
+        wardRoundNotes: true,
+        labourDeliveries: true,
+        gynaeProcedures: true,
+        attendingDoctor: true,
       },
     });
+ 
+    if (!admission) {
+      throw new NotFoundException('Admission not found');
+
+    }
+    return admission;
   }
 
   async findByPatientId(patientId: string) {
@@ -147,19 +241,83 @@ export class AdmissionService {
   }
 
   async update(id: string, updateAdmissionDto: UpdateAdmissionDto) {
-    return this.prisma.admission.update({
-      where: { id },
-      data: {
-        ...(updateAdmissionDto.dischargeDate && {
-          dischargeDate: new Date(updateAdmissionDto.dischargeDate),
-        }),
-        ward: updateAdmissionDto.ward,
-        room: updateAdmissionDto.room,
-        reason: updateAdmissionDto.reason,
-        ...(updateAdmissionDto.attendingDoctorId !== undefined && {
-          attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
-        }),
-      },
+    if (!updateAdmissionDto.dischargeDate) {
+      return this.prisma.admission.update({
+        where: { id },
+        data: {
+          ward: updateAdmissionDto.ward,
+          room: updateAdmissionDto.room,
+          reason: updateAdmissionDto.reason,
+          ...(updateAdmissionDto.attendingDoctorId !== undefined && {
+            attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
+          }),
+        },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const admission = await tx.admission.findUnique({
+        where: { id },
+        include: { encounter: true },
+      });
+      if (!admission) throw new NotFoundException('Admission not found');
+
+      const invoiceConditions: Prisma.InvoiceWhereInput[] = [
+        { encounter: { admissionId: id } },
+      ];
+      if (admission.encounter?.id) {
+        invoiceConditions.push({ encounterId: admission.encounter.id });
+      }
+
+      const admissionInvoices = await tx.invoice.findMany({
+        where: {
+          patientId: admission.patientId,
+          OR: invoiceConditions,
+        },
+      });
+
+      const now = new Date();
+      for (const invoice of admissionInvoices) {
+        await this.recalculateInvoiceTotalsForDischarge(invoice.id, now, tx);
+      }
+
+      const unpaidCount = await tx.invoice.count({
+        where: {
+          id: { in: admissionInvoices.map((invoice) => invoice.id) },
+          status: { not: InvoiceStatus.PAID },
+        },
+      });
+
+      if (unpaidCount > 0) {
+        throw new BadRequestException(
+          'Cannot discharge patient while linked invoices are unpaid.',
+        );
+      }
+
+      await tx.invoiceItemUsageSegment.updateMany({
+        where: {
+          endAt: null,
+          invoiceItem: {
+            invoice: {
+              id: { in: admissionInvoices.map((invoice) => invoice.id) },
+            },
+          },
+        },
+        data: { endAt: now },
+      });
+
+      return tx.admission.update({
+        where: { id },
+        data: {
+          dischargeDate: new Date(updateAdmissionDto.dischargeDate!),
+          ward: updateAdmissionDto.ward,
+          room: updateAdmissionDto.room,
+          reason: updateAdmissionDto.reason,
+          ...(updateAdmissionDto.attendingDoctorId !== undefined && {
+            attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
+          }),
+        },
+      });
     });
   }
 

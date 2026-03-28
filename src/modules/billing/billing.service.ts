@@ -401,9 +401,7 @@ export class TransactionService {
               phoneNumber: true,
             },
           },
-          noIdPatient: {
-            select: { id: true, firstName: true, surname: true },
-          },
+
           createdBy: {
             select: {
               id: true,
@@ -433,9 +431,6 @@ export class TransactionService {
       }),
       this.prisma.transaction.count({ where }),
     ]);
-
-    console.log(data);
-
     return {
       data,
       total,
@@ -569,6 +564,7 @@ export class TransactionService {
         take,
         orderBy,
         include: {
+          items: true,
           patient: {
             select: {
               id: true,
@@ -578,9 +574,7 @@ export class TransactionService {
               phoneNumber: true,
             },
           },
-          noIdPatient: {
-            select: { id: true, firstName: true, surname: true },
-          },
+
           createdBy: {
             select: {
               id: true,
@@ -643,8 +637,6 @@ export class TransactionService {
             dob: true,
           },
         },
-
-        noIdPatient: true,
         admission: true,
         createdBy: {
           select: {
@@ -767,6 +759,11 @@ export class TransactionService {
     };
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.status) data.status = dto.status;
+    if (dto.invoiceId !== undefined) {
+      data.invoice = dto.invoiceId
+        ? { connect: { id: dto.invoiceId } }
+        : { disconnect: true };
+    }
 
     const updated = await this.prisma.transaction.update({
       where: { id: transaction.id },

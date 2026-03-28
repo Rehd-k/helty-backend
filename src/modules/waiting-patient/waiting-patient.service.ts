@@ -85,6 +85,7 @@ export class WaitingPatientService {
 
     const where: Prisma.WaitingPatientWhereInput = {
       createdAt: { gte: from, lte: to },
+      patient: { patientId: { not: null } },
     };
 
     if (unassignedOnly) {
@@ -110,7 +111,6 @@ export class WaitingPatientService {
         orderBy: { createdAt: 'asc' },
         include: {
           patient: true,
-
           vitals: true,
           consultingRoom: {
             select: {
@@ -118,6 +118,7 @@ export class WaitingPatientService {
               name: true,
             },
           },
+          
           service: {
             select: {
               id: true,
@@ -133,7 +134,7 @@ export class WaitingPatientService {
           },
         },
       }),
-      this.prisma.waitingPatient.count({ where }),
+      this.prisma.waitingPatient.count({  }),
     ]);
 
     return { data, total, skip, take };
@@ -253,7 +254,7 @@ export class WaitingPatientService {
 
   async update(id: string, dto: UpdateWaitingPatientDto) {
     const waiting = await this.findOne(id);
-     const { consultingRoomId, seen, staffId } = dto;
+    const { consultingRoomId, seen, staffId } = dto;
 
     if (consultingRoomId) {
       await this.assertPatientHasVitals(waiting.patientId);

@@ -3,7 +3,6 @@ import {
   IsDateString,
   IsEnum,
   IsIn,
-  IsNotEmpty,
   IsOptional,
   IsUUID,
 } from 'class-validator';
@@ -11,19 +10,21 @@ import { PurchaseOrderStatus } from '@prisma/client';
 import { PaginationDto } from './pagination.dto';
 
 export class ListPurchaseOrderDto extends PaginationDto {
-  @ApiProperty({
-    description: 'Start date (ISO 8601). Will be normalized to start-of-day.',
+  @ApiPropertyOptional({
+    description:
+      'Start date (ISO 8601). Will be normalized to start-of-day. Defaults to today if omitted/empty/invalid.',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  fromDate!: string;
+  fromDate?: string;
 
-  @ApiProperty({
-    description: 'End date (ISO 8601). Will be normalized to end-of-day.',
+  @ApiPropertyOptional({
+    description:
+      'End date (ISO 8601). Will be normalized to end-of-day. Defaults to today if omitted/empty/invalid.',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  toDate!: string;
+  toDate?: string;
 
   @ApiPropertyOptional({ enum: PurchaseOrderStatus })
   @IsOptional()

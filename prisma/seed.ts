@@ -76,6 +76,32 @@ async function main() {
 
     console.log(`Success! Inserted ${result.count} services into the database.`);
 
+    console.log('5. Seeding Drugs from PHAR.csv...');
+    const rawDrugs = readCsvData('C:/Users/Rhed/Documents/hospital/backend/prisma/PHAR.csv');
+
+    // Drug has no unique constraint on searviceCode, so we de-duplicate manually.
+    const existingDrugs = await prisma.drug.findMany({
+        select: { searviceCode: true },
+    });
+    const existingCodes = new Set(existingDrugs.map((d) => d.searviceCode));
+
+    const drugsToInsert = rawDrugs
+        .map((row: any) => ({
+            searviceCode: String(row['Service Code'] ?? '').trim(),
+            genericName: String(row['Service Name'] ?? '').trim(),
+            brandName: String(row['Service Name'] ?? '').trim(),
+            createdById: STAFF_ID,
+        }))
+        .filter((row: any) => row.searviceCode && row.genericName)
+        .filter((row: any) => !existingCodes.has(row.searviceCode));
+
+    const drugResult = await prisma.drug.createMany({
+        data: drugsToInsert,
+        skipDuplicates: true
+    });
+
+    console.log(`Success! Inserted ${drugResult.count} drugs into the database.`);
+
 }
 
 main()

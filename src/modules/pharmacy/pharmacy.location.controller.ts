@@ -39,6 +39,12 @@ export class PharmacyLocationController {
     return this.service.findAll(query);
   }
 
+  @Get('drug/:drugId/quantity')
+  @ApiOperation({ summary: 'Get available drug quantity by location' })
+  getDrugQuantityByLocation(@Param('drugId') drugId: string) {
+    return this.service.getDrugQuantityByLocation(drugId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get pharmacy location by ID' })
   findOne(@Param('id') id: string) {

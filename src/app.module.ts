@@ -20,7 +20,6 @@ import { JwtAuthGuard, AccessGuard } from './common/guards';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { InvoiceModule } from './modules/invoice/invoice.module';
-import { NoIdPatientModule } from './modules/no-id-patient/no-id-patient.module';
 import { LoggerModule } from 'nestjs-pino';
 import { BankModule } from './modules/bank/bank.module';
 import { PatientVitalsModule } from './modules/patient-vitals/patient-vitals.module';
@@ -61,19 +60,18 @@ import { PurchasesModule } from './modules/purchases/purchases.module';
     AuthModule,
     DepartmentModule,
     InvoiceModule,
-    NoIdPatientModule,
     LoggerModule.forRoot({
       pinoHttp: {
         level: 'info', // Set log level
         transport:
           process.env.NODE_ENV !== 'production'
             ? {
-                target: 'pino-pretty',
-                options: {
-                  colorize: true,
-                  translateTime: 'HH:MM:ss',
-                },
-              }
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+                translateTime: 'HH:MM:ss',
+              },
+            }
             : undefined, // Pretty logs in development
       },
     }),
@@ -102,4 +100,4 @@ import { PurchasesModule } from './modules/purchases/purchases.module';
     { provide: APP_GUARD, useClass: AccessGuard },
   ],
 })
-export class AppModule {}
+export class AppModule { }

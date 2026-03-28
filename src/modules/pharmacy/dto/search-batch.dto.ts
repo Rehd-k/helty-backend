@@ -3,7 +3,6 @@ import {
   IsDateString,
   IsEnum,
   IsIn,
-  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -12,21 +11,21 @@ import { PharmacyLocationType } from '@prisma/client';
 import { PaginationDto } from './pagination.dto';
 
 export class SearchBatchDto extends PaginationDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Start date (ISO 8601). Filters by batch createdAt. Normalized to start-of-day.',
+      'Start date (ISO 8601). Filters by batch createdAt. Normalized to start-of-day. Defaults to today if omitted/empty/invalid.',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  fromDate!: string;
+  fromDate?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'End date (ISO 8601). Filters by batch createdAt. Normalized to end-of-day.',
+      'End date (ISO 8601). Filters by batch createdAt. Normalized to end-of-day. Defaults to today if omitted/empty/invalid.',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  toDate!: string;
+  toDate?: string;
 
   @ApiPropertyOptional()
   @IsUUID()

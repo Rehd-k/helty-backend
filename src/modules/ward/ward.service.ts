@@ -72,7 +72,6 @@ export class WardService {
         },
       },
     });
-
     if (!ward) {
       throw new NotFoundException('Ward not found');
     }

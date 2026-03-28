@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsInt,
-  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -16,12 +15,21 @@ export class CreatePatientVitalsDto {
   @IsOptional()
   patientId?: string;
 
-  @ApiProperty({
-    description: 'Waiting patient UUID to link these vitals to (1:1)',
+  @ApiPropertyOptional({
+    description:
+      'Waiting patient UUID (outpatient queue). Mutually exclusive with admissionId.',
   })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   waitingPatientId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Admission UUID for an admitted patient. Mutually exclusive with waitingPatientId.',
+  })
+  @IsString()
+  @IsOptional()
+  admissionId?: string;
 
   @ApiPropertyOptional({
     description: 'Systolic blood pressure in mmHg',
@@ -97,6 +105,30 @@ export class CreatePatientVitalsDto {
   @IsNumber()
   @IsOptional()
   spo2?: number;
+
+  @ApiPropertyOptional({
+    description: 'Pain score (e.g. 0-10)',
+    example: 2,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  painScore?: number;
+
+  @ApiPropertyOptional({ description: 'Free-text notes' })
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'Blood glucose level in mg/dL',
+    example: 24.3,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  bloodGlucose?: number;
 }
 
 export class UpdatePatientVitalsDto {
@@ -162,6 +194,15 @@ export class UpdatePatientVitalsDto {
   @IsNumber()
   @IsOptional()
   bmi?: number;
+
+  @ApiPropertyOptional({
+    description: 'Blood glucose level in mg/dL',
+    example: 24.3,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  bloodGlucose?: number;
 
   @ApiPropertyOptional({
     description: 'Pulse rate in beats per minute',

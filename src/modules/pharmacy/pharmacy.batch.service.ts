@@ -21,7 +21,7 @@ const ALLOWED_SORT_FIELDS = new Set([
 
 @Injectable()
 export class PharmacyBatchService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreateBatchDto) {
     const manufacturingDate = new Date(dto.manufacturingDate);
@@ -170,7 +170,6 @@ export class PharmacyBatchService {
       }),
       this.prisma.drugBatch.count({ where }),
     ]);
-
     return { data, total, skip: parsedSkip, take };
   }
 

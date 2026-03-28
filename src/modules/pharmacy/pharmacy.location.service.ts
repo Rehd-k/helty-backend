@@ -110,6 +110,43 @@ export class PharmacyLocationService {
     return location;
   }
 
+  async getDrugQuantityByLocation(drugId: string) {
+    const drug = await this.prisma.drug.findFirst({
+      where: { id: drugId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!drug) {
+      throw new NotFoundException(`Drug "${drugId}" not found.`);
+    }
+
+    const locations = await this.prisma.pharmacyLocation.findMany({
+      select: {
+        id: true,
+        name: true,
+        drugBatchesTo: {
+          where: {
+            drugId,
+            quantityRemaining: { gt: 0 },
+          },
+          select: { quantityRemaining: true },
+        },
+      },
+    });
+
+    return locations
+      .map((location) => {
+        const quantity = location.drugBatchesTo.reduce(
+          (sum, batch) => sum + (batch.quantityRemaining ?? 0),
+          0,
+        );
+        return {
+          locationName: location.name,
+          quantity,
+        };
+      })
+      .filter((item) => item.quantity > 0);
+  }
+
   async update(
     id: string,
     dto: UpdatePharmacyLocationDto,

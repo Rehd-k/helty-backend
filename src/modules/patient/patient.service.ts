@@ -9,7 +9,7 @@ export class PatientService {
   private nanoid = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
   private readonly logger = new Logger(PatientService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(createPatientDto: CreatePatientDto, req: any) {
     const patientId = `${this.nanoid()}`;

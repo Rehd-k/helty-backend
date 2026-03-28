@@ -134,21 +134,23 @@ export class QueryTransactionDto {
   @IsOptional()
   status?: TransactionStatus;
 
-  @ApiProperty({
-    description: 'Start date (ISO 8601). Will be normalized to start-of-day.',
+  @ApiPropertyOptional({
+    description:
+      'Start date (ISO 8601). Will be normalized to start-of-day. Defaults to today if omitted/empty/invalid.',
     example: '2025-01-01',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  fromDate!: string;
+  fromDate?: string;
 
-  @ApiProperty({
-    description: 'End date (ISO 8601). Will be normalized to end-of-day.',
+  @ApiPropertyOptional({
+    description:
+      'End date (ISO 8601). Will be normalized to end-of-day. Defaults to today if omitted/empty/invalid.',
     example: '2025-12-31',
   })
-  @IsNotEmpty()
+  @IsOptional()
   @IsDateString()
-  toDate!: string;
+  toDate?: string;
 
   @ApiPropertyOptional({
     description: 'Number of records to skip (pagination)',

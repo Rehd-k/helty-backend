@@ -15,30 +15,46 @@ export class PharmacyDrugService {
 
   async create(dto: CreateDrugDto, createdById: string) {
     try {
-      return await this.prisma.drug.create({
-        data: {
-          genericName: dto.genericName.trim(),
-          searviceCode: dto.searviceCode.trim(),
-          brandName: dto.brandName.trim(),
-          strength: dto.strength?.trim() ?? null,
-          dosageForm: dto.dosageForm?.trim() ?? null,
-          route: dto.route?.trim() ?? null,
-          therapeuticClass: dto.therapeuticClass?.trim() ?? null,
-          atcCode: dto.atcCode?.trim() ?? null,
-          manufacturerId: dto.manufacturerId ?? null,
-          isControlled: dto.isControlled ?? false,
-          isRefrigerated: dto.isRefrigerated ?? false,
-          isHighAlert: dto.isHighAlert ?? false,
-          maxDailyDose:
-            dto.maxDailyDose != null
-              ? new Prisma.Decimal(dto.maxDailyDose)
-              : null,
-          reorderLevel: dto.reorderLevel ?? 0,
-          reorderQuantity: dto.reorderQuantity ?? 0,
-          createdById,
-          updatedById: createdById,
-        },
-        include: { manufacturer: true },
+      return await this.prisma.$transaction(async (tx) => {
+        const createdDrug = await tx.drug.create({
+          data: {
+            genericName: dto.genericName.trim(),
+            searviceCode: dto.searviceCode.trim(),
+            brandName: dto.brandName.trim(),
+            strength: dto.strength?.trim() ?? null,
+            dosageForm: dto.dosageForm?.trim() ?? null,
+            route: dto.route?.trim() ?? null,
+            therapeuticClass: dto.therapeuticClass?.trim() ?? null,
+            atcCode: dto.atcCode?.trim() ?? null,
+            manufacturerId: dto.manufacturerId ?? null,
+            isControlled: dto.isControlled ?? false,
+            isRefrigerated: dto.isRefrigerated ?? false,
+            isHighAlert: dto.isHighAlert ?? false,
+            maxDailyDose:
+              dto.maxDailyDose != null
+                ? new Prisma.Decimal(dto.maxDailyDose)
+                : null,
+            reorderLevel: dto.reorderLevel ?? 0,
+            reorderQuantity: dto.reorderQuantity ?? 0,
+            createdById,
+            updatedById: createdById,
+          },
+        });
+
+        if (dto.prices?.length) {
+          await tx.drugPrice.createMany({
+            data: dto.prices.map((item) => ({
+              drugId: createdDrug.id,
+              wardId: item.wardId,
+              price: new Prisma.Decimal(item.price),
+            })),
+          });
+        }
+
+        return tx.drug.findUnique({
+          where: { id: createdDrug.id },
+          include: { manufacturer: true, drugPrices: true },
+        });
       });
     } catch (e) {
       if (e.code === 'P2002') {
@@ -117,10 +133,29 @@ export class PharmacyDrugService {
         }),
         updatedBy: { connect: { id: updatedById } },
       };
-      return await this.prisma.drug.update({
-        where: { id },
-        data,
-        include: { manufacturer: true },
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.drug.update({
+          where: { id },
+          data,
+        });
+
+        if (dto.prices !== undefined) {
+          await tx.drugPrice.deleteMany({ where: { drugId: id } });
+          if (dto.prices.length) {
+            await tx.drugPrice.createMany({
+              data: dto.prices.map((item) => ({
+                drugId: id,
+                wardId: item.wardId,
+                price: new Prisma.Decimal(item.price),
+              })),
+            });
+          }
+        }
+
+        return tx.drug.findUnique({
+          where: { id },
+          include: { manufacturer: true, drugPrices: true },
+        });
       });
     } catch (e) {
       if (e.code === 'P2002') {
@@ -167,8 +202,6 @@ export class PharmacyDrugService {
       isControlled,
       search,
       limit = '20',
-      cursorId,
-      cursorCreatedAt,
       sortBy,
       sortOrder = 'desc',
     } = dto;
@@ -282,35 +315,6 @@ export class PharmacyDrugService {
     orderBy.push({ createdAt: sortOrder });
     orderBy.push({ id: sortOrder });
 
-    const cursor =
-      cursorId && cursorCreatedAt
-        ? {
-          id_createdAt: {
-            id: cursorId,
-            createdAt: new Date(cursorCreatedAt),
-          },
-        }
-        : undefined;
-
-    // Full-text search via raw query when `search` provided
-    // if (search) {
-    //   const rows = await this.prisma.$queryRawUnsafe<
-    //     Array<{ id: string }>
-    //   >(
-    //     `
-    //     SELECT id
-    //     FROM "Drug"
-    //     WHERE "deletedAt" IS NULL
-    //     AND to_tsvector('english', "genericName" || ' ' || "brandName") @@ plainto_tsquery($1)
-    //   `,
-    //     search,
-    //   );
-    //   const ids = rows.map((r) => r.id);
-    //   if (!ids.length) {
-    //     return { data: [], nextCursor: null };
-    //   }
-    //   where.id = { in: ids };
-    // }
 
     const drugs = await this.prisma.drug.findMany({
       where,

@@ -10,12 +10,28 @@ export function endOfDay(date: Date): Date {
   return d;
 }
 
+function parseDateOrNull(input?: string | null): Date | null {
+  if (input === undefined || input === null) return null;
+
+  const trimmed = String(input).trim();
+  if (!trimmed) return null;
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
 export function parseDateRange(
-  fromDate: string,
-  toDate: string,
+  fromDate?: string | null,
+  toDate?: string | null,
 ): { from: Date; to: Date } {
+  const now = new Date();
+
+  const parsedFrom = parseDateOrNull(fromDate);
+  const parsedTo = parseDateOrNull(toDate);
+
   return {
-    from: startOfDay(new Date(fromDate)),
-    to: endOfDay(new Date(toDate)),
+    from: startOfDay(parsedFrom ?? now),
+    to: endOfDay(parsedTo ?? now),
   };
 }

@@ -25,9 +25,12 @@ import {
 import { InvoiceService } from './invoice.service';
 import {
   AddInvoiceItemDto,
+  AllocateInvoiceItemPaymentDto,
   CreateInvoiceDto,
+  RecordInvoicePaymentDto,
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
+  WalletDepositDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
@@ -140,7 +143,7 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'Add a service to an invoice as a line item',
     description:
-      'Adds a service to the invoice. `priceAtTime` captures the cost snapshot at the moment of invoicing, so future price changes on the service do not affect existing invoices.',
+      'Adds a service to the invoice. `unitPrice` captures the cost snapshot at the moment of invoicing, so future service price changes do not affect existing invoices.',
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiCreatedResponse({ description: 'Line item added' })
@@ -179,5 +182,86 @@ export class InvoiceController {
   @ApiNotFoundResponse({ description: 'Invoice or InvoiceItem not found' })
   removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
     return this.invoiceService.removeItem(id, itemId);
+  }
+
+  @Post(':id/allocate-item-payments')
+  @ApiOperation({
+    summary: 'Allocate payment to invoice line items',
+    description:
+      'Creates a billing TransactionPayment and InvoiceItemPayment rows. Supports partial or full payment per line and one payment split across multiple lines. Uses or creates a billing Transaction linked to this invoice.',
+  })
+  @ApiCreatedResponse({ description: 'Payment recorded and allocations created' })
+  @ApiBadRequestResponse({
+    description: 'Validation error, overpayment, or sum of allocations ≠ amount',
+  })
+  allocateItemPayments(
+    @Param('id') id: string,
+    @Body() dto: AllocateInvoiceItemPaymentDto,
+  ) {
+    return this.invoiceService.allocatePaymentToInvoiceItems(id, dto);
+  }
+
+  @Post(':id/payments')
+  @ApiOperation({
+    summary: 'Record invoice payment',
+    description:
+      'Records a payment (wallet, cash, or transfer) and updates invoice amountPaid and status atomically.',
+  })
+  recordPayment(
+    @Param('id') id: string,
+    @Body() dto: RecordInvoicePaymentDto,
+  ) {
+    return this.invoiceService.recordPayment(id, dto);
+  }
+
+  @Get(':id/payments')
+  @ApiOperation({ summary: 'List invoice payments' })
+  listPayments(@Param('id') id: string) {
+    return this.invoiceService.listPayments(id);
+  }
+
+  @Post(':id/items/:itemId/pause')
+  @ApiOperation({
+    summary: 'Pause recurring invoice item',
+    description: 'Closes the current open usage segment for a recurring item.',
+  })
+  pauseRecurringItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.invoiceService.pauseRecurringItem(id, itemId);
+  }
+
+  @Post(':id/items/:itemId/resume')
+  @ApiOperation({
+    summary: 'Resume recurring invoice item',
+    description: 'Creates a new usage segment for a recurring item.',
+  })
+  resumeRecurringItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.invoiceService.resumeRecurringItem(id, itemId);
+  }
+
+  @Post('wallets/:patientId/deposits')
+  @ApiOperation({ summary: 'Deposit funds into patient wallet' })
+  depositToWallet(
+    @Param('patientId') patientId: string,
+    @Body() dto: WalletDepositDto,
+  ) {
+    return this.invoiceService.depositToWallet(patientId, dto);
+  }
+
+  @Get('wallets/:patientId')
+  @ApiOperation({ summary: 'Get patient wallet balance' })
+  getWallet(@Param('patientId') patientId: string) {
+    return this.invoiceService.getWallet(patientId);
+  }
+
+  @Get('wallets/:patientId/transactions')
+  @ApiOperation({ summary: 'Get patient wallet transactions' })
+  getWalletTransactions(@Param('patientId') patientId: string) {
+    return this.invoiceService.getWalletTransactions(patientId);
   }
 }

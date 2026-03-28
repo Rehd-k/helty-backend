@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { AdmissionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreatePatientVitalsDto,
@@ -12,12 +13,13 @@ import {
 
 @Injectable()
 export class PatientVitalsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreatePatientVitalsDto) {
     const {
       patientId,
       waitingPatientId,
+      admissionId,
       systolic,
       diastolic,
       temperature,
@@ -26,11 +28,58 @@ export class PatientVitalsService {
       bmi,
       pulseRate,
       spo2,
+      painScore,
+      notes,
+      bloodGlucose
     } = dto;
-
-    if (!waitingPatientId) {
-      throw new BadRequestException('waitingPatientId is required.');
+    const hasWaiting = Boolean(waitingPatientId);
+    const hasAdmission = Boolean(admissionId);
+    if (hasWaiting === hasAdmission) {
+      throw new BadRequestException(
+        'Provide exactly one of waitingPatientId or admissionId.',
+      );
     }
+
+    const vitalsPayload = {
+      systolic,
+      diastolic,
+      temperature,
+      height,
+      weight,
+      bmi,
+      pulseRate,
+      spo2,
+      painScore,
+      notes,
+      bloodGlucose
+    };
+
+    if (waitingPatientId) {
+      return this.createForWaitingPatient(
+        waitingPatientId,
+        patientId,
+        vitalsPayload,
+      );
+    }
+    return this.createForAdmission(admissionId!, patientId, vitalsPayload);
+  }
+
+  private async createForWaitingPatient(
+    waitingPatientId: string,
+    patientId: string | undefined,
+    vitalsPayload: {
+      systolic?: number;
+      diastolic?: number;
+      temperature?: number;
+      height?: number;
+      weight?: number;
+      bmi?: number;
+      pulseRate?: number;
+      spo2?: number;
+      painScore?: number;
+      notes?: string;
+    },
+  ) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const waiting = await this.prisma.waitingPatient.findUnique({
@@ -57,19 +106,11 @@ export class PatientVitalsService {
     if (waiting.vitals) {
       return this.prisma.patientVitals.update({
         where: { id: waiting.vitals.id },
-        data: {
-          systolic,
-          diastolic,
-          temperature,
-          height,
-          weight,
-          bmi,
-          pulseRate,
-          spo2,
-        },
+        data: vitalsPayload,
         include: {
           patient: true,
           waitingPatient: true,
+          admission: true,
         },
       });
     }
@@ -78,18 +119,12 @@ export class PatientVitalsService {
       data: {
         waitingPatient: { connect: { id: waitingPatientId } },
         patient: { connect: { id: waiting.patientId } },
-        systolic,
-        diastolic,
-        temperature,
-        height,
-        weight,
-        bmi,
-        pulseRate,
-        spo2,
+        ...vitalsPayload,
       },
       include: {
         patient: true,
         waitingPatient: true,
+        admission: true,
       },
     });
     await this.prisma.waitingPatient.update({
@@ -99,6 +134,54 @@ export class PatientVitalsService {
       },
     });
     return vitals;
+  }
+
+  private async createForAdmission(
+    admissionId: string,
+    patientId: string | undefined,
+    vitalsPayload: {
+      systolic?: number;
+      diastolic?: number;
+      temperature?: number;
+      height?: number;
+      weight?: number;
+      bmi?: number;
+      pulseRate?: number;
+      spo2?: number;
+      painScore?: number;
+      notes?: string;
+    },
+  ) {
+    const admission = await this.prisma.admission.findFirst({
+      where: {
+        id: admissionId,
+        status: AdmissionStatus.ACTIVE,
+      },
+    });
+    if (!admission) {
+      throw new NotFoundException(
+        `Active admission "${admissionId}" not found.`,
+      );
+    }
+
+    if (patientId && patientId !== admission.patientId) {
+      throw new BadRequestException(
+        `patientId "${patientId}" does not match the admission's patientId "${admission.patientId}".`,
+      );
+    }
+
+    return this.prisma.patientVitals.create({
+      data: {
+        admission: { connect: { id: admissionId } },
+        patient: { connect: { id: admission.patientId } },
+        ...vitalsPayload,
+      },
+      include: {
+        patient: true,
+        waitingPatient: true,
+        admission: true,
+      },
+    });
   }
 
   async findAll(query: QueryPatientVitalsDto) {
