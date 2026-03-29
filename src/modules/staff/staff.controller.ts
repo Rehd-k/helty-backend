@@ -28,7 +28,7 @@ export class StaffController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new staff member' })
   @ApiResponse({ status: 201, description: 'Staff created' })
-  create(@Body() dto: CreateStaffDto, @Req() req: any) {
+  create(@Body() dto: any, @Req() req: any) {
     const { departmentId, ...rest } = dto as any;
     const data: any = { ...rest };
     if (departmentId) {
@@ -37,6 +37,7 @@ export class StaffController {
     if (req && req.user && req.user.sub) {
       data.createdById = req.user.sub;
     }
+    data.staffRole = dto.role;
 
     return this.staffService.create(data);
   }

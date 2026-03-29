@@ -19,7 +19,7 @@ export class BillingAnalyticsController {
   @ApiOperation({
     summary: 'Revenue vs previous period',
     description:
-      'Cash in: sum of InvoicePayment (createdAt) plus TransactionPayment (paidAt) for the current period vs the previous period (today/yesterday, week/last week, etc.).',
+      'Net cash in: sum of InvoicePayment (createdAt) minus InvoiceRefund (refundedAt), plus legacy TransactionPayment (paidAt) for periods before invoice-led payments, vs the previous period.',
   })
   @ApiOkResponse({ description: 'Revenue comparison' })
   revenueSummary(@Query() q: BillingAnalyticsQueryDto) {

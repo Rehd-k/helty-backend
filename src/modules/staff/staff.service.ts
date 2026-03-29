@@ -13,6 +13,13 @@ export class StaffService {
       data.password = await bcrypt.hash(data.password, 10);
     }
 
+
+    if ('role' in data) {
+      delete data.role;
+    }
+    console.log("data", data);
+    
+
     // cast to any because of relation union types
     const newStaff = await this.prisma.staff.create({ data: data as any });
 

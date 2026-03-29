@@ -74,7 +74,7 @@ async function main() {
         skipDuplicates: true,
     });
 
-    console.log(`Success! Inserted ${result.count} services into the database.`);
+
 
     console.log('5. Seeding Drugs from PHAR.csv...');
     const rawDrugs = readCsvData('C:/Users/Rhed/Documents/hospital/backend/prisma/PHAR.csv');
@@ -101,7 +101,7 @@ async function main() {
     });
 
     console.log(`Success! Inserted ${drugResult.count} drugs into the database.`);
-
+    console.log(`Success! Inserted ${result.count} services into the database.`);
 }
 
 main()

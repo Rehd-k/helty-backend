@@ -188,7 +188,7 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'Allocate payment to invoice line items',
     description:
-      'Creates a billing TransactionPayment and InvoiceItemPayment rows. Supports partial or full payment per line and one payment split across multiple lines. Uses or creates a billing Transaction linked to this invoice.',
+      'Creates an InvoicePayment and InvoiceItemPayment rows (canonical cash-in). Supports partial or full payment per line and one payment split across multiple lines. Uses or creates a billing Transaction linked to this invoice for workflow/audit; does not create TransactionPayment.',
   })
   @ApiCreatedResponse({ description: 'Payment recorded and allocations created' })
   @ApiBadRequestResponse({
@@ -205,13 +205,14 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'Record invoice payment',
     description:
-      'Records a payment (wallet, cash, or transfer) and updates invoice amountPaid and status atomically.',
+      'Records a payment (wallet, cash, transfer, etc.) and updates invoice amountPaid and status atomically. The authenticated staff id is stored as createdBy/receivedBy on the payment when available.',
   })
   recordPayment(
     @Param('id') id: string,
     @Body() dto: RecordInvoicePaymentDto,
+    @Req() req: any,
   ) {
-    return this.invoiceService.recordPayment(id, dto);
+    return this.invoiceService.recordPayment(id, dto, req?.user?.sub);
   }
 
   @Get(':id/payments')

@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsEmail, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsEmail, MinLength, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AccountType, StaffRole } from '@prisma/client';
 
 export class CreateStaffDto {
   @ApiProperty({ example: 'STAFF-001' })
@@ -14,7 +15,15 @@ export class CreateStaffDto {
   @IsString()
   lastName: string;
 
-  @ApiProperty({ example: 'nurse' })
+  @ApiProperty({ enum: AccountType, example: AccountType.NURSE })
+  @IsEnum(AccountType)
+  accountType: AccountType;
+
+  @ApiProperty({ enum: StaffRole, example: StaffRole.INPATIENT_NURSE })
+  @IsEnum(StaffRole)
+  staffRole: StaffRole;
+
+  @ApiProperty({ example: 'PHYSICIAN' })
   @IsString()
   role: string;
 
@@ -22,11 +31,6 @@ export class CreateStaffDto {
   @IsOptional()
   @IsString()
   departmentId?: string;
-
-  @ApiPropertyOptional({ example: 'STORE' })
-  @IsOptional()
-  @IsString()
-  accountType?: string;
 
   @ApiPropertyOptional({ example: 'john@hospital.org' })
   @IsOptional()

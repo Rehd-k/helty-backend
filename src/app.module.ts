@@ -39,6 +39,8 @@ import { MedicationOrderModule } from './modules/medication-order/medication-ord
 import { StoreModule } from './modules/store/store.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
 import { BillingAnalyticsModule } from './modules/billing-analytics/billing-analytics.module';
+import { FrontdeskModule } from './modules/frontdesk/frontdesk.module';
+import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module';
 
 @Module({
   imports: [
@@ -94,6 +96,8 @@ import { BillingAnalyticsModule } from './modules/billing-analytics/billing-anal
     StoreModule,
     PurchasesModule,
     BillingAnalyticsModule,
+    FrontdeskModule,
+    HeltyDesktopModule,
   ],
   controllers: [AppController],
   providers: [

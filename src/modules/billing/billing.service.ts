@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -8,17 +7,19 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  InvoiceStatus,
   TransactionAuditAction,
+  TransactionPaymentMethod,
   TransactionStatus,
   Prisma,
 } from '@prisma/client';
+import { InvoiceService } from '../invoice/invoice.service';
 import { customAlphabet } from 'nanoid';
 import {
   AddTransactionItemDto,
   ApplyDiscountDto,
   ApplyInsuranceDto,
   CancelTransactionDto,
-  CreateQuickTransactionDto,
   CreateTransactionDto,
   CreateRefundDto,
   EditTransactionItemDto,
@@ -48,7 +49,10 @@ const VALID_TRANSITIONS: Partial<
 export class TransactionService {
   private readonly logger = new Logger(TransactionService.name);
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) { }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -154,6 +158,100 @@ export class TransactionService {
       where: { id: transactionId },
       data: { totalAmount, status },
     });
+
+    const linked = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+      select: { invoiceId: true },
+    });
+    if (linked?.invoiceId) {
+      await this.invoiceService.recalculateInvoiceTotals(linked.invoiceId);
+    }
+  }
+
+  /** Keeps billing `Transaction` amountPaid/status aligned with the linked invoice. */
+  private async syncTransactionFinancialsFromInvoice(transactionId: string) {
+    const txn = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+    });
+    if (!txn?.invoiceId) return;
+
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: txn.invoiceId },
+    });
+    if (!invoice) return;
+
+    const amountPaid = invoice.amountPaid;
+    const outstanding = txn.totalAmount
+      .sub(txn.discountAmount)
+      .sub(txn.insuranceCovered)
+      .sub(amountPaid);
+
+    let status: TransactionStatus = txn.status;
+    if (txn.status === TransactionStatus.CANCELLED) {
+      status = TransactionStatus.CANCELLED;
+    } else if (outstanding.lte(0) && txn.totalAmount.gt(0)) {
+      status = TransactionStatus.PAID;
+    } else if (amountPaid.gt(0)) {
+      status = TransactionStatus.PARTIALLY_PAID;
+    } else if (txn.totalAmount.gt(0)) {
+      status = TransactionStatus.ACTIVE;
+    } else {
+      status = TransactionStatus.DRAFT;
+    }
+
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
+      data: { amountPaid, status },
+    });
+  }
+
+  /**
+   * Ensures a billing transaction has a paired invoice and mirrored line items (legacy safe).
+   */
+  private async ensureLinkedInvoice(
+    transactionId: string,
+    staffId: string,
+  ): Promise<string> {
+    const txn = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+      include: { items: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!txn) {
+      throw new NotFoundException(`Transaction "${transactionId}" not found.`);
+    }
+    if (txn.invoiceId) {
+      return txn.invoiceId;
+    }
+
+    const invoice = await this.prisma.invoice.create({
+      data: {
+        patientId: txn.patientId,
+        status: InvoiceStatus.PENDING,
+        createdById: staffId,
+        staffId,
+      },
+    });
+
+    await this.prisma.transaction.update({
+      where: { id: transactionId },
+      data: { invoiceId: invoice.id, updatedById: staffId },
+    });
+
+    for (const it of txn.items) {
+      await this.prisma.invoiceItem.create({
+        data: {
+          invoiceId: invoice.id,
+          transactionItemId: it.id,
+          customDescription: it.description,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          createdById: staffId,
+        },
+      });
+    }
+
+    await this.invoiceService.recalculateInvoiceTotals(invoice.id);
+    return invoice.id;
   }
 
   /** Write an immutable audit log entry.
@@ -225,24 +323,37 @@ export class TransactionService {
 
     const transactionID = await this.generateTransactionNumber();
 
-    const transaction = await this.prisma.transaction.create({
-      data: {
-        transactionID,
-        patientId: dto.patientId,
-        createdById: dto.staffId,
-        updatedById: dto.staffId,
-        admissionId: dto.admissionId,
-        notes: dto.notes,
-        status: TransactionStatus.DRAFT,
-      },
-      include: {
-        patient: {
-          select: { id: true, patientId: true, firstName: true, surname: true },
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.create({
+        data: {
+          patientId: dto.patientId,
+          status: InvoiceStatus.PENDING,
+          createdById: dto.staffId,
+          staffId: dto.staffId,
         },
-        createdBy: {
-          select: { id: true, firstName: true, lastName: true, role: true },
+      });
+
+      return tx.transaction.create({
+        data: {
+          transactionID,
+          patientId: dto.patientId,
+          createdById: dto.staffId,
+          updatedById: dto.staffId,
+          admissionId: dto.admissionId,
+          notes: dto.notes,
+          status: TransactionStatus.DRAFT,
+          invoiceId: invoice.id,
         },
-      },
+        include: {
+          patient: {
+            select: { id: true, patientId: true, firstName: true, surname: true },
+          },
+          createdBy: {
+            select: { id: true, firstName: true, lastName: true, staffRole: true,
+            accountType: true },
+          },
+        },
+      });
     });
 
     await this.log(
@@ -250,7 +361,7 @@ export class TransactionService {
       TransactionAuditAction.BILL_CREATED,
       `Transaction ${transactionID} created for patient ${patient.patientId} (${patient.firstName} ${patient.surname}) by ${staff.firstName} ${staff.lastName}`,
       dto.staffId,
-      { transactionID, patientId: dto.patientId },
+      { transactionID, patientId: dto.patientId, invoiceId: transaction.invoiceId },
     );
 
     this.logger.log(
@@ -407,7 +518,8 @@ export class TransactionService {
               staffId: true,
               firstName: true,
               lastName: true,
-              role: true,
+              staffRole: true,
+            accountType: true,
             },
           },
           updatedBy: {
@@ -580,7 +692,8 @@ export class TransactionService {
               staffId: true,
               firstName: true,
               lastName: true,
-              role: true,
+              staffRole: true,
+            accountType: true,
             },
           },
           updatedBy: {
@@ -643,7 +756,8 @@ export class TransactionService {
             staffId: true,
             firstName: true,
             lastName: true,
-            role: true,
+            staffRole: true,
+            accountType: true,
           },
         },
         updatedBy: {
@@ -652,7 +766,8 @@ export class TransactionService {
             staffId: true,
             firstName: true,
             lastName: true,
-            role: true,
+            staffRole: true,
+            accountType: true,
           },
         },
         cancelledBy: {
@@ -661,13 +776,15 @@ export class TransactionService {
             staffId: true,
             firstName: true,
             lastName: true,
-            role: true,
+            staffRole: true,
+            accountType: true,
           },
         },
         items: {
           include: {
             addedBy: {
-              select: { id: true, firstName: true, lastName: true, role: true },
+              select: { id: true, firstName: true, lastName: true, staffRole: true,
+            accountType: true },
             },
             priceEditedBy: {
               select: { id: true, firstName: true, lastName: true },
@@ -699,6 +816,19 @@ export class TransactionService {
             },
           },
           orderBy: { refundedAt: 'desc' },
+        },
+        invoice: {
+          include: {
+            payments: { orderBy: { createdAt: 'desc' } },
+            refunds: {
+              orderBy: { refundedAt: 'desc' },
+              include: {
+                processedBy: {
+                  select: { id: true, firstName: true, lastName: true },
+                },
+              },
+            },
+          },
         },
         _count: {
           select: {
@@ -772,7 +902,8 @@ export class TransactionService {
           select: { id: true, patientId: true, firstName: true, surname: true },
         },
         updatedBy: {
-          select: { id: true, firstName: true, lastName: true, role: true },
+          select: { id: true, firstName: true, lastName: true, staffRole: true,
+            accountType: true },
         },
       },
     });
@@ -816,7 +947,8 @@ export class TransactionService {
         orderBy: { createdAt: 'desc' },
         include: {
           createdBy: {
-            select: { id: true, firstName: true, lastName: true, role: true },
+            select: { id: true, firstName: true, lastName: true, staffRole: true,
+            accountType: true },
           },
           _count: { select: { items: true, payments: true } },
         },
@@ -868,6 +1000,24 @@ export class TransactionService {
     });
 
     await this.recalculateTotals(transaction.id);
+
+    const invoiceId = await this.ensureLinkedInvoice(transaction.id, dto.staffId);
+    const existingLine = await this.prisma.invoiceItem.findFirst({
+      where: { transactionItemId: item.id },
+    });
+    if (!existingLine) {
+      await this.prisma.invoiceItem.create({
+        data: {
+          invoiceId,
+          transactionItemId: item.id,
+          customDescription: dto.description,
+          quantity: dto.quantity,
+          unitPrice,
+          createdById: dto.staffId,
+        },
+      });
+      await this.invoiceService.recalculateInvoiceTotals(invoiceId);
+    }
     await this.log(
       transaction.id,
       TransactionAuditAction.ITEM_ADDED,
@@ -936,6 +1086,23 @@ export class TransactionService {
     });
 
     await this.recalculateTotals(transaction.id);
+
+    const linkedIi = await this.prisma.invoiceItem.findFirst({
+      where: { transactionItemId: itemId },
+    });
+    if (linkedIi) {
+      await this.prisma.invoiceItem.update({
+        where: { id: linkedIi.id },
+        data: {
+          unitPrice: newUnitPrice,
+          quantity: newQuantity,
+          customDescription: dto.description ?? existing.description,
+        },
+      });
+      if (transaction.invoiceId) {
+        await this.invoiceService.recalculateInvoiceTotals(transaction.invoiceId);
+      }
+    }
     await this.log(
       transaction.id,
       TransactionAuditAction.ITEM_EDITED,
@@ -995,62 +1162,43 @@ export class TransactionService {
       );
     }
 
-    // Resolve bank (if caller provided one)
-    let bankId: string | undefined;
-    if (dto.bankAccountNumber) {
-      const bank = await this.prisma.bank.findUnique({
-        where: { accountNumber: dto.bankAccountNumber },
-      });
-      if (!bank) {
-        throw new NotFoundException(
-          `No bank found with account number "${dto.bankAccountNumber}". ` +
-          `Register the bank first at POST /bank.`,
-        );
-      }
-      bankId = bank.id;
-    }
+    const invoiceId = await this.ensureLinkedInvoice(transaction.id, dto.staffId);
+    const source = this.invoiceService.paymentMethodToInvoiceSource(dto.method);
 
-    const payment = await this.prisma.transactionPayment.create({
-      data: {
-        transactionId: transaction.id,
-        amount: paymentAmount,
-        method: dto.method,
-        reference: dto.reference,
-        notes: dto.notes,
-        receivedById: dto.staffId,
-        createdById: dto.staffId,
-        ...(bankId && { bankId }),
-      },
-      include: {
-        receivedBy: { select: { id: true, firstName: true, lastName: true } },
-        bank: { select: { id: true, name: true, accountNumber: true } },
-      },
-    });
+    const { payment, invoice: updatedInvoice } =
+      await this.invoiceService.recordPayment(
+        invoiceId,
+        {
+          amount: Number(dto.amount),
+          source,
+          method: dto.method,
+          reference: dto.reference,
+          notes: dto.notes,
+          bankAccountNumber: dto.bankAccountNumber,
+        },
+        dto.staffId,
+      );
 
-    const newAmountPaid = transaction.amountPaid.add(paymentAmount);
-    const newOutstanding = outstanding.sub(paymentAmount);
-    const newStatus = newOutstanding.lte(0)
-      ? TransactionStatus.PAID
-      : TransactionStatus.PARTIALLY_PAID;
+    await this.syncTransactionFinancialsFromInvoice(transaction.id);
 
-    await this.prisma.transaction.update({
+    const refreshed = await this.prisma.transaction.findUniqueOrThrow({
       where: { id: transaction.id },
-      data: {
-        amountPaid: newAmountPaid,
-        status: newStatus,
-        updatedById: dto.staffId,
-      },
     });
+    const newOutstanding = refreshed.totalAmount
+      .sub(refreshed.discountAmount)
+      .sub(refreshed.insuranceCovered)
+      .sub(refreshed.amountPaid);
 
     await this.log(
       transaction.id,
       TransactionAuditAction.PAYMENT_RECEIVED,
-      `Payment of ₦${dto.amount} received via ${dto.method}` +
+      `Payment of ₦${dto.amount} recorded on invoice ${invoiceId} via ${dto.method}` +
       (dto.reference ? ` (ref: ${dto.reference})` : '') +
       `. Outstanding balance: ₦${newOutstanding.toFixed(2)}`,
       dto.staffId,
       {
-        paymentId: payment.id,
+        invoicePaymentId: payment.id,
+        invoiceId,
         amount: dto.amount,
         method: dto.method,
         reference: dto.reference,
@@ -1058,7 +1206,12 @@ export class TransactionService {
       },
     );
 
-    return { ...payment, newOutstanding, newStatus };
+    return {
+      payment,
+      invoiceId,
+      newOutstanding,
+      newStatus: refreshed.status,
+    };
   }
 
   // ─── Apply Discount ───────────────────────────────────────────────────────────────
@@ -1284,62 +1437,78 @@ export class TransactionService {
     if (refundAmount.lte(0)) {
       throw new BadRequestException('Refund amount must be greater than zero.');
     }
-    if (refundAmount.gt(transaction.amountPaid)) {
+
+    const invoiceId = await this.ensureLinkedInvoice(transaction.id, dto.staffId);
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) {
+      throw new NotFoundException(`Invoice ${invoiceId} not found.`);
+    }
+    if (refundAmount.gt(invoice.amountPaid)) {
       throw new BadRequestException(
-        `Refund amount ₦${dto.amount} exceeds the total amount paid ₦${transaction.amountPaid.toFixed(2)} ` +
-        `on transaction ${transaction.transactionID}.`,
+        `Refund amount ₦${dto.amount} exceeds the amount paid on the invoice ₦${invoice.amountPaid.toFixed(2)} ` +
+        `(transaction ${transaction.transactionID}).`,
       );
     }
 
-    const refund = await this.prisma.transactionRefund.create({
-      data: {
-        transactionId: transaction.id,
-        amount: refundAmount,
-        reason: dto.reason,
-        processedById: dto.staffId,
-        createdById: dto.staffId,
-      },
-      include: {
-        processedBy: { select: { id: true, firstName: true, lastName: true } },
-      },
+    const refund = await this.prisma.$transaction(async (tx) => {
+      const ir = await tx.invoiceRefund.create({
+        data: {
+          invoiceId,
+          amount: refundAmount,
+          reason: dto.reason,
+          processedById: dto.staffId,
+          createdById: dto.staffId,
+        },
+        include: {
+          processedBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: { amountPaid: invoice.amountPaid.sub(refundAmount) },
+      });
+      return ir;
     });
 
-    const newAmountPaid = transaction.amountPaid.sub(refundAmount);
-    const outstanding = transaction.totalAmount
-      .sub(transaction.discountAmount)
-      .sub(transaction.insuranceCovered)
-      .sub(newAmountPaid);
+    await this.invoiceService.recalculateInvoiceTotals(invoiceId);
+    await this.syncTransactionFinancialsFromInvoice(transaction.id);
 
-    const newStatus = newAmountPaid.lte(0)
-      ? TransactionStatus.REFUNDED
-      : outstanding.lte(0)
-        ? TransactionStatus.PAID
-        : TransactionStatus.PARTIALLY_PAID;
-
-    await this.prisma.transaction.update({
+    const refreshed = await this.prisma.transaction.findUniqueOrThrow({
       where: { id: transaction.id },
-      data: {
-        amountPaid: newAmountPaid,
-        status: newStatus,
-        updatedById: dto.staffId,
-      },
     });
+    let newStatus = refreshed.status;
+    const newAmountPaid = refreshed.amountPaid;
+    if (newAmountPaid.lte(0) && refreshed.totalAmount.gt(0)) {
+      newStatus = TransactionStatus.REFUNDED;
+      await this.prisma.transaction.update({
+        where: { id: transaction.id },
+        data: { status: TransactionStatus.REFUNDED, updatedById: dto.staffId },
+      });
+    } else {
+      await this.prisma.transaction.update({
+        where: { id: transaction.id },
+        data: { updatedById: dto.staffId },
+      });
+    }
 
     await this.log(
       transaction.id,
       TransactionAuditAction.REFUND_ISSUED,
-      `Refund of ₦${dto.amount} issued by ${staff.firstName} ${staff.lastName}. ` +
+      `Refund of ₦${dto.amount} recorded on invoice ${invoiceId} by ${staff.firstName} ${staff.lastName}. ` +
       `Reason: ${dto.reason}. New status: ${newStatus}`,
       dto.staffId,
       {
-        refundId: refund.id,
+        invoiceRefundId: refund.id,
+        invoiceId,
         amount: dto.amount,
         reason: dto.reason,
         newStatus,
       },
     );
 
-    return { ...refund, newStatus, newAmountPaid };
+    return { ...refund, newStatus, newAmountPaid, invoiceId };
   }
 
   // ─── Cancel Transaction ───────────────────────────────────────────────────────────
@@ -1406,7 +1575,8 @@ export class TransactionService {
               staffId: true,
               firstName: true,
               lastName: true,
-              role: true,
+              staffRole: true,
+            accountType: true,
             },
           },
         },
@@ -1556,7 +1726,20 @@ export class TransactionService {
           finalStatus = TransactionStatus.ACTIVE;
         }
 
-        // 3d. Create transaction header with final financials
+        const factor = totalAmount.gt(0)
+          ? billableAfterDiscount.div(totalAmount)
+          : new Prisma.Decimal(1);
+
+        // 3d. Create paired invoice + transaction (money on invoice)
+        const invoice = await tx.invoice.create({
+          data: {
+            patientId: patient.id,
+            status: InvoiceStatus.PENDING,
+            createdById: dto.staffId,
+            staffId: dto.staffId,
+          },
+        });
+
         const transaction = await tx.transaction.create({
           data: {
             transactionID,
@@ -1570,15 +1753,17 @@ export class TransactionService {
             insuranceCovered,
             status: finalStatus,
             notes: dto.notes,
+            invoiceId: invoice.id,
           },
         });
 
-        // 3e. Insert all items now that we have transaction.id
+        // 3e. Insert items: transaction lines (gross) + invoice lines (discount-apportioned)
         for (const item of dto.items) {
           const unitPrice = new Prisma.Decimal(item.unitPrice);
           const totalPrice = unitPrice.mul(item.quantity);
+          const adjustedUnitPrice = unitPrice.mul(factor);
 
-          await tx.transactionItem.create({
+          const ti = await tx.transactionItem.create({
             data: {
               transactionId: transaction.id,
               description: item.name,
@@ -1592,9 +1777,22 @@ export class TransactionService {
               updatedById: dto.staffId,
             },
           });
+
+          await tx.invoiceItem.create({
+            data: {
+              invoiceId: invoice.id,
+              transactionItemId: ti.id,
+              customDescription: item.name,
+              quantity: item.quantity,
+              unitPrice: adjustedUnitPrice,
+              createdById: dto.staffId,
+            },
+          });
         }
 
-        // 3f. Create payment record if any amount was paid
+        await this.invoiceService.recalculateInvoiceTotals(invoice.id, tx);
+
+        // 3f. Invoice payment (canonical) when something was collected
         if (amountPaid.gt(0)) {
           if (!dto.paymentMethod) {
             throw new BadRequestException(
@@ -1602,15 +1800,30 @@ export class TransactionService {
             );
           }
 
-          await tx.transactionPayment.create({
+          const rawMethod = String(dto.paymentMethod).toUpperCase();
+          const methodEnum =
+            rawMethod in TransactionPaymentMethod
+              ? TransactionPaymentMethod[
+              rawMethod as keyof typeof TransactionPaymentMethod
+              ]
+              : TransactionPaymentMethod.CASH;
+
+          await tx.invoicePayment.create({
             data: {
-              transactionId: transaction.id,
+              invoiceId: invoice.id,
               amount: amountPaid,
-              method: dto.paymentMethod.toUpperCase(),
+              source: this.invoiceService.paymentMethodToInvoiceSource(methodEnum),
+              method: methodEnum,
               receivedById: dto.staffId,
               createdById: dto.staffId,
             },
           });
+
+          await tx.invoice.update({
+            where: { id: invoice.id },
+            data: { amountPaid },
+          });
+          await this.invoiceService.recalculateInvoiceTotals(invoice.id, tx);
         }
 
         // 3g. For each consultation item, add the patient to the waiting list,

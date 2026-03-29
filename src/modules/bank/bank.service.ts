@@ -72,7 +72,9 @@ export class BankService {
         include: {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           updatedBy: { select: { id: true, firstName: true, lastName: true } },
-          _count: { select: { transactionPayments: true } },
+          _count: {
+            select: { transactionPayments: true, invoicePayments: true },
+          },
         },
       }),
       this.prisma.bank.count({ where }),
@@ -89,7 +91,9 @@ export class BankService {
       include: {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
         updatedBy: { select: { id: true, firstName: true, lastName: true } },
-        _count: { select: { transactionPayments: true } },
+        _count: {
+          select: { transactionPayments: true, invoicePayments: true },
+        },
       },
     });
     if (!bank) throw new NotFoundException(`Bank "${id}" not found.`);
@@ -151,12 +155,14 @@ export class BankService {
   async remove(id: string) {
     await this.findOne(id); // throws 404 if not found
 
-    const paymentCount = await this.prisma.transactionPayment.count({
-      where: { bankId: id },
-    });
-    if (paymentCount > 0) {
+    const [txnPayCount, invPayCount] = await Promise.all([
+      this.prisma.transactionPayment.count({ where: { bankId: id } }),
+      this.prisma.invoicePayment.count({ where: { bankId: id } }),
+    ]);
+    if (txnPayCount > 0 || invPayCount > 0) {
       throw new BadRequestException(
-        `Cannot delete bank "${id}" — it has ${paymentCount} payment(s) linked to it. ` +
+        `Cannot delete bank "${id}" — it has ${txnPayCount} legacy transaction payment(s) ` +
+          `and ${invPayCount} invoice payment(s) linked to it. ` +
           `Reassign or void those payments first.`,
       );
     }

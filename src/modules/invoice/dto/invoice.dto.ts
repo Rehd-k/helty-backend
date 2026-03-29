@@ -142,12 +142,33 @@ export class RecordInvoicePaymentDto {
   source: InvoicePaymentSource;
 
   @ApiPropertyOptional({
+    description:
+      'Finer payment method (CARD, etc.). When omitted, derived from `source` where applicable.',
+    enum: TransactionPaymentMethod,
+  })
+  @IsOptional()
+  @IsEnum(TransactionPaymentMethod)
+  method?: TransactionPaymentMethod;
+
+  @ApiPropertyOptional({
     description: 'Reference for cash/transfer receipt or wallet usage context',
     example: 'cash-receipt-10023',
   })
   @IsOptional()
   @IsNotEmpty()
   reference?: string;
+
+  @ApiPropertyOptional({ description: 'Internal notes' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'Registered bank account number when payment is lodged to a bank',
+  })
+  @IsOptional()
+  @IsString()
+  bankAccountNumber?: string;
 }
 
 export class InvoiceItemAllocationDto {

@@ -3,8 +3,8 @@ import { SetMetadata } from '@nestjs/common';
 export const ACCOUNT_TYPES_KEY = 'accountTypes';
 
 /**
- * Restrict route to staff with one of the given accountType values (e.g. INPATIENT_DOCTOR).
- * Used together with AccessGuard which checks user.accountType when this metadata is set.
+ * Restrict route to staff matching one of the given tokens: new `AccountType` / `StaffRole`
+ * values, or legacy flat tokens (e.g. INPATIENT_DOCTOR, RADIOLOGY) resolved in AccessGuard.
  */
 export const AccountTypes = (...accountTypes: string[]) =>
   SetMetadata(ACCOUNT_TYPES_KEY, accountTypes);

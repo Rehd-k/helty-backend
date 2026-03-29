@@ -10,6 +10,7 @@ import {
   PatientStatus,
   Prisma,
   TransactionAuditAction,
+  TransactionPaymentMethod,
   TransactionStatus,
   WalletTransactionType,
 } from '@prisma/client';
@@ -66,6 +67,42 @@ export class InvoiceService {
 
   private asDecimal(value: number | string | Prisma.Decimal) {
     return value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
+  }
+
+  /** Maps billing payment method to invoice payment source enum. */
+  paymentMethodToInvoiceSource(method: TransactionPaymentMethod): InvoicePaymentSource {
+    switch (method) {
+      case TransactionPaymentMethod.CASH:
+        return InvoicePaymentSource.CASH;
+      case TransactionPaymentMethod.CARD:
+        return InvoicePaymentSource.CARD;
+      case TransactionPaymentMethod.TRANSFER:
+        return InvoicePaymentSource.TRANSFER;
+      case TransactionPaymentMethod.INSURANCE:
+        return InvoicePaymentSource.INSURANCE;
+      case TransactionPaymentMethod.WAIVER:
+        return InvoicePaymentSource.WAIVER;
+      default:
+        return InvoicePaymentSource.CASH;
+    }
+  }
+
+  private sourceToDefaultMethod(source: InvoicePaymentSource): TransactionPaymentMethod | undefined {
+    switch (source) {
+      case InvoicePaymentSource.CASH:
+        return TransactionPaymentMethod.CASH;
+      case InvoicePaymentSource.TRANSFER:
+        return TransactionPaymentMethod.TRANSFER;
+      case InvoicePaymentSource.CARD:
+        return TransactionPaymentMethod.CARD;
+      case InvoicePaymentSource.INSURANCE:
+        return TransactionPaymentMethod.INSURANCE;
+      case InvoicePaymentSource.WAIVER:
+        return TransactionPaymentMethod.WAIVER;
+      case InvoicePaymentSource.WALLET:
+      default:
+        return undefined;
+    }
   }
 
   private async ensureWallet(
@@ -420,13 +457,31 @@ export class InvoiceService {
           },
         },
         createdBy: {
-          select: { id: true, firstName: true, lastName: true, role: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffRole: true,
+            accountType: true,
+          },
         },
         updatedBy: {
-          select: { id: true, firstName: true, lastName: true, role: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffRole: true,
+            accountType: true,
+          },
         },
         staff: {
-          select: { id: true, firstName: true, lastName: true, role: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffRole: true,
+            accountType: true,
+          },
         },
         invoiceItems: {
           include: {
@@ -445,6 +500,14 @@ export class InvoiceService {
         },
         payments: {
           orderBy: { createdAt: 'desc' },
+        },
+        refunds: {
+          orderBy: { refundedAt: 'desc' },
+          include: {
+            processedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
         },
       },
     });
@@ -691,8 +754,26 @@ export class InvoiceService {
     return { message: 'Recurring item resumed' };
   }
 
-  async recordPayment(invoiceId: string, dto: RecordInvoicePaymentDto) {
+  async recordPayment(
+    invoiceId: string,
+    dto: RecordInvoicePaymentDto,
+    createdByStaffId?: string,
+  ) {
     await this.recalculateInvoiceTotals(invoiceId);
+
+    let bankId: string | undefined;
+    if (dto.bankAccountNumber) {
+      const bank = await this.prisma.bank.findUnique({
+        where: { accountNumber: dto.bankAccountNumber },
+      });
+      if (!bank) {
+        throw new NotFoundException(
+          `No bank found with account number "${dto.bankAccountNumber}".`,
+        );
+      }
+      bankId = bank.id;
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
       if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
@@ -709,6 +790,9 @@ export class InvoiceService {
         );
       }
 
+      const method =
+        dto.method ?? this.sourceToDefaultMethod(dto.source);
+
       let walletTransactionId: string | undefined;
       if (dto.source === InvoicePaymentSource.WALLET) {
         const wallet = await this.ensureWallet(invoice.patientId, tx);
@@ -723,6 +807,7 @@ export class InvoiceService {
             amount: paymentAmount,
             reference: dto.reference ?? 'invoice_payment',
             invoiceId,
+            ...(createdByStaffId ? { createdById: createdByStaffId } : {}),
           },
         });
         walletTransactionId = walletTxn.id;
@@ -738,6 +823,16 @@ export class InvoiceService {
           invoiceId,
           amount: paymentAmount,
           source: dto.source,
+          ...(method !== undefined ? { method } : {}),
+          reference: dto.reference,
+          notes: dto.notes,
+          ...(createdByStaffId
+            ? {
+              receivedById: createdByStaffId,
+              createdById: createdByStaffId,
+            }
+            : {}),
+          ...(bankId ? { bankId } : {}),
           walletTransactionId,
         },
       });
@@ -917,10 +1012,11 @@ export class InvoiceService {
         );
       }
 
-      const payment = await tx.transactionPayment.create({
+      const invoicePaymentRow = await tx.invoicePayment.create({
         data: {
-          transactionId: billingTransaction.id,
+          invoiceId,
           amount: paymentAmount,
+          source: this.paymentMethodToInvoiceSource(dto.method),
           method: dto.method,
           reference: dto.reference,
           notes: dto.notes,
@@ -966,6 +1062,7 @@ export class InvoiceService {
           data: {
             invoiceItemId: itemId,
             transactionId: billingTransaction.id,
+            invoicePaymentId: invoicePaymentRow.id,
             amount: allocAmt,
           },
         });
@@ -999,14 +1096,14 @@ export class InvoiceService {
           createdById: dto.staffId,
           metadata: {
             invoiceId,
-            paymentId: payment.id,
+            invoicePaymentId: invoicePaymentRow.id,
             allocationIds: allocationRows.map((r) => r.id),
           },
         },
       });
 
       return {
-        payment,
+        invoicePayment: invoicePaymentRow,
         billingTransactionId: billingTransaction.id,
         allocations: allocationRows,
         invoice: updatedInvoice,
@@ -1021,7 +1118,12 @@ export class InvoiceService {
     return this.prisma.invoicePayment.findMany({
       where: { invoiceId },
       orderBy: { createdAt: 'desc' },
-      include: { walletTransaction: true },
+      include: {
+        walletTransaction: true,
+        receivedBy: { select: { id: true, firstName: true, lastName: true } },
+        bank: { select: { id: true, name: true, accountNumber: true } },
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
   }
 

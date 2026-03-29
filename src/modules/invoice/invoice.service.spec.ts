@@ -125,6 +125,7 @@ describe('InvoiceService', () => {
       invoicePayment: {
         create: jest.fn().mockResolvedValue({ id: 'pay-1' }),
       },
+      bank: { findUnique: jest.fn() },
     };
 
     const prisma: any = {
@@ -136,15 +137,20 @@ describe('InvoiceService', () => {
         }),
         update: jest.fn().mockResolvedValue({}),
       },
+      bank: { findUnique: jest.fn() },
       $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
     };
 
     const service = new InvoiceService(prisma);
-    await service.recordPayment('inv-1', {
-      amount: 200,
-      source: InvoicePaymentSource.WALLET,
-      reference: 'invoice_payment',
-    });
+    await service.recordPayment(
+      'inv-1',
+      {
+        amount: 200,
+        source: InvoicePaymentSource.WALLET,
+        reference: 'invoice_payment',
+      },
+      'staff-1',
+    );
 
     expect(tx.walletTransaction.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -174,6 +180,7 @@ describe('InvoiceService', () => {
           balance: new Prisma.Decimal(50),
         }),
       },
+      bank: { findUnique: jest.fn() },
     };
 
     const prisma: any = {
@@ -185,15 +192,20 @@ describe('InvoiceService', () => {
         }),
         update: jest.fn().mockResolvedValue({}),
       },
+      bank: { findUnique: jest.fn() },
       $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
     };
 
     const service = new InvoiceService(prisma);
     await expect(
-      service.recordPayment('inv-1', {
-        amount: 200,
-        source: InvoicePaymentSource.WALLET,
-      }),
+      service.recordPayment(
+        'inv-1',
+        {
+          amount: 200,
+          source: InvoicePaymentSource.WALLET,
+        },
+        'staff-1',
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -237,9 +249,9 @@ describe('InvoiceService', () => {
         }),
         update: jest.fn().mockResolvedValue({}),
       },
-      transactionPayment: {
+      invoicePayment: {
         create: jest.fn().mockResolvedValue({
-          id: 'tp-1',
+          id: 'ip-1',
           receivedBy: {},
           bank: null,
         }),
@@ -256,6 +268,7 @@ describe('InvoiceService', () => {
     };
     const prisma: any = {
       staff: { findUnique: jest.fn().mockResolvedValue({ id: 'st-1' }) },
+      bank: { findUnique: jest.fn().mockResolvedValue(null) },
       invoice: {
         findUnique: jest.fn().mockResolvedValue(innerInvoice),
         update: jest.fn().mockResolvedValue({}),
@@ -274,8 +287,15 @@ describe('InvoiceService', () => {
       method: TransactionPaymentMethod.CASH,
       allocations: [{ invoiceItemId: 'line-1', amount: 200 }],
     });
-    expect(tx.transactionPayment.create).toHaveBeenCalled();
+    expect(tx.invoicePayment.create).toHaveBeenCalled();
     expect(tx.invoiceItemPayment.create).toHaveBeenCalledTimes(1);
+    expect(tx.invoiceItemPayment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          invoicePaymentId: 'ip-1',
+        }),
+      }),
+    );
     expect(tx.invoiceItem.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'line-1' },
@@ -299,7 +319,7 @@ describe('InvoiceService', () => {
         ],
       }),
     ).rejects.toThrow(BadRequestException);
-    expect(tx.transactionPayment.create).not.toHaveBeenCalled();
+    expect(tx.invoicePayment.create).not.toHaveBeenCalled();
   });
 
   it('rejects allocation that would overpay a line', async () => {
@@ -315,7 +335,7 @@ describe('InvoiceService', () => {
         allocations: [{ invoiceItemId: 'line-1', amount: 350 }],
       }),
     ).rejects.toThrow(BadRequestException);
-    expect(tx.transactionPayment.create).not.toHaveBeenCalled();
+    expect(tx.invoicePayment.create).not.toHaveBeenCalled();
   });
 
   it('rejects unknown invoice item before recording payment', async () => {
@@ -329,7 +349,7 @@ describe('InvoiceService', () => {
         allocations: [{ invoiceItemId: 'wrong-line', amount: 50 }],
       }),
     ).rejects.toThrow(BadRequestException);
-    expect(tx.transactionPayment.create).not.toHaveBeenCalled();
+    expect(tx.invoicePayment.create).not.toHaveBeenCalled();
   });
 
   it('create reuses an open invoice instead of inserting a second one', async () => {
