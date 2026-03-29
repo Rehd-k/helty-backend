@@ -38,6 +38,7 @@ import { RadiologyModule } from './modules/radiology/radiology.module';
 import { MedicationOrderModule } from './modules/medication-order/medication-order.module';
 import { StoreModule } from './modules/store/store.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
+import { BillingAnalyticsModule } from './modules/billing-analytics/billing-analytics.module';
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { PurchasesModule } from './modules/purchases/purchases.module';
     MedicationOrderModule,
     StoreModule,
     PurchasesModule,
+    BillingAnalyticsModule,
   ],
   controllers: [AppController],
   providers: [

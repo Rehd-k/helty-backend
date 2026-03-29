@@ -7,6 +7,7 @@ import {
 import {
   InvoicePaymentSource,
   InvoiceStatus,
+  PatientStatus,
   Prisma,
   TransactionAuditAction,
   TransactionStatus,
@@ -42,6 +43,27 @@ export class InvoiceService {
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
+  /** At most one open bill per patient: PENDING or PARTIALLY_PAID (not PAID). */
+  private async findOpenInvoiceForPatient(patientId: string) {
+    return this.prisma.invoice.findFirst({
+      where: {
+        patientId,
+        status: {
+          in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID],
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  private assertInvoiceNotPaid(status: InvoiceStatus) {
+    if (status === InvoiceStatus.PAID) {
+      throw new BadRequestException(
+        'This invoice is paid and cannot be modified.',
+      );
+    }
+  }
+
   private asDecimal(value: number | string | Prisma.Decimal) {
     return value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
   }
@@ -57,6 +79,13 @@ export class InvoiceService {
     });
   }
 
+  /**
+   * Billable day count per usage segment.
+   * - Closed segments: ceil(partial 24h periods) so a same-day partial still counts as one day.
+   * - Open (active) segments: floor only — avoids charging a full day the instant a segment
+   *   starts (resume uses startAt ≈ now; ceil(milliseconds/24h) === 1). Full days accrue after
+   *   each completed 24h; pausing closes the segment and ceil applies to that final stretch.
+   */
   private computeRecurringDays(
     segments: Array<{ startAt: Date; endAt: Date | null }>,
     now: Date,
@@ -66,7 +95,11 @@ export class InvoiceService {
       const endAt = segment.endAt ?? now;
       const duration = endAt.getTime() - segment.startAt.getTime();
       if (duration <= 0) continue;
-      totalDays += Math.ceil(duration / this.dayMs);
+      const isOpen = segment.endAt === null;
+      const days = isOpen
+        ? Math.floor(duration / this.dayMs)
+        : Math.ceil(duration / this.dayMs);
+      totalDays += days;
     }
     return totalDays;
   }
@@ -158,11 +191,44 @@ export class InvoiceService {
 
   // ─── Invoice CRUD ─────────────────────────────────────────────────────────────
 
+  private static readonly invoiceCreateInclude = {
+    patient: {
+      select: { id: true, patientId: true, firstName: true, surname: true },
+    },
+    createdBy: { select: { id: true, firstName: true, lastName: true } },
+    invoiceItems: {
+      include: {
+        service: { select: { id: true, name: true, cost: true } },
+      },
+    },
+  } satisfies Prisma.InvoiceInclude;
+
   /**
    * Create a new invoice for a patient.
-   * The authenticated staff member is recorded as `createdBy`.
+   * If the patient already has a PENDING or PARTIALLY_PAID invoice, that invoice
+   * is returned and updated (staff/encounter) instead of creating another.
+   * After the bill is PAID, a new invoice must be created for new charges.
+   * The authenticated staff member is recorded as `createdBy` on new invoices,
+   * or `updatedBy` when reusing an open invoice.
    */
   async create(dto: CreateInvoiceDto, req: any) {
+    const existing = await this.findOpenInvoiceForPatient(dto.patientId);
+    if (existing) {
+      await this.prisma.invoice.update({
+        where: { id: existing.id },
+        data: {
+          ...(dto.staffId !== undefined && { staffId: dto.staffId }),
+          ...(dto.encounterId !== undefined && { encounterId: dto.encounterId }),
+          updatedById: req.user.sub,
+        },
+      });
+      await this.recalculateInvoiceTotals(existing.id);
+      return this.prisma.invoice.findUniqueOrThrow({
+        where: { id: existing.id },
+        include: InvoiceService.invoiceCreateInclude,
+      });
+    }
+
     return this.prisma.invoice.create({
       data: {
         patientId: dto.patientId,
@@ -171,75 +237,155 @@ export class InvoiceService {
         staffId: dto.staffId ?? '',
         encounterId: dto.encounterId ?? undefined,
       },
-      include: {
-        patient: {
-          select: { id: true, patientId: true, firstName: true, surname: true },
-        },
-        createdBy: { select: { id: true, firstName: true, lastName: true } },
-        invoiceItems: {
-          include: {
-            service: { select: { id: true, name: true, cost: true } },
-          },
-        },
-      },
+      include: InvoiceService.invoiceCreateInclude,
     });
   }
 
+  /** Query params may send booleans as strings (`?allowIP=true`). */
+  private parseAllowInpatient(value: unknown): boolean {
+    if (value === true) return true;
+    if (value === false || value === undefined || value === null) return false;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    return Boolean(value);
+  }
+
+  private invoiceListWhere(
+    from: Date,
+    to: Date,
+    allowInpatient: boolean,
+    rawQuery?: string,
+    category?: string,
+  ): Prisma.InvoiceWhereInput {
+    const patientStatus = allowInpatient
+      ? PatientStatus.ADMITED
+      : PatientStatus.OUTPATIENT;
+    const createdAt: Prisma.DateTimeFilter = { gte: from, lte: to };
+    const q = rawQuery?.trim();
+    if (!q) {
+      return { createdAt, patient: { status: patientStatus } };
+    }
+
+    const needle = { contains: q, mode: 'insensitive' as const };
+
+    if (category === 'patientId') {
+      return {
+        createdAt,
+        patient: { status: patientStatus, patientId: needle },
+      };
+    }
+    if (category === 'fullName') {
+      return {
+        createdAt,
+        patient: {
+          status: patientStatus,
+          OR: [{ firstName: needle }, { surname: needle }],
+        },
+      };
+    }
+    if (category === 'service') {
+      return {
+        createdAt,
+        patient: { status: patientStatus },
+        invoiceItems: {
+          some: { service: { name: needle } },
+        },
+      };
+    }
+    if (category) {
+      return { createdAt, patient: { status: patientStatus } };
+    }
+
+    return {
+      createdAt,
+      AND: [
+        { patient: { status: patientStatus } },
+        {
+          OR: [
+            {
+              patient: {
+                OR: [
+                  { firstName: needle },
+                  { surname: needle },
+                  { patientId: needle },
+                ],
+              },
+            },
+            {
+              invoiceItems: {
+                some: { service: { name: needle } },
+              },
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  private static readonly invoiceFindAllInclude = {
+    staff: {
+      select: { id: true, firstName: true, lastName: true },
+    },
+    invoiceItems: {
+      include: {
+        service: {
+          select: { id: true, name: true, cost: true },
+        },
+        drug: {
+          select: {
+            id: true,
+            genericName: true,
+            brandName: true,
+            strength: true,
+            dosageForm: true,
+          },
+        },
+      },
+    },
+    patient: {
+      select: {
+        id: true,
+        patientId: true,
+        firstName: true,
+        surname: true,
+      },
+    },
+    createdBy: { select: { id: true, firstName: true, lastName: true } },
+    _count: { select: { invoiceItems: true } },
+  } satisfies Prisma.InvoiceInclude;
+
   /**
    * Paginated list of all invoices, most-recent first.
+   * Inpatient vs outpatient is enforced via the related patient's `status`
+   * (`ADMITED` when allowIP is true, otherwise `OUTPATIENT`).
    */
-  async findAll(query: DateRangeSkipTakeDto) {
-    const { skip = 0, take = 20, fromDate, toDate } = query;
+  async findAll(
+    params: DateRangeSkipTakeDto & {
+      search?: string;
+      category?: string;
+      query?: string;
+      allowIP: boolean;
+    },
+  ) {
+    const { skip = 0, take = 20, fromDate, toDate, query, category } = params;
     const { from, to } = parseDateRange(fromDate, toDate);
+    const allowInpatient = this.parseAllowInpatient(params.allowIP);
+    const where = this.invoiceListWhere(from, to, allowInpatient, query, category);
+
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
-        where: { createdAt: { gte: from, lte: to } },
+        where,
         skip,
         take,
         orderBy: { createdAt: 'desc' },
-        include: {
-          staff: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          // encounter: true,
-          invoiceItems: {
-            include: {
-              service: {
-                select: {
-                  id: true,
-                  name: true,
-                  cost: true,
-                },
-              },
-              drug: true,
-            },
-          },
-          patient: {
-            select: {
-              id: true,
-              patientId: true,
-              firstName: true,
-              surname: true,
-            },
-          },
-          createdBy: { select: { id: true, firstName: true, lastName: true } },
-          _count: { select: { invoiceItems: true } },
-        },
+        include: InvoiceService.invoiceFindAllInclude,
       }),
-      this.prisma.invoice.count({
-        where: { createdAt: { gte: from, lte: to } },
-      }),
+      this.prisma.invoice.count({ where }),
     ]);
+
     return { invoices, total, skip, take };
   }
 
-  /**
-   * All invoices for a single patient, including line items.
-   */
+
   async findByPatient(patientId: string) {
     const invoices = await this.prisma.invoice.findMany({
       where: { patientId },
@@ -368,7 +514,11 @@ export class InvoiceService {
    * Both invoice and service are validated to exist.
    */
   async addItem(invoiceId: string, dto: AddInvoiceItemDto) {
-    await this.findOne(invoiceId);
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    this.assertInvoiceNotPaid(invoice.status);
 
     const service = await this.prisma.service.findUnique({
       where: { id: dto.serviceId },
@@ -390,9 +540,9 @@ export class InvoiceService {
         },
         invoice: { select: { id: true, status: true, patientId: true } },
       },
-    });
-
+    })
     if (item.isRecurringDaily) {
+      console.log("dto.recurringSegmentStartAt", dto.recurringSegmentStartAt);
       const startAt = dto.recurringSegmentStartAt
         ? new Date(dto.recurringSegmentStartAt)
         : new Date();
@@ -418,6 +568,12 @@ export class InvoiceService {
     itemId: string,
     dto: UpdateInvoiceItemDto,
   ) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    this.assertInvoiceNotPaid(invoice.status);
+
     const existing = await this.prisma.invoiceItem.findFirst({
       where: { id: itemId, invoiceId },
     });
@@ -448,6 +604,12 @@ export class InvoiceService {
    * Remove a line item from an invoice.
    */
   async removeItem(invoiceId: string, itemId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    this.assertInvoiceNotPaid(invoice.status);
+
     const existing = await this.prisma.invoiceItem.findFirst({
       where: { id: itemId, invoiceId },
     });
@@ -462,6 +624,12 @@ export class InvoiceService {
   }
 
   async pauseRecurringItem(invoiceId: string, itemId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    this.assertInvoiceNotPaid(invoice.status);
+
     const item = await this.prisma.invoiceItem.findFirst({
       where: { id: itemId, invoiceId },
     });
@@ -491,6 +659,12 @@ export class InvoiceService {
   }
 
   async resumeRecurringItem(invoiceId: string, itemId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    this.assertInvoiceNotPaid(invoice.status);
+
     const item = await this.prisma.invoiceItem.findFirst({
       where: { id: itemId, invoiceId },
     });
@@ -677,16 +851,16 @@ export class InvoiceService {
 
       let billingTransaction = dto.billingTransactionId
         ? await tx.transaction.findUnique({
-            where: { id: dto.billingTransactionId },
-          })
+          where: { id: dto.billingTransactionId },
+        })
         : await tx.transaction.findFirst({
-            where: {
-              invoiceId,
-              patientId: invoice.patientId,
-              status: { not: TransactionStatus.CANCELLED },
-            },
-            orderBy: { createdAt: 'desc' },
-          });
+          where: {
+            invoiceId,
+            patientId: invoice.patientId,
+            status: { not: TransactionStatus.CANCELLED },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
 
       if (dto.billingTransactionId && !billingTransaction) {
         throw new NotFoundException(
@@ -916,16 +1090,45 @@ export class InvoiceService {
   }
 
   /**
-   * Get existing invoice for encounter or create a new one. Used for medication orders:
-   * same encounterId → add items to existing invoice instead of creating a new one.
+   * Get an open invoice for the encounter, or the patient's single open invoice, or create.
+   * Open = PENDING or PARTIALLY_PAID. PAID encounter invoices are not reused.
    */
   async ensureInvoiceForEncounter(params: {
     encounterId: string;
     patientId: string;
     staffId: string;
   }) {
-    const existing = await this.findByEncounterId(params.encounterId);
-    if (existing) return existing;
+    const encounterInclude = {
+      patient: {
+        select: { id: true, patientId: true, firstName: true, surname: true },
+      },
+      invoiceItems: true,
+    } satisfies Prisma.InvoiceInclude;
+
+    const forEncounterOpen = await this.prisma.invoice.findFirst({
+      where: {
+        encounterId: params.encounterId,
+        status: {
+          in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      include: encounterInclude,
+    });
+    if (forEncounterOpen) return forEncounterOpen;
+
+    const patientOpen = await this.findOpenInvoiceForPatient(params.patientId);
+    if (patientOpen) {
+      return this.prisma.invoice.update({
+        where: { id: patientOpen.id },
+        data: {
+          encounterId: params.encounterId,
+          staffId: params.staffId,
+        },
+        include: encounterInclude,
+      });
+    }
+
     return this.prisma.invoice.create({
       data: {
         patientId: params.patientId,
@@ -934,17 +1137,13 @@ export class InvoiceService {
         createdById: params.staffId,
         staffId: params.staffId,
       },
-      include: {
-        patient: {
-          select: { id: true, patientId: true, firstName: true, surname: true },
-        },
-        invoiceItems: true,
-      },
+      include: encounterInclude,
     });
   }
 
   /**
-   * Create a new invoice with one service line item. Used after lab, imaging, radiology, or procedure requests.
+   * Create an invoice with one service line, or append the line to the patient's
+   * existing PENDING / PARTIALLY_PAID invoice when present.
    */
   async createWithServiceItem(params: {
     patientId: string;
@@ -960,6 +1159,38 @@ export class InvoiceService {
       throw new NotFoundException(`Service ${params.serviceId} not found`);
     }
     const quantity = params.quantity ?? 1;
+
+    const include = {
+      patient: {
+        select: { id: true, patientId: true, firstName: true, surname: true },
+      },
+      invoiceItems: {
+        include: {
+          service: { select: { id: true, name: true, cost: true } },
+        },
+      },
+    } satisfies Prisma.InvoiceInclude;
+
+    const open = await this.findOpenInvoiceForPatient(params.patientId);
+    if (open) {
+      await this.prisma.invoice.update({
+        where: { id: open.id },
+        data: {
+          encounterId: params.encounterId,
+          staffId: params.staffId,
+        },
+      });
+      await this.addItem(open.id, {
+        serviceId: params.serviceId,
+        quantity,
+        unitPrice: service.cost,
+      });
+      return this.prisma.invoice.findUniqueOrThrow({
+        where: { id: open.id },
+        include,
+      });
+    }
+
     return this.prisma.invoice.create({
       data: {
         patientId: params.patientId,
@@ -975,16 +1206,7 @@ export class InvoiceService {
           },
         },
       },
-      include: {
-        patient: {
-          select: { id: true, patientId: true, firstName: true, surname: true },
-        },
-        invoiceItems: {
-          include: {
-            service: { select: { id: true, name: true, cost: true } },
-          },
-        },
-      },
+      include,
     });
   }
 
@@ -996,7 +1218,14 @@ export class InvoiceService {
     drugId: string;
     quantity?: number;
   }) {
-    await this.findOne(params.invoiceId);
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: params.invoiceId },
+    });
+    if (!invoice) {
+      throw new NotFoundException(`Invoice ${params.invoiceId} not found`);
+    }
+    this.assertInvoiceNotPaid(invoice.status);
+
     const drug = await this.prisma.drug.findUnique({
       where: { id: params.drugId },
       include: {

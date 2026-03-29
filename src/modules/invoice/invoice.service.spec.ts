@@ -21,7 +21,7 @@ describe('InvoiceService', () => {
     jest.clearAllMocks();
   });
 
-  it('recalculates recurring totals with ceil day rule', async () => {
+  it('recurring: closed segments use ceil; open segment uses floor (no instant day on resume)', async () => {
     const prisma: any = {
       invoice: {
         findUnique: jest.fn().mockResolvedValue({
@@ -52,8 +52,43 @@ describe('InvoiceService', () => {
     const service = new InvoiceService(prisma);
     const updated = await service.recalculateInvoiceTotals('inv-1');
 
-    expect(updated.totalAmount.toString()).toBe('200');
+    // Closed 12h → ceil 1; open 12h → floor 0 until a full 24h elapses
+    expect(updated.totalAmount.toString()).toBe('100');
     expect(updated.status).toBe(InvoiceStatus.PENDING);
+  });
+
+  it('recurring open segment counts a day after 24h elapsed', async () => {
+    const prisma: any = {
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          amountPaid: new Prisma.Decimal(0),
+          invoiceItems: [
+            {
+              unitPrice: new Prisma.Decimal(100),
+              quantity: 1,
+              isRecurringDaily: true,
+              usageSegments: [
+                {
+                  startAt: new Date('2026-03-26T12:00:00.000Z'),
+                  endAt: null,
+                },
+              ],
+            },
+          ],
+        }),
+        update: jest.fn().mockImplementation(({ data }) => ({ ...data })),
+      },
+    };
+
+    const service = new InvoiceService(prisma);
+    const updated = await service.recalculateInvoiceTotals(
+      'inv-1',
+      prisma,
+      new Date('2026-03-27T13:00:00.000Z'),
+    );
+
+    expect(updated.totalAmount.toString()).toBe('100');
   });
 
   it('records wallet payment atomically', async () => {
@@ -295,5 +330,45 @@ describe('InvoiceService', () => {
       }),
     ).rejects.toThrow(BadRequestException);
     expect(tx.transactionPayment.create).not.toHaveBeenCalled();
+  });
+
+  it('create reuses an open invoice instead of inserting a second one', async () => {
+    const prisma: any = {
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'inv-open',
+          patientId: 'pat-1',
+          status: InvoiceStatus.PENDING,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-open',
+          amountPaid: new Prisma.Decimal(0),
+          invoiceItems: [],
+        }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'inv-open',
+          patient: {},
+          createdBy: {},
+          invoiceItems: [],
+        }),
+        create: jest.fn(),
+      },
+    };
+    const service = new InvoiceService(prisma);
+    await service.create(
+      { patientId: 'pat-1', staffId: 'st-1' },
+      { user: { sub: 'staff-actor' } },
+    );
+    expect(prisma.invoice.create).not.toHaveBeenCalled();
+    expect(prisma.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'inv-open' },
+        data: expect.objectContaining({
+          staffId: 'st-1',
+          updatedById: 'staff-actor',
+        }),
+      }),
+    );
   });
 });

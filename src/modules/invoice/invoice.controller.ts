@@ -37,7 +37,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 @ApiTags('Invoices')
 @Controller('invoices')
 export class InvoiceController {
-  constructor(private readonly invoiceService: InvoiceService) {}
+  constructor(private readonly invoiceService: InvoiceService) { }
 
   // ─── Invoice Endpoints ────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'Create a new invoice for a patient',
     description:
-      'Creates an invoice for a patient. Add services as line items separately via `POST /invoices/:id/items`. The authenticated staff member is recorded as `createdBy`.',
+      'Creates an invoice for a patient, unless they already have a PENDING or PARTIALLY_PAID invoice — in that case that invoice is updated (staff/encounter) and returned. After a bill is PAID, the next call creates a new invoice. Add services as line items via `POST /invoices/:id/items`. The authenticated staff member is recorded as `createdBy` on new invoices, or `updatedBy` when reusing an open invoice.',
   })
   @ApiCreatedResponse({ description: 'Invoice created successfully' })
   @ApiBadRequestResponse({ description: 'Validation error in request body' })
@@ -75,8 +75,8 @@ export class InvoiceController {
     example: 20,
   })
   @ApiOkResponse({ description: 'Paginated list of invoices' })
-  findAll(@Query() query: DateRangeSkipTakeDto) {
-    return this.invoiceService.findAll(query);
+  findAll(@Query() params: DateRangeSkipTakeDto & { search?: string, category?: string, query?: string, allowIP: boolean }) {
+    return this.invoiceService.findAll(params);
   }
 
   @Get('patient/:patientId')

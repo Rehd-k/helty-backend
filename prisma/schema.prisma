@@ -743,7 +743,6 @@ model Service {
 
   invoiceItems InvoiceItem[]
 
-  noIdPatientId   String?
   waitingPatients WaitingPatient[]
 }
 
@@ -800,13 +799,13 @@ model InvoiceItem {
 }
 
 model InvoiceItemPayment {
-  id            String   @id @default(uuid())
+  id            String      @id @default(uuid())
   invoiceItem   InvoiceItem @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
   invoiceItemId String
   transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   transactionId String
-  amount        Decimal  @db.Decimal(12, 2)
-  createdAt     DateTime @default(now())
+  amount        Decimal     @db.Decimal(12, 2)
+  createdAt     DateTime    @default(now())
 
   @@index([invoiceItemId])
   @@index([transactionId])
@@ -1487,9 +1486,8 @@ model Transaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  noIdPatientid String?
-  invoice       Invoice? @relation(fields: [invoiceId], references: [id])
-  invoiceId     String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  invoiceId String?
 }
 
 // TransactionItem: a single charge line on a transaction
@@ -1541,6 +1539,8 @@ model TransactionPayment {
   createdById String?
   updatedBy   Staff?  @relation("TransactionPaymentUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+
+  @@index([paidAt])
 }
 
 // TransactionDiscount: a discount or waiver applied to a transaction
