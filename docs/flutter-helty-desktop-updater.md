@@ -56,6 +56,33 @@ Use `downloadUrl` as the binary URL for updaters. It always points at the **late
 
 Returns an array of `{ id, version, fileName, createdAt }`, newest first.
 
+### Extra executables (filename + description)
+Upload additional `.exe` files (helpers, dependencies, etc.) and download them by `fileName`.
+
+#### List extra executables
+`GET /helty-desktop/assets`
+
+Returns an array of `{ id, fileName, description, createdAt }`, newest first.
+
+#### Upload extra executable (password-protected)
+`POST /helty-desktop/assets/upload`
+
+`multipart/form-data` with fields:
+- `name` (string; can be `tool` or `tool.exe`)
+- `description` (string; optional)
+- `password` (string; required) or send header `x-helty-upload-password`
+- `file` (the `.exe` binary)
+
+#### Download extra executable
+`GET /helty-desktop/assets/download/{fileName}`
+
+Streams the `.exe` file.
+
+#### Delete extra executable (password-protected)
+`POST /helty-desktop/assets/{fileName}/delete`
+
+JSON body: `{ "password": "..." }` (or header `x-helty-upload-password`).
+
 ### Download installer
 
 - Latest: `GET /helty-desktop/download/latest` — streams the `.exe` (`Content-Disposition: attachment`, `Content-Type: application/octet-stream`).
@@ -73,6 +100,7 @@ Responses include headers:
 | Page | URL |
 |------|-----|
 | Upload (password, version, file, **upload progress bar**) | `GET /helty-desktop/ui/upload` |
+| Upload extra executables (name, description, password, file, **upload progress bar**) | `GET /helty-desktop/ui/assets/upload` |
 | Downloads table (list + **Download** per version) | `GET /helty-desktop/ui/downloads` |
 
 Upload: `POST /helty-desktop/upload` — `multipart/form-data` with fields `version`, `password`, and `file` (`.exe` only). Alternatively, send header `x-helty-upload-password` instead of `password`.

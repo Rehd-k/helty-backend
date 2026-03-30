@@ -2856,3 +2856,17 @@ model HeltyDesktopRelease {
 
   @@index([createdAt])
 }
+
+// Extra Windows .exe distribution files (besides the main Helty installer)
+model HeltyDesktopExternalExecutable {
+  id           String   @id @default(uuid())
+  /// Stored filename, e.g. toolname.exe
+  fileName     String   @unique
+  /// Short human description shown in the UI
+  description  String?
+  /// Path under uploads/helty-desktop/ (not the tmp folder)
+  relativePath String
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
