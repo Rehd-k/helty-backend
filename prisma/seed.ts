@@ -8,7 +8,7 @@ const prisma = new PrismaClient({
         connectionString: process.env.DATABASE_URL!,
     }),
 });
-const STAFF_ID = 'd4bd96d2-a9e0-4d65-bee3-87d4d35bed1f';
+const STAFF_ID = 'c59d31d7-b40c-425b-b1f9-c733fa0d5f02';
 
 // A quick helper function to read CSVs into JSON arrays
 function readCsvData(filePath: string) {
