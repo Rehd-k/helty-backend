@@ -1,6 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as xlsx from 'xlsx';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // 2. Initialize Prisma with the PG Adapter, matching your PrismaService
 const prisma = new PrismaClient({
@@ -17,10 +19,31 @@ function readCsvData(filePath: string) {
     return xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 }
 
+function getSeedCsvPath(fileName: string): string {
+    // Default: look next to this seed script (same `prisma/` folder).
+    // Optional override: set `SEED_DATA_DIR` to point to a different folder.
+    const configuredDir = process.env.SEED_DATA_DIR ? path.resolve(process.env.SEED_DATA_DIR) : null;
+    const candidateDirs = [
+        ...(configuredDir ? [configuredDir] : [__dirname]),
+        // Fallback when the seed is executed from a different working directory.
+        path.resolve(process.cwd(), 'prisma'),
+    ];
+
+    for (const dir of candidateDirs) {
+        const fullPath = path.join(dir, fileName);
+        if (fs.existsSync(fullPath)) return fullPath;
+    }
+
+    throw new Error(
+        `Seed file not found: ${fileName}. Looked in ${candidateDirs.join(' , ')}. ` +
+        `If you keep seed data elsewhere, set SEED_DATA_DIR to that folder.`,
+    );
+}
+
 async function main() {
     console.log('1. Seeding Departments...');
     // Assuming your departments CSV has a header named "Department"
-    const rawDepartments = readCsvData('C:/Users/Rhed/Documents/hospital/backend/prisma/REF_Departments.csv');
+    const rawDepartments = readCsvData(getSeedCsvPath('REF_Departments.csv'));
     const deptData = rawDepartments.map((row: any) => ({
         name: row['Department'],
         createdById: STAFF_ID,
@@ -32,7 +55,7 @@ async function main() {
 
     console.log('2. Seeding Categories...');
     // Assuming your categories CSV has a header named "Category"
-    const rawCategories = readCsvData('C:/Users/Rhed/Documents/hospital/backend/prisma/REF_Categories.csv');
+    const rawCategories = readCsvData(getSeedCsvPath('REF_Categories.csv'));
     const catData = rawCategories.map((row: any) => ({
         name: row['Category'],
         createdById: STAFF_ID,
@@ -53,7 +76,7 @@ async function main() {
 
     console.log('4. Seeding Services...');
     // Read your newly combined single CSV file
-    const rawServices = readCsvData('C:/Users/Rhed/Documents/hospital/backend/prisma/mian.csv');
+    const rawServices = readCsvData(getSeedCsvPath('mian.csv'));
 
     const servicesToInsert = rawServices.map((row: any) => {
         // Clean the Naira sign and commas just like before
@@ -77,7 +100,7 @@ async function main() {
 
 
     console.log('5. Seeding Drugs from PHAR.csv...');
-    const rawDrugs = readCsvData('C:/Users/Rhed/Documents/hospital/backend/prisma/PHAR.csv');
+    const rawDrugs = readCsvData(getSeedCsvPath('PHAR.csv'));
 
     // Drug has no unique constraint on searviceCode, so we de-duplicate manually.
     const existingDrugs = await prisma.drug.findMany({
