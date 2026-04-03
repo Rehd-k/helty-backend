@@ -81,7 +81,7 @@ export class ServiceController {
   findAll(
     @Query('skip') skip = '0',
     @Query('take') take = '10',
-    @Query('q') search: string = '',
+    @Query('search') search: string = '',
     @Query('filterCategory') filterCategory: string = '',
     @Query('departmentId') departmentId: string = '',
     @Query('categoryId') categoryId: string = '',
