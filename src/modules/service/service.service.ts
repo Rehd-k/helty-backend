@@ -18,11 +18,32 @@ export class ServiceService {
    * The authenticated staff member is recorded as `createdBy`.
    */
 
-  async create(dto: any, userId: string) {
+  async create(dto: any, req: any) {
+    const userId =
+      typeof req === 'string' ? req : req?.user?.sub || req?.user?.id || null;
+
+    if (!userId) {
+      throw new BadRequestException('Missing authenticated user id');
+    }
+
+
+
+    const serviceCode =
+      (dto as any).searviceCode || dto.serviceCode || null;
+
+    if (!serviceCode || (typeof serviceCode === 'string' && serviceCode.trim() === '')) {
+      throw new BadRequestException('Missing serviceCode/searviceCode');
+    }
+
     try {
       return await this.prisma.service.create({
         data: {
-          ...dto,
+          name: dto.name,
+          description: dto.description,
+          cost: dto.cost,
+          categoryId: dto.categoryId,
+          departmentId: dto.departmentId,
+          searviceCode: String(serviceCode).trim(),
           createdById: userId,
         },
         include: {
@@ -31,13 +52,17 @@ export class ServiceService {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
         },
       });
-    } catch (error) {
-      if (error.code === 'P2002') {
-        throw new BadRequestException(
-          'A service with this name already exists',
-        );
+    } catch (error: unknown) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException('A service with this name already exists');
       }
-      throw error;
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new BadRequestException('Unknown error while creating service');
     }
   }
 
@@ -127,14 +152,21 @@ export class ServiceService {
    */
   async update(id: string, dto: UpdateServiceDto, req: any) {
     await this.findOne(id);
+
+    const serviceCode =
+      (dto as any).searviceCode || dto.serviceCode || undefined;
+
     return this.prisma.service.update({
       where: { id },
       data: {
-        name: dto.name,
-        description: dto.description,
-        cost: dto.cost,
-        categoryId: dto.categoryId,
-        departmentId: dto.departmentId,
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.cost !== undefined && { cost: dto.cost }),
+        ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
+        ...(dto.departmentId !== undefined && { departmentId: dto.departmentId }),
+        ...(serviceCode !== undefined && {
+          searviceCode: String(serviceCode).trim(),
+        }),
         updatedById: req.user.sub,
       },
       include: {

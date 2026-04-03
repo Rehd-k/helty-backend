@@ -17,12 +17,12 @@ export class CreateServiceDto {
   })
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name: string | undefined;
 
   @ApiProperty({ description: 'The Service Code', example: 'CE90XXXXXXX' })
   @IsString()
   @IsNotEmpty()
-  searviceCode: string;
+  serviceCode: string | undefined;
 
   @ApiPropertyOptional({
     description: 'Brief description of the service',
@@ -35,7 +35,7 @@ export class CreateServiceDto {
   @ApiProperty({ description: 'Cost of the service in naira', example: 3500 })
   @IsNumber()
   @Min(0)
-  cost: number;
+  cost: number | undefined;
 
   @ApiPropertyOptional({ description: 'UUID of the service category' })
   @IsUUID()
