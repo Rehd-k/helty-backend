@@ -226,18 +226,7 @@ export class PatientService {
               lastName: true,
             },
           },
-          appointments: {
-            take: 5,
-            orderBy: { createdAt: 'desc' },
-          },
-          admissions: {
-            take: 3,
-            orderBy: { createdAt: 'desc' },
-          },
-          transactions: {
-            take: 3,
-            orderBy: { createdAt: 'desc' },
-          },
+          ward: true,
         },
       }),
 

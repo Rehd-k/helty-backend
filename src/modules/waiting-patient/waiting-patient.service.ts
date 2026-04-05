@@ -15,7 +15,7 @@ import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class WaitingPatientService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   /** Ensures the patient has at least one vitals record before allowing room assignment. */
   private async assertPatientHasVitals(patientId: string): Promise<void> {
@@ -90,8 +90,7 @@ export class WaitingPatientService {
 
     if (unassignedOnly) {
       where.consultingRoomId = null;
-    }
-    else if (seen) {
+    } else if (seen) {
       where.seen = true;
     } else if (consultingRoomId) {
       where.consultingRoomId = consultingRoomId;
@@ -118,7 +117,7 @@ export class WaitingPatientService {
               name: true,
             },
           },
-          
+
           service: {
             select: {
               id: true,
@@ -134,7 +133,7 @@ export class WaitingPatientService {
           },
         },
       }),
-      this.prisma.waitingPatient.count({  }),
+      this.prisma.waitingPatient.count({}),
     ]);
 
     return { data, total, skip, take };

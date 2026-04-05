@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { PharmacyDrugController } from './pharmacy.drug.controller';
 import { PharmacyDrugService } from './pharmacy.drug.service';
+import { PharmacyDrugPriceController } from './pharmacy.drug-price.controller';
+import { PharmacyDrugPriceService } from './pharmacy.drug-price.service';
 import { PharmacyBatchController } from './pharmacy.batch.controller';
 import { PharmacyBatchService } from './pharmacy.batch.service';
 import { PharmacyManufacturerController } from './pharmacy.manufacturer.controller';
@@ -25,6 +27,7 @@ import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service'
   imports: [PrismaModule],
   controllers: [
     PharmacyDrugController,
+    PharmacyDrugPriceController,
     PharmacyBatchController,
     PharmacyManufacturerController,
     PharmacySupplierController,
@@ -37,6 +40,7 @@ import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service'
   ],
   providers: [
     PharmacyDrugService,
+    PharmacyDrugPriceService,
     PharmacyBatchService,
     PharmacyManufacturerService,
     PharmacySupplierService,
@@ -49,6 +53,7 @@ import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service'
   ],
   exports: [
     PharmacyDrugService,
+    PharmacyDrugPriceService,
     PharmacyBatchService,
     PharmacyManufacturerService,
     PharmacySupplierService,

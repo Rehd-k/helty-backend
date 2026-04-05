@@ -37,7 +37,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 @ApiTags('Invoices')
 @Controller('invoices')
 export class InvoiceController {
-  constructor(private readonly invoiceService: InvoiceService) { }
+  constructor(private readonly invoiceService: InvoiceService) {}
 
   // ─── Invoice Endpoints ────────────────────────────────────────────────────────
 
@@ -75,7 +75,15 @@ export class InvoiceController {
     example: 20,
   })
   @ApiOkResponse({ description: 'Paginated list of invoices' })
-  findAll(@Query() params: DateRangeSkipTakeDto & { search?: string, category?: string, query?: string, allowIP: boolean }) {
+  findAll(
+    @Query()
+    params: DateRangeSkipTakeDto & {
+      search?: string;
+      category?: string;
+      query?: string;
+      allowIP: boolean;
+    },
+  ) {
     return this.invoiceService.findAll(params);
   }
 
@@ -144,12 +152,12 @@ export class InvoiceController {
     summary: 'Add a service to an invoice as a line item',
     description:
       'Adds a service to the invoice. `unitPrice` captures the cost snapshot at the moment of invoicing, so future service price changes do not affect existing invoices.',
-  })
+  }) 
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiCreatedResponse({ description: 'Line item added' })
   @ApiNotFoundResponse({ description: 'Invoice or Service not found' })
   addItem(@Param('id') id: string, @Body() dto: AddInvoiceItemDto) {
-    return this.invoiceService.addItem(id, dto);
+    return this.invoiceService.addItem(id, dto); 
   }
 
   @Patch(':id/items/:itemId')
@@ -190,9 +198,12 @@ export class InvoiceController {
     description:
       'Creates an InvoicePayment and InvoiceItemPayment rows (canonical cash-in). Supports partial or full payment per line and one payment split across multiple lines. Uses or creates a billing Transaction linked to this invoice for workflow/audit; does not create TransactionPayment.',
   })
-  @ApiCreatedResponse({ description: 'Payment recorded and allocations created' })
+  @ApiCreatedResponse({
+    description: 'Payment recorded and allocations created',
+  })
   @ApiBadRequestResponse({
-    description: 'Validation error, overpayment, or sum of allocations ≠ amount',
+    description:
+      'Validation error, overpayment, or sum of allocations ≠ amount',
   })
   allocateItemPayments(
     @Param('id') id: string,
@@ -226,10 +237,7 @@ export class InvoiceController {
     summary: 'Pause recurring invoice item',
     description: 'Closes the current open usage segment for a recurring item.',
   })
-  pauseRecurringItem(
-    @Param('id') id: string,
-    @Param('itemId') itemId: string,
-  ) {
+  pauseRecurringItem(@Param('id') id: string, @Param('itemId') itemId: string) {
     return this.invoiceService.pauseRecurringItem(id, itemId);
   }
 

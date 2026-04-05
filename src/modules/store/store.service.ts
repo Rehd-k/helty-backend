@@ -20,11 +20,15 @@ import {
   ListStoreStockQueryDto,
 } from './dto/list-store-query.dto';
 import { UpdateStoreLocationDto } from './dto/update-store-location.dto';
-import { startOfDay, endOfDay, parseDateRange } from '../../common/utils/date-range';
+import {
+  startOfDay,
+  endOfDay,
+  parseDateRange,
+} from '../../common/utils/date-range';
 
 @Injectable()
 export class StoreService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   // ─── Categories ─────────────────────────────────────────────────────────
   async createCategory(dto: CreateStoreItemCategoryDto) {
@@ -57,7 +61,7 @@ export class StoreService {
     const categories = await this.prisma.storeItemCategory.findMany({
       where,
       orderBy: { name: 'asc' },
-    })
+    });
     return categories;
   }
 
@@ -171,7 +175,6 @@ export class StoreService {
       orderBy: { name: 'asc' },
     });
     return locations;
-
   }
 
   async findOneLocation(id: string) {
@@ -209,7 +212,11 @@ export class StoreService {
   private async getOrCreateStock(
     itemId: string,
     locationId: string,
-  ): Promise<{ id: string; quantity: Prisma.Decimal; unitCost: Prisma.Decimal }> {
+  ): Promise<{
+    id: string;
+    quantity: Prisma.Decimal;
+    unitCost: Prisma.Decimal;
+  }> {
     let stock = await this.prisma.storeStock.findUnique({
       where: { itemId_locationId: { itemId, locationId } },
     });
@@ -247,10 +254,16 @@ export class StoreService {
       where: { id: dto.departmentId },
     });
     if (!dept)
-      throw new NotFoundException(`Department "${dto.departmentId}" not found.`);
+      throw new NotFoundException(
+        `Department "${dto.departmentId}" not found.`,
+      );
     await this.findOneLocation(dto.fromLocationId);
 
-    const results: Array<{ itemId: string; quantity: number; movementId: string }> = [];
+    const results: Array<{
+      itemId: string;
+      quantity: number;
+      movementId: string;
+    }> = [];
     for (const line of dto.items) {
       await this.findOneItem(line.itemId);
       const stock = await this.ensureSufficientStock(
@@ -262,7 +275,7 @@ export class StoreService {
       const unitCost =
         line.unitCost != null
           ? new Prisma.Decimal(line.unitCost)
-          : (stock.unitCost as Prisma.Decimal);
+          : stock.unitCost;
       const totalCost = unitCost.mul(qtyDec);
 
       const movement = await this.prisma.storeStockMovement.create({
@@ -285,7 +298,7 @@ export class StoreService {
         movementId: movement.id,
       });
 
-      const newQty = (stock.quantity as Prisma.Decimal).sub(qtyDec);
+      const newQty = stock.quantity.sub(qtyDec);
       const newQtyNum = Number(newQty);
       await this.prisma.storeStock.update({
         where: { id: stock.id },
@@ -303,7 +316,11 @@ export class StoreService {
   async receiveItems(dto: ReceiveItemsDto, createdById: string) {
     await this.findOneLocation(dto.toLocationId);
 
-    const results: Array<{ itemId: string; quantity: number; movementId: string }> = [];
+    const results: Array<{
+      itemId: string;
+      quantity: number;
+      movementId: string;
+    }> = [];
     for (const line of dto.items) {
       await this.findOneItem(line.itemId);
       const unitCost = new Prisma.Decimal(line.unitCost);
@@ -316,7 +333,9 @@ export class StoreService {
           fromLocationId: null,
           toLocationId: dto.toLocationId,
           departmentId: dto.departmentId ?? null,
-          type: dto.departmentId ? StoreStockMovementType.RETURN : StoreStockMovementType.RECEIPT,
+          type: dto.departmentId
+            ? StoreStockMovementType.RETURN
+            : StoreStockMovementType.RECEIPT,
           quantity: qtyDec,
           unitCost,
           totalCost,
@@ -333,8 +352,8 @@ export class StoreService {
       });
 
       const stock = await this.getOrCreateStock(line.itemId, dto.toLocationId);
-      const prevQty = stock.quantity as Prisma.Decimal;
-      const prevCost = stock.unitCost as Prisma.Decimal;
+      const prevQty = stock.quantity;
+      const prevCost = stock.unitCost;
       const newQty = prevQty.add(qtyDec);
       const newCost =
         Number(newQty) === 0
@@ -361,7 +380,11 @@ export class StoreService {
     await this.findOneLocation(dto.fromLocationId);
     await this.findOneLocation(dto.toLocationId);
 
-    const results: Array<{ itemId: string; quantity: number; movementId: string }> = [];
+    const results: Array<{
+      itemId: string;
+      quantity: number;
+      movementId: string;
+    }> = [];
     for (const line of dto.items) {
       await this.findOneItem(line.itemId);
       const stock = await this.ensureSufficientStock(
@@ -370,7 +393,7 @@ export class StoreService {
         line.quantity,
       );
       const qtyDec = new Prisma.Decimal(line.quantity);
-      const unitCost = stock.unitCost as Prisma.Decimal;
+      const unitCost = stock.unitCost;
       const totalCost = unitCost.mul(qtyDec);
 
       const movement = await this.prisma.storeStockMovement.create({
@@ -393,7 +416,7 @@ export class StoreService {
         movementId: movement.id,
       });
 
-      const newFromQty = (stock.quantity as Prisma.Decimal).sub(qtyDec);
+      const newFromQty = stock.quantity.sub(qtyDec);
       await this.prisma.storeStock.update({
         where: { id: stock.id },
         data: {
@@ -402,9 +425,12 @@ export class StoreService {
         },
       });
 
-      const toStock = await this.getOrCreateStock(line.itemId, dto.toLocationId);
-      const prevQty = toStock.quantity as Prisma.Decimal;
-      const prevCost = toStock.unitCost as Prisma.Decimal;
+      const toStock = await this.getOrCreateStock(
+        line.itemId,
+        dto.toLocationId,
+      );
+      const prevQty = toStock.quantity;
+      const prevCost = toStock.unitCost;
       const newToQty = prevQty.add(qtyDec);
       const newToCost =
         Number(newToQty) === 0
@@ -448,13 +474,17 @@ export class StoreService {
     const categoryWhere: Prisma.StoreItemCategoryWhereInput = {};
     if (query.categoryId) categoryWhere.id = query.categoryId;
 
-    const [lowStockItems, stockValueByCategory, movementsByDepartment, topMovingItems] =
-      await Promise.all([
-        this.getLowStockItems(limit, query.categoryId),
-        this.getStockValueByCategory(query.categoryId),
-        this.getMovementsByDepartment(from, to, query.departmentId),
-        this.getTopMovingItems(movementWhere, limit),
-      ]);
+    const [
+      lowStockItems,
+      stockValueByCategory,
+      movementsByDepartment,
+      topMovingItems,
+    ] = await Promise.all([
+      this.getLowStockItems(limit, query.categoryId),
+      this.getStockValueByCategory(query.categoryId),
+      this.getMovementsByDepartment(from, to, query.departmentId),
+      this.getTopMovingItems(movementWhere, limit),
+    ]);
 
     return {
       from,
@@ -507,7 +537,12 @@ export class StoreService {
     });
     const byCategory = new Map<
       string,
-      { categoryId: string; categoryName: string; value: number; quantity: number }
+      {
+        categoryId: string;
+        categoryName: string;
+        value: number;
+        quantity: number;
+      }
     >();
     for (const s of stocks) {
       const qty = Number(s.quantity);
@@ -552,7 +587,13 @@ export class StoreService {
 
     const byDept = new Map<
       string,
-      { departmentId: string; departmentName: string; count: number; totalQuantity: number; totalCost: number }
+      {
+        departmentId: string;
+        departmentName: string;
+        count: number;
+        totalQuantity: number;
+        totalCost: number;
+      }
     >();
     for (const m of movements) {
       if (!m.departmentId || !m.department) continue;
@@ -587,7 +628,13 @@ export class StoreService {
     });
     const byItem = new Map<
       string,
-      { itemId: string; itemName: string; categoryName: string; totalQuantity: number; movementCount: number }
+      {
+        itemId: string;
+        itemName: string;
+        categoryName: string;
+        totalQuantity: number;
+        movementCount: number;
+      }
     >();
     for (const m of movements) {
       const key = m.itemId;
@@ -619,10 +666,17 @@ export class StoreService {
   ) {
     const note = await this.prisma.purchaseNote.findUnique({
       where: { id: purchaseNoteId },
-      include: { items: { where: { storeItemId: { not: null } }, include: { storeItem: true } } },
+      include: {
+        items: {
+          where: { storeItemId: { not: null } },
+          include: { storeItem: true },
+        },
+      },
     });
     if (!note)
-      throw new NotFoundException(`Purchase note "${purchaseNoteId}" not found.`);
+      throw new NotFoundException(
+        `Purchase note "${purchaseNoteId}" not found.`,
+      );
     if (note.status !== 'COMPLETED') {
       throw new BadRequestException(
         'Can only record receipt for a completed purchase note.',

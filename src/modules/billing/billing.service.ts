@@ -52,7 +52,7 @@ export class TransactionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) { }
+  ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -89,7 +89,7 @@ export class TransactionService {
     if (!transaction) {
       throw new NotFoundException(
         `Transaction "${idOrTransactionID}" was not found. ` +
-        `Check that the ID or Transaction Number is correct.`,
+          `Check that the ID or Transaction Number is correct.`,
       );
     }
     return transaction;
@@ -103,7 +103,7 @@ export class TransactionService {
     if (t.status === TransactionStatus.CANCELLED) {
       throw new BadRequestException(
         `Transaction ${t.transactionID} is cancelled and cannot be modified. ` +
-        `Reopen the transaction first if you need to make changes.`,
+          `Reopen the transaction first if you need to make changes.`,
       );
     }
   }
@@ -346,11 +346,21 @@ export class TransactionService {
         },
         include: {
           patient: {
-            select: { id: true, patientId: true, firstName: true, surname: true },
+            select: {
+              id: true,
+              patientId: true,
+              firstName: true,
+              surname: true,
+            },
           },
           createdBy: {
-            select: { id: true, firstName: true, lastName: true, staffRole: true,
-            accountType: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffRole: true,
+              accountType: true,
+            },
           },
         },
       });
@@ -361,7 +371,11 @@ export class TransactionService {
       TransactionAuditAction.BILL_CREATED,
       `Transaction ${transactionID} created for patient ${patient.patientId} (${patient.firstName} ${patient.surname}) by ${staff.firstName} ${staff.lastName}`,
       dto.staffId,
-      { transactionID, patientId: dto.patientId, invoiceId: transaction.invoiceId },
+      {
+        transactionID,
+        patientId: dto.patientId,
+        invoiceId: transaction.invoiceId,
+      },
     );
 
     this.logger.log(
@@ -519,7 +533,7 @@ export class TransactionService {
               firstName: true,
               lastName: true,
               staffRole: true,
-            accountType: true,
+              accountType: true,
             },
           },
           updatedBy: {
@@ -693,7 +707,7 @@ export class TransactionService {
               firstName: true,
               lastName: true,
               staffRole: true,
-            accountType: true,
+              accountType: true,
             },
           },
           updatedBy: {
@@ -783,8 +797,13 @@ export class TransactionService {
         items: {
           include: {
             addedBy: {
-              select: { id: true, firstName: true, lastName: true, staffRole: true,
-            accountType: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                staffRole: true,
+                accountType: true,
+              },
             },
             priceEditedBy: {
               select: { id: true, firstName: true, lastName: true },
@@ -845,7 +864,7 @@ export class TransactionService {
     if (!transaction) {
       throw new NotFoundException(
         `Transaction "${idOrTransactionID}" was not found. ` +
-        `Provide either the internal UUID or the Transaction ID (e.g. BILL-2025-00001).`,
+          `Provide either the internal UUID or the Transaction ID (e.g. BILL-2025-00001).`,
       );
     }
 
@@ -877,8 +896,9 @@ export class TransactionService {
       if (!allowed.includes(dto.status)) {
         throw new UnprocessableEntityException(
           `Cannot transition transaction from "${transaction.status}" to "${dto.status}". ` +
-          `Allowed transitions from ${transaction.status}: ${allowed.length ? allowed.join(', ') : 'none'
-          }.`,
+            `Allowed transitions from ${transaction.status}: ${
+              allowed.length ? allowed.join(', ') : 'none'
+            }.`,
         );
       }
     }
@@ -902,8 +922,13 @@ export class TransactionService {
           select: { id: true, patientId: true, firstName: true, surname: true },
         },
         updatedBy: {
-          select: { id: true, firstName: true, lastName: true, staffRole: true,
-            accountType: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffRole: true,
+            accountType: true,
+          },
         },
       },
     });
@@ -915,7 +940,7 @@ export class TransactionService {
 
     const auditAction =
       dto.status === TransactionStatus.DRAFT ||
-        dto.status === TransactionStatus.ACTIVE
+      dto.status === TransactionStatus.ACTIVE
         ? TransactionAuditAction.BILL_REOPENED
         : TransactionAuditAction.BILL_CREATED;
 
@@ -947,8 +972,13 @@ export class TransactionService {
         orderBy: { createdAt: 'desc' },
         include: {
           createdBy: {
-            select: { id: true, firstName: true, lastName: true, staffRole: true,
-            accountType: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffRole: true,
+              accountType: true,
+            },
           },
           _count: { select: { items: true, payments: true } },
         },
@@ -1001,7 +1031,10 @@ export class TransactionService {
 
     await this.recalculateTotals(transaction.id);
 
-    const invoiceId = await this.ensureLinkedInvoice(transaction.id, dto.staffId);
+    const invoiceId = await this.ensureLinkedInvoice(
+      transaction.id,
+      dto.staffId,
+    );
     const existingLine = await this.prisma.invoiceItem.findFirst({
       where: { transactionItemId: item.id },
     });
@@ -1052,7 +1085,7 @@ export class TransactionService {
     if (!existing) {
       throw new NotFoundException(
         `Item "${itemId}" was not found on transaction "${transactionId}". ` +
-        `Verify that the item belongs to this transaction.`,
+          `Verify that the item belongs to this transaction.`,
       );
     }
 
@@ -1100,15 +1133,17 @@ export class TransactionService {
         },
       });
       if (transaction.invoiceId) {
-        await this.invoiceService.recalculateInvoiceTotals(transaction.invoiceId);
+        await this.invoiceService.recalculateInvoiceTotals(
+          transaction.invoiceId,
+        );
       }
     }
     await this.log(
       transaction.id,
       TransactionAuditAction.ITEM_EDITED,
       `Item "${existing.description}" updated — ` +
-      `price: ₦${existing.unitPrice} → ₦${dto.unitPrice}, ` +
-      `qty: ${existing.quantity} → ${newQuantity}`,
+        `price: ₦${existing.unitPrice} → ₦${dto.unitPrice}, ` +
+        `qty: ${existing.quantity} → ${newQuantity}`,
       dto.staffId,
       {
         itemId,
@@ -1140,7 +1175,7 @@ export class TransactionService {
     if (transaction.totalAmount.lte(0)) {
       throw new BadRequestException(
         `Transaction ${transaction.transactionID} has no items. ` +
-        `Add items before recording a payment.`,
+          `Add items before recording a payment.`,
       );
     }
 
@@ -1158,11 +1193,14 @@ export class TransactionService {
     if (paymentAmount.gt(outstanding)) {
       throw new BadRequestException(
         `Payment amount ₦${dto.amount} exceeds outstanding balance ₦${outstanding.toFixed(2)}. ` +
-        `Reduce the payment amount or issue a refund for previous overpayments.`,
+          `Reduce the payment amount or issue a refund for previous overpayments.`,
       );
     }
 
-    const invoiceId = await this.ensureLinkedInvoice(transaction.id, dto.staffId);
+    const invoiceId = await this.ensureLinkedInvoice(
+      transaction.id,
+      dto.staffId,
+    );
     const source = this.invoiceService.paymentMethodToInvoiceSource(dto.method);
 
     const { payment, invoice: updatedInvoice } =
@@ -1193,8 +1231,8 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.PAYMENT_RECEIVED,
       `Payment of ₦${dto.amount} recorded on invoice ${invoiceId} via ${dto.method}` +
-      (dto.reference ? ` (ref: ${dto.reference})` : '') +
-      `. Outstanding balance: ₦${newOutstanding.toFixed(2)}`,
+        (dto.reference ? ` (ref: ${dto.reference})` : '') +
+        `. Outstanding balance: ₦${newOutstanding.toFixed(2)}`,
       dto.staffId,
       {
         invoicePaymentId: payment.id,
@@ -1274,7 +1312,8 @@ export class TransactionService {
     await this.log(
       transaction.id,
       TransactionAuditAction.DISCOUNT_APPLIED,
-      `Discount applied by ${staff.firstName} ${staff.lastName}: ${dto.type === 'PERCENTAGE' ? `${dto.value}%` : `₦${dto.value} fixed`
+      `Discount applied by ${staff.firstName} ${staff.lastName}: ${
+        dto.type === 'PERCENTAGE' ? `${dto.value}%` : `₦${dto.value} fixed`
       } — computed ₦${computedAmount.toFixed(2)}. Reason: ${dto.reason}`,
       dto.staffId,
       {
@@ -1311,11 +1350,11 @@ export class TransactionService {
     if (outstandingAfter.lt(0)) {
       throw new BadRequestException(
         `Insurance coverage of ₦${dto.coveredAmount} would exceed the remaining balance. ` +
-        `Maximum allowed coverage for this transaction is ₦${transaction.totalAmount
-          .sub(transaction.discountAmount)
-          .sub(transaction.insuranceCovered)
-          .sub(transaction.amountPaid)
-          .toFixed(2)}.`,
+          `Maximum allowed coverage for this transaction is ₦${transaction.totalAmount
+            .sub(transaction.discountAmount)
+            .sub(transaction.insuranceCovered)
+            .sub(transaction.amountPaid)
+            .toFixed(2)}.`,
       );
     }
 
@@ -1339,8 +1378,8 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.INSURANCE_APPLIED,
       `Insurance claim applied by ${staff.firstName} ${staff.lastName}: ${dto.provider}` +
-      (dto.policyNumber ? ` (policy: ${dto.policyNumber})` : '') +
-      ` — covered ₦${dto.coveredAmount}`,
+        (dto.policyNumber ? ` (policy: ${dto.policyNumber})` : '') +
+        ` — covered ₦${dto.coveredAmount}`,
       dto.staffId,
       {
         claimId: claim.id,
@@ -1438,7 +1477,10 @@ export class TransactionService {
       throw new BadRequestException('Refund amount must be greater than zero.');
     }
 
-    const invoiceId = await this.ensureLinkedInvoice(transaction.id, dto.staffId);
+    const invoiceId = await this.ensureLinkedInvoice(
+      transaction.id,
+      dto.staffId,
+    );
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
     });
@@ -1448,7 +1490,7 @@ export class TransactionService {
     if (refundAmount.gt(invoice.amountPaid)) {
       throw new BadRequestException(
         `Refund amount ₦${dto.amount} exceeds the amount paid on the invoice ₦${invoice.amountPaid.toFixed(2)} ` +
-        `(transaction ${transaction.transactionID}).`,
+          `(transaction ${transaction.transactionID}).`,
       );
     }
 
@@ -1462,7 +1504,9 @@ export class TransactionService {
           createdById: dto.staffId,
         },
         include: {
-          processedBy: { select: { id: true, firstName: true, lastName: true } },
+          processedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
         },
       });
       await tx.invoice.update({
@@ -1497,7 +1541,7 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.REFUND_ISSUED,
       `Refund of ₦${dto.amount} recorded on invoice ${invoiceId} by ${staff.firstName} ${staff.lastName}. ` +
-      `Reason: ${dto.reason}. New status: ${newStatus}`,
+        `Reason: ${dto.reason}. New status: ${newStatus}`,
       dto.staffId,
       {
         invoiceRefundId: refund.id,
@@ -1526,8 +1570,8 @@ export class TransactionService {
     if (transaction.amountPaid.gt(0)) {
       throw new BadRequestException(
         `Cannot cancel transaction ${transaction.transactionID} — ` +
-        `₦${transaction.amountPaid.toFixed(2)} has already been paid. ` +
-        `Issue a full refund first, then cancel.`,
+          `₦${transaction.amountPaid.toFixed(2)} has already been paid. ` +
+          `Issue a full refund first, then cancel.`,
       );
     }
 
@@ -1549,7 +1593,7 @@ export class TransactionService {
       transaction.id,
       TransactionAuditAction.BILL_CANCELLED,
       `Transaction ${transaction.transactionID} cancelled by ${staff.firstName} ${staff.lastName}. ` +
-      `Reason: ${dto.reason}`,
+        `Reason: ${dto.reason}`,
       dto.staffId,
       { reason: dto.reason },
     );
@@ -1576,7 +1620,7 @@ export class TransactionService {
               firstName: true,
               lastName: true,
               staffRole: true,
-            accountType: true,
+              accountType: true,
             },
           },
         },
@@ -1804,15 +1848,16 @@ export class TransactionService {
           const methodEnum =
             rawMethod in TransactionPaymentMethod
               ? TransactionPaymentMethod[
-              rawMethod as keyof typeof TransactionPaymentMethod
-              ]
+                  rawMethod as keyof typeof TransactionPaymentMethod
+                ]
               : TransactionPaymentMethod.CASH;
 
           await tx.invoicePayment.create({
             data: {
               invoiceId: invoice.id,
               amount: amountPaid,
-              source: this.invoiceService.paymentMethodToInvoiceSource(methodEnum),
+              source:
+                this.invoiceService.paymentMethodToInvoiceSource(methodEnum),
               method: methodEnum,
               receivedById: dto.staffId,
               createdById: dto.staffId,
@@ -1847,22 +1892,22 @@ export class TransactionService {
         // 3h. Single consolidated audit log
         const payLine = amountPaid.gt(0)
           ? `Payment of ₦${amountPaid.toFixed(
-            2,
-          )} via ${String(dto.paymentMethod).toUpperCase()} received. ` +
-          `Balance remaining: ₦${remainingBalance.toFixed(2)}.`
+              2,
+            )} via ${String(dto.paymentMethod).toUpperCase()} received. ` +
+            `Balance remaining: ₦${remainingBalance.toFixed(2)}.`
           : 'No payment — bill is ACTIVE and awaiting cashier.';
 
         await this.log(
           transaction.id,
           TransactionAuditAction.PAYMENT_RECEIVED,
           `Quick transaction ${transactionID} created for ` +
-          `${patient.firstName} ${patient.surname} (${patient.patientId}) ` +
-          `by ${staff.firstName} ${staff.lastName}. ` +
-          `${dto.items.length} item(s) — total ₦${totalAmount.toFixed(2)}` +
-          (discountAmount.gt(0)
-            ? `, discount ₦${discountAmount.toFixed(2)}`
-            : '') +
-          `. ${payLine}`,
+            `${patient.firstName} ${patient.surname} (${patient.patientId}) ` +
+            `by ${staff.firstName} ${staff.lastName}. ` +
+            `${dto.items.length} item(s) — total ₦${totalAmount.toFixed(2)}` +
+            (discountAmount.gt(0)
+              ? `, discount ₦${discountAmount.toFixed(2)}`
+              : '') +
+            `. ${payLine}`,
           dto.staffId,
           {
             transactionID,
@@ -1893,7 +1938,7 @@ export class TransactionService {
     // ── 4. Post-commit: logger and final hydrated response ─────────────────────
     this.logger.log(
       `Quick transaction ${transactionID} → status: ${finalStatus}, ` +
-      `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
+        `total: ₦${totalAmount.toFixed(2)}, paid: ₦${amountPaid.toFixed(2)}`,
     );
 
     const result = {

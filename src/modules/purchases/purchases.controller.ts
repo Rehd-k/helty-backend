@@ -43,7 +43,9 @@ export class PurchasesController {
   }
 
   @Patch('notes/:id/status')
-  @ApiOperation({ summary: 'Update purchase note status (e.g. approve, reject, complete)' })
+  @ApiOperation({
+    summary: 'Update purchase note status (e.g. approve, reject, complete)',
+  })
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdatePurchaseNoteStatusDto,

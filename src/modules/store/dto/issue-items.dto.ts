@@ -21,7 +21,10 @@ export class IssueItemLineDto {
   @Type(() => Number)
   quantity: number;
 
-  @ApiPropertyOptional({ description: 'Unit cost at time of issue; if omitted, uses current stock average' })
+  @ApiPropertyOptional({
+    description:
+      'Unit cost at time of issue; if omitted, uses current stock average',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)

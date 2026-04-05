@@ -1,9 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import {
-  ApiOkResponse,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { BillingAnalyticsService } from './billing-analytics.service';
 import {
   BillingAnalyticsQueryDto,
@@ -69,10 +65,6 @@ export class BillingAnalyticsController {
     summary: 'Recent invoices for dashboard table',
   })
   recentInvoices(@Query() q: RecentInvoicesQueryDto) {
-    return this.billingAnalytics.recentInvoices(
-      q.period,
-      q.asOf,
-      q.take ?? 20,
-    );
+    return this.billingAnalytics.recentInvoices(q.period, q.asOf, q.take ?? 20);
   }
 }

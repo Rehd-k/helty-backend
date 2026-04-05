@@ -9,11 +9,16 @@ import {
   CreateAdmissionDto,
   UpdateAdmissionDto,
 } from './dto/create-admission.dto';
-import { EncounterStatus, InvoiceStatus, PatientStatus, Prisma } from '@prisma/client';
+import {
+  EncounterStatus,
+  InvoiceStatus,
+  PatientStatus,
+  Prisma,
+} from '@prisma/client';
 
 @Injectable()
 export class AdmissionService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
@@ -176,7 +181,7 @@ export class AdmissionService {
       }),
       this.prisma.admission.count({ where }),
     ]);
-  
+
     return { admissions, total, skip, take };
   }
 
@@ -208,10 +213,9 @@ export class AdmissionService {
         attendingDoctor: true,
       },
     });
- 
+
     if (!admission) {
       throw new NotFoundException('Admission not found');
-
     }
     return admission;
   }

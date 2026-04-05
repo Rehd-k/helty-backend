@@ -35,7 +35,10 @@ export class CreatePurchaseNoteItemDto {
   @Type(() => Number)
   estimatedUnitCost?: number;
 
-  @ApiPropertyOptional({ enum: ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'], default: 'NORMAL' })
+  @ApiPropertyOptional({
+    enum: ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'],
+    default: 'NORMAL',
+  })
   @IsOptional()
   priority?: PurchaseNotePriority;
 }

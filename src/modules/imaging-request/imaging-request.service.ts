@@ -49,6 +49,16 @@ export class ImagingRequestService {
     if (dto.serviceId) {
       await this.invoiceService.createWithServiceItem({
         patientId: dto.patientId,
+        drugId: dto.drugId,
+        encounterId: dto.encounterId,
+        staffId: dto.requestedByDoctorId,
+        serviceId: dto.serviceId,
+      });
+    }
+     if (dto.drugId) {
+      await this.invoiceService.createWithServiceItem({
+        patientId: dto.patientId,
+        drugId: dto.drugId,
         encounterId: dto.encounterId,
         staffId: dto.requestedByDoctorId,
         serviceId: dto.serviceId,
@@ -77,7 +87,7 @@ export class ImagingRequestService {
     } = {};
     if (encounterId) where.encounterId = encounterId;
     if (patientId) where.patientId = patientId;
-    if (fromDate && toDate)  where.createdAt = { gte: from, lte: to };
+    if (fromDate && toDate) where.createdAt = { gte: from, lte: to };
     const [data, total] = await Promise.all([
       this.prisma.imagingRequest.findMany({
         where,

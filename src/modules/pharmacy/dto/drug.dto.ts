@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsNumber,
   IsNumberString,
   IsOptional,
   IsString,
@@ -18,8 +19,8 @@ export class DrugPriceDto {
   wardId: string;
 
   @ApiProperty({ example: '1500.00' })
-  @IsNumberString()
-  price: string;
+  @IsNumber()
+  price: number;
 }
 
 export class CreateDrugDto {
@@ -85,8 +86,8 @@ export class CreateDrugDto {
 
   @ApiPropertyOptional({ example: '4000' })
   @IsOptional()
-  @IsNumberString()
-  maxDailyDose?: string;
+  @IsNumber()
+  maxDailyDose?: number;
 
   @ApiPropertyOptional({ default: 0 })
   @IsOptional()
@@ -176,8 +177,8 @@ export class UpdateDrugDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsNumberString()
-  maxDailyDose?: string | null;
+  @IsNumber()
+  maxDailyDose?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()

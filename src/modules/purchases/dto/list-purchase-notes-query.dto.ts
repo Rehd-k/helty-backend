@@ -50,7 +50,9 @@ export class ListPurchaseNotesQueryDto {
   @Min(0)
   skip?: number = 0;
 
-  @ApiPropertyOptional({ enum: ['createdAt', 'neededByDate', 'totalEstimatedCost', 'status'] })
+  @ApiPropertyOptional({
+    enum: ['createdAt', 'neededByDate', 'totalEstimatedCost', 'status'],
+  })
   @IsOptional()
   @IsIn(['createdAt', 'neededByDate', 'totalEstimatedCost', 'status'])
   sortBy?: 'createdAt' | 'neededByDate' | 'totalEstimatedCost' | 'status';

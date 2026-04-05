@@ -7,13 +7,14 @@ import {
   Body,
   Param,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { BankService } from './bank.service';
 import { CreateBankDto, UpdateBankDto, QueryBankDto } from './dto/bank.dto';
 
 @ApiTags('Bank')
-@Controller('bank')
+@Controller('banks')
 export class BankController {
   constructor(private readonly bankService: BankService) {}
 
@@ -21,8 +22,8 @@ export class BankController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new bank account record' })
-  create(@Body() dto: CreateBankDto) {
-    return this.bankService.create(dto);
+  create(@Body() dto: CreateBankDto, @Req() req: any) {
+    return this.bankService.create(dto, req);
   }
 
   // ─── GET /bank ────────────────────────────────────────────────────────────────
@@ -49,8 +50,8 @@ export class BankController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update a bank account record' })
   @ApiParam({ name: 'id', description: 'Bank UUID' })
-  update(@Param('id') id: string, @Body() dto: UpdateBankDto) {
-    return this.bankService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateBankDto, @Req() req: any) {
+    return this.bankService.update(id, dto, req);
   }
 
   // ─── DELETE /bank/:id ─────────────────────────────────────────────────────────

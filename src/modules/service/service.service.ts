@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class ServiceService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   // ─── Service CRUD ─────────────────────────────────────────────────────────────
 
@@ -26,12 +26,12 @@ export class ServiceService {
       throw new BadRequestException('Missing authenticated user id');
     }
 
+    const serviceCode = dto.searviceCode || dto.serviceCode || null;
 
-
-    const serviceCode =
-      (dto as any).searviceCode || dto.serviceCode || null;
-
-    if (!serviceCode || (typeof serviceCode === 'string' && serviceCode.trim() === '')) {
+    if (
+      !serviceCode ||
+      (typeof serviceCode === 'string' && serviceCode.trim() === '')
+    ) {
       throw new BadRequestException('Missing serviceCode/searviceCode');
     }
 
@@ -57,7 +57,9 @@ export class ServiceService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new BadRequestException('A service with this name already exists');
+        throw new BadRequestException(
+          'A service with this name already exists',
+        );
       }
       if (error instanceof Error) {
         throw error;
@@ -163,7 +165,9 @@ export class ServiceService {
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.cost !== undefined && { cost: dto.cost }),
         ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
-        ...(dto.departmentId !== undefined && { departmentId: dto.departmentId }),
+        ...(dto.departmentId !== undefined && {
+          departmentId: dto.departmentId,
+        }),
         ...(serviceCode !== undefined && {
           searviceCode: String(serviceCode).trim(),
         }),

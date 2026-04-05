@@ -13,7 +13,7 @@ import {
 
 @Injectable()
 export class PatientVitalsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreatePatientVitalsDto) {
     const {
@@ -30,7 +30,7 @@ export class PatientVitalsService {
       spo2,
       painScore,
       notes,
-      bloodGlucose
+      bloodGlucose,
     } = dto;
     const hasWaiting = Boolean(waitingPatientId);
     const hasAdmission = Boolean(admissionId);
@@ -51,7 +51,7 @@ export class PatientVitalsService {
       spo2,
       painScore,
       notes,
-      bloodGlucose
+      bloodGlucose,
     };
 
     if (waitingPatientId) {

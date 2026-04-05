@@ -115,7 +115,9 @@ export class HeltyDesktopController {
       },
     },
   })
-  @ApiOperation({ summary: 'Upload an extra Windows .exe (password-protected)' })
+  @ApiOperation({
+    summary: 'Upload an extra Windows .exe (password-protected)',
+  })
   async uploadAsset(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: UploadHeltyDesktopExternalExecutableDto,

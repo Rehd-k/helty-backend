@@ -10,12 +10,16 @@ import {
 import { Type } from 'class-transformer';
 
 export class StoreAnalyticsQueryDto {
-  @ApiPropertyOptional({ description: 'Start date (ISO 8601) for movement aggregates' })
+  @ApiPropertyOptional({
+    description: 'Start date (ISO 8601) for movement aggregates',
+  })
   @IsOptional()
   @IsDateString()
   fromDate?: string;
 
-  @ApiPropertyOptional({ description: 'End date (ISO 8601) for movement aggregates' })
+  @ApiPropertyOptional({
+    description: 'End date (ISO 8601) for movement aggregates',
+  })
   @IsOptional()
   @IsDateString()
   toDate?: string;
@@ -30,7 +34,12 @@ export class StoreAnalyticsQueryDto {
   @IsUUID()
   categoryId?: string;
 
-  @ApiPropertyOptional({ default: 10, minimum: 1, maximum: 50, description: 'Limit for top N lists (e.g. low stock, top moving)' })
+  @ApiPropertyOptional({
+    default: 10,
+    minimum: 1,
+    maximum: 50,
+    description: 'Limit for top N lists (e.g. low stock, top moving)',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

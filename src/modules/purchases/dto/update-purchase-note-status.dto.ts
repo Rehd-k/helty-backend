@@ -8,7 +8,8 @@ export class UpdatePurchaseNoteStatusDto {
   status: PurchaseNoteStatus;
 
   @ApiPropertyOptional({
-    description: 'Required when status is COMPLETED: store location to receive items into',
+    description:
+      'Required when status is COMPLETED: store location to receive items into',
   })
   @IsOptional()
   @IsUUID()

@@ -18,7 +18,7 @@ export class CreateAdmissionDto {
   @IsUUID()
   @IsNotEmpty()
   wardId: string;
-  
+
   @IsUUID()
   @IsNotEmpty()
   bedId: string;

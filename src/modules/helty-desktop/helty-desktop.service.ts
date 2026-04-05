@@ -30,10 +30,7 @@ export class HeltyDesktopService {
     );
   }
 
-  assertUploadPassword(
-    bodyPassword?: string,
-    headerPassword?: string,
-  ): void {
+  assertUploadPassword(bodyPassword?: string, headerPassword?: string): void {
     const provided =
       (typeof bodyPassword === 'string' ? bodyPassword.trim() : '') ||
       (typeof headerPassword === 'string' ? headerPassword.trim() : '');
@@ -50,7 +47,9 @@ export class HeltyDesktopService {
     }
     const safe = v.replace(/[^a-zA-Z0-9._-]/g, '_');
     if (!safe.length) {
-      throw new BadRequestException('version must contain letters, digits, dots, dash, or underscore');
+      throw new BadRequestException(
+        'version must contain letters, digits, dots, dash, or underscore',
+      );
     }
     return safe;
   }
@@ -220,7 +219,10 @@ export class HeltyDesktopService {
     );
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('X-Helty-Version', release.version);
-    res.setHeader('X-Helty-Download-Url', `${baseUrl.replace(/\/$/, '')}/helty-desktop/download/latest`);
+    res.setHeader(
+      'X-Helty-Download-Url',
+      `${baseUrl.replace(/\/$/, '')}/helty-desktop/download/latest`,
+    );
     const stream = createReadStream(abs);
     stream.pipe(res);
   }
@@ -315,9 +317,11 @@ export class HeltyDesktopService {
       throw new BadRequestException('fileName is required');
     }
 
-    const release = await this.prisma.heltyDesktopExternalExecutable.findUnique({
-      where: { fileName: trimmed },
-    });
+    const release = await this.prisma.heltyDesktopExternalExecutable.findUnique(
+      {
+        where: { fileName: trimmed },
+      },
+    );
     if (!release) {
       throw new NotFoundException('File not found');
     }
@@ -334,9 +338,7 @@ export class HeltyDesktopService {
 
     for (const name of entries) {
       if (name.startsWith(prefix)) {
-        await fsp.unlink(path.join(UPLOAD_ROOT, name)).catch(
-          () => undefined,
-        );
+        await fsp.unlink(path.join(UPLOAD_ROOT, name)).catch(() => undefined);
       }
     }
 

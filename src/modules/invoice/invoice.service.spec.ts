@@ -306,7 +306,10 @@ describe('InvoiceService', () => {
   });
 
   it('rejects allocation when sum of lines does not equal payment amount', async () => {
-    const { tx, prisma } = makeAllocateTxMocks([baseItem(), baseItem({ id: 'line-2' })]);
+    const { tx, prisma } = makeAllocateTxMocks([
+      baseItem(),
+      baseItem({ id: 'line-2' }),
+    ]);
     const service = new InvoiceService(prisma);
     await expect(
       service.allocatePaymentToInvoiceItems('inv-1', {

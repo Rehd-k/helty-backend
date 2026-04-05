@@ -17,4 +17,3 @@ export class UploadHeltyDesktopExternalExecutableDto {
   @MaxLength(256)
   password!: string;
 }
-

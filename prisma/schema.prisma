@@ -71,6 +71,9 @@ model Patient {
   labRequests     LabRequest[]
   imagingRequests ImagingRequest[]
 
+  wardId String?
+  ward   Ward?   @relation(fields: [wardId], references: [id])
+
   pregnancies               Pregnancy[]
   babiesAsMother            Baby[]
   babiesRegisteredAsPatient Baby[]             @relation("BabyRegisteredPatient")
@@ -793,7 +796,7 @@ model InvoiceItem {
   transactionItemId String?          @unique
 
   customDescription String?
-  createdBy         Staff?           @relation("InvoiceItemCreatedBy", fields: [createdById], references: [id])
+  createdBy         Staff?  @relation("InvoiceItemCreatedBy", fields: [createdById], references: [id])
   createdById       String?
 
   quantity         Int                       @default(1)
@@ -807,16 +810,16 @@ model InvoiceItem {
 }
 
 model InvoiceItemPayment {
-  id            String      @id @default(uuid())
-  invoiceItem   InvoiceItem @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
-  invoiceItemId String
+  id               String          @id @default(uuid())
+  invoiceItem      InvoiceItem     @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
+  invoiceItemId    String
   /// Legacy rows: allocations tied only to a billing transaction before `InvoicePayment` existed.
-  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  transactionId String?
+  transaction      Transaction?    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId    String?
   invoicePayment   InvoicePayment? @relation(fields: [invoicePaymentId], references: [id], onDelete: Cascade)
   invoicePaymentId String?
-  amount        Decimal     @db.Decimal(12, 2)
-  createdAt     DateTime    @default(now())
+  amount           Decimal         @db.Decimal(12, 2)
+  createdAt        DateTime        @default(now())
 
   @@index([invoiceItemId])
   @@index([transactionId])
@@ -846,43 +849,43 @@ model PatientWallet {
 }
 
 model WalletTransaction {
-  id        String                @id @default(uuid())
-  wallet    PatientWallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  walletId  String
-  type      WalletTransactionType
-  amount    Decimal               @db.Decimal(12, 2)
-  reference String
-  invoice   Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
-  invoiceId String?
-  createdBy   Staff?              @relation("WalletTransactionCreatedBy", fields: [createdById], references: [id])
+  id          String                @id @default(uuid())
+  wallet      PatientWallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  walletId    String
+  type        WalletTransactionType
+  amount      Decimal               @db.Decimal(12, 2)
+  reference   String
+  invoice     Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceId   String?
+  createdBy   Staff?                @relation("WalletTransactionCreatedBy", fields: [createdById], references: [id])
   createdById String?
-  createdAt DateTime              @default(now())
-  payment   InvoicePayment?
+  createdAt   DateTime              @default(now())
+  payment     InvoicePayment?
 
   @@index([walletId, createdAt])
   @@index([invoiceId])
 }
 
 model InvoicePayment {
-  id                  String               @id @default(uuid())
-  invoice             Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  id                  String                    @id @default(uuid())
+  invoice             Invoice                   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId           String
-  amount              Decimal              @db.Decimal(12, 2)
+  amount              Decimal                   @db.Decimal(12, 2)
   source              InvoicePaymentSource
   method              TransactionPaymentMethod?
   reference           String?
   notes               String?
-  receivedBy          Staff?               @relation("InvoicePaymentReceivedBy", fields: [receivedById], references: [id])
+  receivedBy          Staff?                    @relation("InvoicePaymentReceivedBy", fields: [receivedById], references: [id])
   receivedById        String?
-  bank                Bank?                @relation(fields: [bankId], references: [id])
+  bank                Bank?                     @relation(fields: [bankId], references: [id])
   bankId              String?
-  createdBy           Staff?               @relation("InvoicePaymentCreatedBy", fields: [createdById], references: [id])
+  createdBy           Staff?                    @relation("InvoicePaymentCreatedBy", fields: [createdById], references: [id])
   createdById         String?
-  paidAt              DateTime             @default(now())
-  walletTransaction   WalletTransaction?   @relation(fields: [walletTransactionId], references: [id], onDelete: SetNull)
-  walletTransactionId String?              @unique
+  paidAt              DateTime                  @default(now())
+  walletTransaction   WalletTransaction?        @relation(fields: [walletTransactionId], references: [id], onDelete: SetNull)
+  walletTransactionId String?                   @unique
   itemAllocations     InvoiceItemPayment[]
-  createdAt           DateTime             @default(now())
+  createdAt           DateTime                  @default(now())
 
   @@index([invoiceId, createdAt])
   @@index([paidAt])
@@ -1256,18 +1259,18 @@ model Department {
 }
 
 model Staff {
-  id           String       @id @default(uuid())
-  staffId      String       @unique
+  id           String      @id @default(uuid())
+  staffId      String      @unique
   firstName    String
   lastName     String
-  department   Department?  @relation(fields: [departmentId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
   departmentId String?
   accountType  AccountType
   staffRole    StaffRole
-  email        String?      @unique
+  email        String?     @unique
   phone        String?
   password     String?
-  isActive     Boolean      @default(true)
+  isActive     Boolean     @default(true)
 
   // one-to-one relation for department head
   headedDepartment Department? @relation("DepartmentHead")
@@ -1823,6 +1826,7 @@ model Ward {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   drugPrices DrugPrice[]
+  patients   Patient[]
 }
 
 model Bed {

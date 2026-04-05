@@ -7,7 +7,7 @@ import { UpdateBedDto } from './dto/update-bed.dto';
 
 @Injectable()
 export class WardService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   createWard(dto: CreateWardDto) {
     return this.prisma.ward.create({
@@ -45,28 +45,28 @@ export class WardService {
                     firstName: true,
                     surname: true,
                     patientId: true,
-                  }
+                  },
                 },
                 doctor: {
                   select: {
                     firstName: true,
                     lastName: true,
                     staffId: true,
-                  }
-                }
-              }
+                  },
+                },
+              },
             },
             patient: {
               select: {
                 firstName: true,
                 surname: true,
                 patientId: true,
-              }
+              },
             },
             bed: {
               select: {
                 bedNumber: true,
-              }
+              },
             },
           },
         },

@@ -57,7 +57,9 @@ export class UpdateTransactionDto {
   @IsNotEmpty()
   staffId: string;
 
-  @ApiPropertyOptional({ description: 'Invoice UUID to link to the transaction' })
+  @ApiPropertyOptional({
+    description: 'Invoice UUID to link to the transaction',
+  })
   @IsOptional()
   @IsUUID()
   invoiceId?: string;

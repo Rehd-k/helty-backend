@@ -18,7 +18,7 @@ export class CreateBankDto {
   })
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @ApiProperty({
     description: 'Bank account number (must be unique)',
@@ -26,11 +26,7 @@ export class CreateBankDto {
   })
   @IsString()
   @IsNotEmpty()
-  accountNumber: string;
-
-  @ApiProperty({ description: 'Staff UUID of the person creating this record' })
-  @IsNotEmpty()
-  staffId: string;
+  accountNumber!: string;
 }
 
 // ─── Update Bank ──────────────────────────────────────────────────────────────
@@ -47,10 +43,6 @@ export class UpdateBankDto {
   @IsString()
   @IsOptional()
   accountNumber?: string;
-
-  @ApiProperty({ description: 'Staff UUID of the person making this change' })
-  @IsNotEmpty()
-  staffId: string;
 }
 
 // ─── Query Banks ──────────────────────────────────────────────────────────────

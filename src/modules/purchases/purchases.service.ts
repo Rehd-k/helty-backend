@@ -50,9 +50,10 @@ export class PurchasesService {
     const itemData = await Promise.all(
       dto.items.map(async (item) => {
         const qty = new Prisma.Decimal(item.quantity);
-        const unitCost = item.estimatedUnitCost != null
-          ? new Prisma.Decimal(item.estimatedUnitCost)
-          : new Prisma.Decimal(0);
+        const unitCost =
+          item.estimatedUnitCost != null
+            ? new Prisma.Decimal(item.estimatedUnitCost)
+            : new Prisma.Decimal(0);
         const lineTotal = unitCost.mul(qty);
         totalEstimatedCost = totalEstimatedCost.add(lineTotal);
         return {
@@ -130,7 +131,9 @@ export class PurchasesService {
         take,
         include: {
           requestingDepartment: { select: { id: true, name: true } },
-          requestedBy: { select: { id: true, firstName: true, lastName: true } },
+          requestedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
           _count: { select: { items: true } },
         },
       }),
@@ -148,7 +151,9 @@ export class PurchasesService {
         requestedBy: { select: { id: true, firstName: true, lastName: true } },
         items: {
           include: {
-            storeItem: { select: { id: true, name: true, sku: true, unitOfMeasure: true } },
+            storeItem: {
+              select: { id: true, name: true, sku: true, unitOfMeasure: true },
+            },
           },
         },
       },

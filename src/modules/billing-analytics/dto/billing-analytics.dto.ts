@@ -1,7 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
-import { ANALYTICS_PERIODS, type AnalyticsPeriod } from '../billing-analytics-period';
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  Max,
+  Min,
+} from 'class-validator';
+import {
+  ANALYTICS_PERIODS,
+  type AnalyticsPeriod,
+} from '../billing-analytics-period';
 
 export class BillingAnalyticsQueryDto {
   @ApiProperty({ enum: [...ANALYTICS_PERIODS], example: 'month' })

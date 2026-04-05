@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, PharmacyLocationType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SearchDrugDto } from './dto/search-drug.dto';
 import { CreateDrugDto, UpdateDrugDto } from './dto/drug.dto';
@@ -46,7 +46,7 @@ export class PharmacyDrugService {
             data: dto.prices.map((item) => ({
               drugId: createdDrug.id,
               wardId: item.wardId,
-              price: new Prisma.Decimal(item.price),
+              price: new Prisma.Decimal(Number(item.price)),
             })),
           });
         }
@@ -56,14 +56,16 @@ export class PharmacyDrugService {
           include: { manufacturer: true, drugPrices: true },
         });
       });
-    } catch (e) {
-      if (e.code === 'P2002') {
-        throw new ConflictException(
-          'A drug with this service code may already exist.',
-        );
-      }
-      if (e.code === 'P2003') {
-        throw new BadRequestException('Invalid manufacturer ID.');
+    } catch (e: unknown) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2002') {
+          throw new ConflictException(
+            'A drug with this service code may already exist.',
+          );
+        }
+        if (e.code === 'P2003') {
+          throw new BadRequestException('Invalid manufacturer ID.');
+        }
       }
       throw new BadRequestException('Invalid drug data.');
     }
@@ -74,6 +76,7 @@ export class PharmacyDrugService {
       where: { id, deletedAt: null },
       include: {
         manufacturer: true,
+        drugPrices: true,
         createdBy: { select: { id: true, firstName: true, lastName: true } },
         updatedBy: { select: { id: true, firstName: true, lastName: true } },
         _count: { select: { batches: true, prescriptionItems: true } },
@@ -89,29 +92,29 @@ export class PharmacyDrugService {
     await this.findOne(id);
     try {
       const data: Prisma.DrugUpdateInput = {
-        ...(dto.genericName !== undefined && {
+        ...(dto.genericName != null && {
           genericName: dto.genericName.trim(),
         }),
-        ...(dto.searviceCode !== undefined && {
+        ...(dto.searviceCode != null && {
           searviceCode: dto.searviceCode.trim(),
         }),
-        ...(dto.brandName !== undefined && { brandName: dto.brandName.trim() }),
-        ...(dto.strength !== undefined && {
+        ...(dto.brandName != null && { brandName: dto.brandName.trim() }),
+        ...(dto.strength != null && {
           strength: dto.strength?.trim() ?? null,
         }),
-        ...(dto.dosageForm !== undefined && {
+        ...(dto.dosageForm != null && {
           dosageForm: dto.dosageForm?.trim() ?? null,
         }),
-        ...(dto.route !== undefined && { route: dto.route?.trim() ?? null }),
-        ...(dto.therapeuticClass !== undefined && {
+        ...(dto.route != null && { route: dto.route?.trim() ?? null }),
+        ...(dto.therapeuticClass != null && {
           therapeuticClass: dto.therapeuticClass?.trim() ?? null,
         }),
-        ...(dto.atcCode !== undefined && {
+        ...(dto.atcCode != null && {
           atcCode: dto.atcCode?.trim() ?? null,
         }),
-        ...(dto.manufacturerId !== undefined && {
+        ...(dto.manufacturerId !== null) && {
           manufacturerId: dto.manufacturerId,
-        }),
+        },
         ...(dto.isControlled !== undefined && {
           isControlled: dto.isControlled,
         }),
@@ -133,6 +136,7 @@ export class PharmacyDrugService {
         }),
         updatedBy: { connect: { id: updatedById } },
       };
+      console.log(data);
       return await this.prisma.$transaction(async (tx) => {
         await tx.drug.update({
           where: { id },
@@ -140,6 +144,7 @@ export class PharmacyDrugService {
         });
 
         if (dto.prices !== undefined) {
+          console.log(dto.prices);
           await tx.drugPrice.deleteMany({ where: { drugId: id } });
           if (dto.prices.length) {
             await tx.drugPrice.createMany({
@@ -157,14 +162,16 @@ export class PharmacyDrugService {
           include: { manufacturer: true, drugPrices: true },
         });
       });
-    } catch (e) {
-      if (e.code === 'P2002') {
-        throw new ConflictException(
-          'A drug with this service code may already exist.',
-        );
-      }
-      if (e.code === 'P2003') {
-        throw new BadRequestException('Invalid manufacturer ID.');
+    } catch (e: unknown) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+        if (e.code === 'P2002') {
+          throw new ConflictException(
+            'A drug with this service code may already exist.',
+          );
+        }
+        if (e.code === 'P2003') {
+          throw new BadRequestException('Invalid manufacturer ID.');
+        }
       }
       throw new BadRequestException('Invalid drug data.');
     }
@@ -314,7 +321,7 @@ export class PharmacyDrugService {
     }
     orderBy.push({ createdAt: sortOrder });
     orderBy.push({ id: sortOrder });
-
+    console.log(orderBy)
 
     const drugs = await this.prisma.drug.findMany({
       where,
@@ -323,6 +330,15 @@ export class PharmacyDrugService {
       include: {
         manufacturer: true,
         batches: true,
+        drugPrices: {
+          include: {
+            ward: {
+              select: {
+                name: true
+              }
+            }
+          }
+        }
       },
     });
 

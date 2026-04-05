@@ -43,8 +43,7 @@ export class StoreController {
   @Get('categories')
   @ApiOperation({ summary: 'List store item categories' })
   findAllCategories(@Query('isActive') isActive?: string) {
-    const active =
-      isActive === undefined ? undefined : isActive === 'true';
+    const active = isActive === undefined ? undefined : isActive === 'true';
     return this.service.findAllCategories(active);
   }
 
@@ -98,8 +97,7 @@ export class StoreController {
   @Get('locations')
   @ApiOperation({ summary: 'List store locations' })
   findAllLocations(@Query('isActive') isActive?: string) {
-    const active =
-      isActive === undefined ? undefined : isActive === 'true';
+    const active = isActive === undefined ? undefined : isActive === 'true';
     return this.service.findAllLocations(active);
   }
 
@@ -111,10 +109,7 @@ export class StoreController {
 
   @Patch('locations/:id')
   @ApiOperation({ summary: 'Update store location' })
-  updateLocation(
-    @Param('id') id: string,
-    @Body() dto: UpdateStoreLocationDto,
-  ) {
+  updateLocation(@Param('id') id: string, @Body() dto: UpdateStoreLocationDto) {
     return this.service.updateLocation(id, dto);
   }
 

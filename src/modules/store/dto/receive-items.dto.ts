@@ -33,7 +33,9 @@ export class ReceiveItemsDto {
   @IsUUID()
   toLocationId: string;
 
-  @ApiPropertyOptional({ description: 'Department returning items (for returns)' })
+  @ApiPropertyOptional({
+    description: 'Department returning items (for returns)',
+  })
   @IsOptional()
   @IsUUID()
   departmentId?: string;

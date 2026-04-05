@@ -1,8 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  InvoiceStatus,
-  Prisma,
-} from '@prisma/client';
+import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { compareMetrics } from './billing-analytics-math';
 import {
@@ -16,7 +13,9 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function asDecimal(v: Prisma.Decimal | number | null | undefined): Prisma.Decimal {
+function asDecimal(
+  v: Prisma.Decimal | number | null | undefined,
+): Prisma.Decimal {
   if (v === null || v === undefined) return new Prisma.Decimal(0);
   if (v instanceof Prisma.Decimal) return v;
   return new Prisma.Decimal(v);
@@ -432,10 +431,7 @@ export class BillingAnalyticsService {
       }),
     ]);
 
-    const byDept = new Map<
-      string,
-      { name: string; amount: Prisma.Decimal }
-    >();
+    const byDept = new Map<string, { name: string; amount: Prisma.Decimal }>();
 
     function addDept(id: string | null, name: string, amt: Prisma.Decimal) {
       const key = id ?? '__unknown__';
@@ -496,8 +492,7 @@ export class BillingAnalyticsService {
 
     for (const [id, v] of byDept) {
       const amount = toNumber(v.amount);
-      const pct =
-        total.gt(0) ? toNumber(v.amount.div(total).mul(100)) : 0;
+      const pct = total.gt(0) ? toNumber(v.amount.div(total).mul(100)) : 0;
       slices.push({
         departmentId: id === '__unknown__' ? null : id,
         name: v.name,

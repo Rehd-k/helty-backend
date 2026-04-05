@@ -16,7 +16,7 @@ export class BankService {
 
   // ─── Create ──────────────────────────────────────────────────────────────────
 
-  async create(dto: CreateBankDto) {
+  async create(dto: CreateBankDto, req: any) {
     const existing = await this.prisma.bank.findUnique({
       where: { accountNumber: dto.accountNumber },
     });
@@ -27,17 +27,17 @@ export class BankService {
     }
 
     const staff = await this.prisma.staff.findUnique({
-      where: { id: dto.staffId },
+      where: { id: req.user.sub },
     });
     if (!staff)
-      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+      throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
 
     const bank = await this.prisma.bank.create({
       data: {
         name: dto.name,
         accountNumber: dto.accountNumber,
-        createdById: dto.staffId,
-        updatedById: dto.staffId,
+        createdById: req.user.sub,
+        updatedById: req.user.sub,
       },
     });
 
@@ -80,6 +80,7 @@ export class BankService {
       this.prisma.bank.count({ where }),
     ]);
 
+    console.log({ data, total, skip, take });
     return { data, total, skip, take };
   }
 
@@ -117,14 +118,14 @@ export class BankService {
 
   // ─── Update ───────────────────────────────────────────────────────────────────
 
-  async update(id: string, dto: UpdateBankDto) {
+  async update(id: string, dto: UpdateBankDto, req: any) {
     await this.findOne(id); // throws 404 if not found
 
     const staff = await this.prisma.staff.findUnique({
-      where: { id: dto.staffId },
+      where: { id: req.user.sub },
     });
     if (!staff)
-      throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
+      throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
 
     if (dto.accountNumber) {
       const conflict = await this.prisma.bank.findFirst({
@@ -142,7 +143,7 @@ export class BankService {
       data: {
         ...(dto.name && { name: dto.name }),
         ...(dto.accountNumber && { accountNumber: dto.accountNumber }),
-        updatedById: dto.staffId,
+        updatedById: req.user.sub,
       },
     });
 

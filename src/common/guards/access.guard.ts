@@ -67,8 +67,7 @@ function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
       return user.accountType === 'STORE';
     case 'ONG':
       return (
-        user.accountType === 'PHYSICIAN' &&
-        user.staffRole !== 'MEDICAL_STUDENT'
+        user.accountType === 'PHYSICIAN' && user.staffRole !== 'MEDICAL_STUDENT'
       );
     case 'THEATERE':
       return (
@@ -110,7 +109,9 @@ export class AccessGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
     if (allowedAccountTypes?.length) {
-      const ok = allowedAccountTypes.some((t) => accountTypeTokenMatches(t, user));
+      const ok = allowedAccountTypes.some((t) =>
+        accountTypeTokenMatches(t, user),
+      );
       if (!ok) {
         throw new ForbiddenException(
           'Access denied: requires one of account types ' +

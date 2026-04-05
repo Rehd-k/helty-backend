@@ -12,17 +12,22 @@ export class CreateImagingRequestDto {
   @ApiProperty({ description: 'Encounter UUID' })
   @IsUUID()
   @IsNotEmpty()
-  encounterId: string;
+  encounterId!: string;
+
+  @ApiProperty({ description: 'Drug UUID' })
+  @IsUUID()
+  @IsOptional()
+  drugId?: string;
 
   @ApiProperty({ description: 'Patient UUID (must match encounter patient)' })
   @IsUUID()
   @IsNotEmpty()
-  patientId: string;
+  patientId!: string;
 
   @ApiProperty({ description: 'Staff UUID of the requesting doctor' })
   @IsUUID()
   @IsNotEmpty()
-  requestedByDoctorId: string;
+  requestedByDoctorId!: string;
 
   @ApiPropertyOptional({ description: 'Type of imaging study' })
   @IsString()

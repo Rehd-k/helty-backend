@@ -29,7 +29,7 @@ export class StaffController {
   @ApiOperation({ summary: 'Register a new staff member' })
   @ApiResponse({ status: 201, description: 'Staff created' })
   create(@Body() dto: any, @Req() req: any) {
-    const { departmentId, ...rest } = dto as any;
+    const { departmentId, ...rest } = dto;
     const data: any = { ...rest };
     if (departmentId) {
       data.department = { connect: { id: departmentId } };

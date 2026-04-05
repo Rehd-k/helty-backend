@@ -69,12 +69,12 @@ import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module
         transport:
           process.env.NODE_ENV !== 'production'
             ? {
-              target: 'pino-pretty',
-              options: {
-                colorize: true,
-                translateTime: 'HH:MM:ss',
-              },
-            }
+                target: 'pino-pretty',
+                options: {
+                  colorize: true,
+                  translateTime: 'HH:MM:ss',
+                },
+              }
             : undefined, // Pretty logs in development
       },
     }),
@@ -106,4 +106,4 @@ import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module
     { provide: APP_GUARD, useClass: AccessGuard },
   ],
 })
-export class AppModule { }
+export class AppModule {}

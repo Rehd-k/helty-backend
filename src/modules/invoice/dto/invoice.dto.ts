@@ -31,7 +31,7 @@ export class CreateInvoiceDto {
   })
   @IsUUID()
   @IsNotEmpty()
-  patientId: string;
+  patientId!: string;
 
   @ApiProperty({
     enum: InvoiceStatus,
@@ -60,7 +60,7 @@ export class CreateInvoiceDto {
   encounterId?: string;
 }
 
-export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) {}
+export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) { }
 
 // ─── InvoiceItem DTOs ──────────────────────────────────────────────────────────
 
@@ -70,8 +70,16 @@ export class AddInvoiceItemDto {
     example: 'uuid-here',
   })
   @IsUUID()
-  @IsNotEmpty()
-  serviceId: string;
+  @IsOptional()
+  serviceId?: string;
+
+  @ApiProperty({
+    description: 'UUID of the service to add as a line item',
+    example: 'uuid-here',
+  })
+  @IsUUID()
+  @IsOptional()
+  drugId?: string;
 
   @ApiPropertyOptional({
     description: 'Quantity of the service rendered',
@@ -132,14 +140,14 @@ export class RecordInvoicePaymentDto {
   @ApiProperty({ example: 5000 })
   @IsNumber()
   @IsPositive()
-  amount: number;
+  amount!: number;
 
   @ApiProperty({
     enum: InvoicePaymentSource,
     example: InvoicePaymentSource.CASH,
   })
   @IsEnum(InvoicePaymentSource)
-  source: InvoicePaymentSource;
+  source!: InvoicePaymentSource;
 
   @ApiPropertyOptional({
     description:
@@ -164,7 +172,8 @@ export class RecordInvoicePaymentDto {
   notes?: string;
 
   @ApiPropertyOptional({
-    description: 'Registered bank account number when payment is lodged to a bank',
+    description:
+      'Registered bank account number when payment is lodged to a bank',
   })
   @IsOptional()
   @IsString()
@@ -175,7 +184,7 @@ export class InvoiceItemAllocationDto {
   @ApiProperty({ description: 'InvoiceItem UUID on this invoice' })
   @IsUUID()
   @IsNotEmpty()
-  invoiceItemId: string;
+  invoiceItemId!: string;
 
   @ApiProperty({
     description: 'Amount of this payment applied to the line',
@@ -183,14 +192,14 @@ export class InvoiceItemAllocationDto {
   })
   @IsNumber()
   @IsPositive()
-  amount: number;
+  amount!: number;
 }
 
 export class AllocateInvoiceItemPaymentDto {
   @ApiProperty({ description: 'Staff UUID receiving / recording the payment' })
   @IsUUID()
   @IsNotEmpty()
-  staffId: string;
+  staffId!: string;
 
   @ApiPropertyOptional({
     description:
@@ -200,14 +209,16 @@ export class AllocateInvoiceItemPaymentDto {
   @IsOptional()
   billingTransactionId?: string;
 
-  @ApiProperty({ description: 'Total payment amount (must equal sum of allocations)' })
+  @ApiProperty({
+    description: 'Total payment amount (must equal sum of allocations)',
+  })
   @IsNumber()
   @IsPositive()
-  amount: number;
+  amount!: number;
 
   @ApiProperty({ enum: TransactionPaymentMethod })
   @IsEnum(TransactionPaymentMethod)
-  method: TransactionPaymentMethod;
+  method!: TransactionPaymentMethod;
 
   @ApiPropertyOptional({ description: 'Receipt / transfer reference' })
   @IsOptional()
@@ -235,14 +246,14 @@ export class AllocateInvoiceItemPaymentDto {
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => InvoiceItemAllocationDto)
-  allocations: InvoiceItemAllocationDto[];
+  allocations!: InvoiceItemAllocationDto[];
 }
 
 export class WalletDepositDto {
   @ApiProperty({ example: 10000 })
   @IsNumber()
   @IsPositive()
-  amount: number;
+  amount!: number;
 
   @ApiPropertyOptional({
     description: 'Deposit reference',

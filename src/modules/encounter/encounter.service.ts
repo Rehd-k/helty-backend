@@ -19,7 +19,7 @@ import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class EncounterService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateEncounterDto, req: any) {
     await this.validatePatientAndDoctor(dto.patientId, dto.doctorId);
@@ -215,7 +215,9 @@ export class EncounterService {
     if (dto.chiefComplaint !== undefined)
       data.chiefComplaint = dto.chiefComplaint;
     if (dto.triageNotes !== undefined) data.triageNotes = dto.triageNotes;
-    dto.status === undefined ? data.status = 'ONGOING' : data.status = dto.status;
+    dto.status === undefined
+      ? (data.status = 'ONGOING')
+      : (data.status = dto.status);
     if (dto.updatedById !== undefined) data.updatedById = dto.updatedById;
 
     return this.prisma.encounter.update({

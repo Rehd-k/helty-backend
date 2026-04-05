@@ -33,7 +33,7 @@ function generateBillingTransactionId(): string {
   const buf = randomBytes(10);
   let s = '';
   for (let i = 0; i < 10; i++) {
-    s += TXN_ID_ALPHABET[buf[i]! % TXN_ID_ALPHABET.length];
+    s += TXN_ID_ALPHABET[buf[i] % TXN_ID_ALPHABET.length];
   }
   return s;
 }
@@ -70,7 +70,9 @@ export class InvoiceService {
   }
 
   /** Maps billing payment method to invoice payment source enum. */
-  paymentMethodToInvoiceSource(method: TransactionPaymentMethod): InvoicePaymentSource {
+  paymentMethodToInvoiceSource(
+    method: TransactionPaymentMethod,
+  ): InvoicePaymentSource {
     switch (method) {
       case TransactionPaymentMethod.CASH:
         return InvoicePaymentSource.CASH;
@@ -87,7 +89,9 @@ export class InvoiceService {
     }
   }
 
-  private sourceToDefaultMethod(source: InvoicePaymentSource): TransactionPaymentMethod | undefined {
+  private sourceToDefaultMethod(
+    source: InvoicePaymentSource,
+  ): TransactionPaymentMethod | undefined {
     switch (source) {
       case InvoicePaymentSource.CASH:
         return TransactionPaymentMethod.CASH;
@@ -255,7 +259,9 @@ export class InvoiceService {
         where: { id: existing.id },
         data: {
           ...(dto.staffId !== undefined && { staffId: dto.staffId }),
-          ...(dto.encounterId !== undefined && { encounterId: dto.encounterId }),
+          ...(dto.encounterId !== undefined && {
+            encounterId: dto.encounterId,
+          }),
           updatedById: req.user.sub,
         },
       });
@@ -406,7 +412,13 @@ export class InvoiceService {
     const { skip = 0, take = 20, fromDate, toDate, query, category } = params;
     const { from, to } = parseDateRange(fromDate, toDate);
     const allowInpatient = this.parseAllowInpatient(params.allowIP);
-    const where = this.invoiceListWhere(from, to, allowInpatient, query, category);
+    const where = this.invoiceListWhere(
+      from,
+      to,
+      allowInpatient,
+      query,
+      category,
+    );
 
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
@@ -418,10 +430,9 @@ export class InvoiceService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
-
+    console.log(invoices[0]);
     return { invoices, total, skip, take };
   }
-
 
   async findByPatient(patientId: string) {
     const invoices = await this.prisma.invoice.findMany({
@@ -513,7 +524,9 @@ export class InvoiceService {
     });
 
     if (!invoice) throw new NotFoundException(`Invoice ${id} not found`);
-    const amountDue = this.asDecimal(invoice.totalAmount).sub(invoice.amountPaid);
+    const amountDue = this.asDecimal(invoice.totalAmount).sub(
+      invoice.amountPaid,
+    );
     const now = new Date();
     const invoiceItems = invoice.invoiceItems.map((item) => {
       const lineTotal = this.invoiceLineTotal(item, now);
@@ -583,18 +596,28 @@ export class InvoiceService {
     if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
     this.assertInvoiceNotPaid(invoice.status);
 
-    const service = await this.prisma.service.findUnique({
-      where: { id: dto.serviceId },
-    });
-    if (!service)
-      throw new NotFoundException(`Service ${dto.serviceId} not found`);
+    if (dto.serviceId) {
+      const service = await this.prisma.service.findUnique({
+        where: { id: dto.serviceId },
+      });
+      if (!service)
+        throw new NotFoundException(`Service ${dto.serviceId} not found`);
+    }
+    if (dto.drugId) {
+      const drug = await this.prisma.drug.findUnique({
+        where: { id: dto.drugId },
+      });
+      if (!drug) 
+        throw new NotFoundException(`Drug ${dto.drugId} not found`);
+    }
 
     const item = await this.prisma.invoiceItem.create({
       data: {
         invoiceId,
         serviceId: dto.serviceId,
+        drugId: dto.drugId,
         quantity: dto.quantity ?? 1,
-        unitPrice: this.asDecimal(dto.unitPrice ?? service.cost),
+        unitPrice: this.asDecimal(dto.unitPrice ?? 0),
         isRecurringDaily: dto.isRecurringDaily ?? false,
       },
       include: {
@@ -603,9 +626,9 @@ export class InvoiceService {
         },
         invoice: { select: { id: true, status: true, patientId: true } },
       },
-    })
+    });
     if (item.isRecurringDaily) {
-      console.log("dto.recurringSegmentStartAt", dto.recurringSegmentStartAt);
+      console.log('dto.recurringSegmentStartAt', dto.recurringSegmentStartAt);
       const startAt = dto.recurringSegmentStartAt
         ? new Date(dto.recurringSegmentStartAt)
         : new Date();
@@ -681,7 +704,9 @@ export class InvoiceService {
         `Invoice item ${itemId} not found on invoice ${invoiceId}`,
       );
     }
-    const deleted = await this.prisma.invoiceItem.delete({ where: { id: itemId } });
+    const deleted = await this.prisma.invoiceItem.delete({
+      where: { id: itemId },
+    });
     await this.recalculateInvoiceTotals(invoiceId);
     return deleted;
   }
@@ -737,7 +762,9 @@ export class InvoiceService {
       );
     }
     if (!item.isRecurringDaily) {
-      throw new BadRequestException('Only recurring daily items can be resumed');
+      throw new BadRequestException(
+        'Only recurring daily items can be resumed',
+      );
     }
 
     const openSegment = await this.prisma.invoiceItemUsageSegment.findFirst({
@@ -776,22 +803,26 @@ export class InvoiceService {
 
     return this.prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
-      if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+      if (!invoice)
+        throw new NotFoundException(`Invoice ${invoiceId} not found`);
 
       const paymentAmount = this.asDecimal(dto.amount);
       if (paymentAmount.lte(0)) {
-        throw new BadRequestException('Payment amount must be greater than zero');
+        throw new BadRequestException(
+          'Payment amount must be greater than zero',
+        );
       }
 
-      const outstanding = this.asDecimal(invoice.totalAmount).sub(invoice.amountPaid);
+      const outstanding = this.asDecimal(invoice.totalAmount).sub(
+        invoice.amountPaid,
+      );
       if (paymentAmount.gt(outstanding)) {
         throw new BadRequestException(
           `Payment amount exceeds outstanding invoice balance ${outstanding.toFixed(2)}`,
         );
       }
 
-      const method =
-        dto.method ?? this.sourceToDefaultMethod(dto.source);
+      const method = dto.method ?? this.sourceToDefaultMethod(dto.source);
 
       let walletTransactionId: string | undefined;
       if (dto.source === InvoicePaymentSource.WALLET) {
@@ -839,7 +870,9 @@ export class InvoiceService {
 
       await tx.invoice.update({
         where: { id: invoiceId },
-        data: { amountPaid: this.asDecimal(invoice.amountPaid).add(paymentAmount) },
+        data: {
+          amountPaid: this.asDecimal(invoice.amountPaid).add(paymentAmount),
+        },
       });
       const updated = await this.recalculateInvoiceTotals(invoiceId, tx);
       return { payment, invoice: updated };
@@ -893,7 +926,9 @@ export class InvoiceService {
 
       const paymentAmount = this.asDecimal(dto.amount);
       if (paymentAmount.lte(0)) {
-        throw new BadRequestException('Payment amount must be greater than zero');
+        throw new BadRequestException(
+          'Payment amount must be greater than zero',
+        );
       }
 
       const merged = new Map<string, Prisma.Decimal>();
@@ -1034,9 +1069,9 @@ export class InvoiceService {
         },
       });
 
-      const newTxnAmountPaid = this.asDecimal(billingTransaction.amountPaid).add(
-        paymentAmount,
-      );
+      const newTxnAmountPaid = this.asDecimal(
+        billingTransaction.amountPaid,
+      ).add(paymentAmount);
       const newTxnStatus = this.billingTxnStatus(
         this.asDecimal(billingTransaction.totalAmount),
         billingTransaction.discountAmount,
@@ -1128,13 +1163,17 @@ export class InvoiceService {
   }
 
   async getWallet(patientId: string) {
-    const patient = await this.prisma.patient.findUnique({ where: { id: patientId } });
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+    });
     if (!patient) throw new NotFoundException(`Patient ${patientId} not found`);
     return this.ensureWallet(patientId);
   }
 
   async depositToWallet(patientId: string, dto: WalletDepositDto) {
-    const patient = await this.prisma.patient.findUnique({ where: { id: patientId } });
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+    });
     if (!patient) throw new NotFoundException(`Patient ${patientId} not found`);
 
     return this.prisma.$transaction(async (tx) => {
@@ -1251,7 +1290,8 @@ export class InvoiceService {
     patientId: string;
     encounterId: string;
     staffId: string;
-    serviceId: string;
+    serviceId?: string;
+    drugId?: string;
     quantity?: number;
   }) {
     const service = await this.prisma.service.findUnique({
@@ -1284,6 +1324,7 @@ export class InvoiceService {
       });
       await this.addItem(open.id, {
         serviceId: params.serviceId,
+        drugId: params.drugId,
         quantity,
         unitPrice: service.cost,
       });
@@ -1340,7 +1381,9 @@ export class InvoiceService {
     });
     if (!drug) throw new NotFoundException(`Drug ${params.drugId} not found`);
     const batch = drug.batches?.[0];
-    const unitPrice = batch ? new Prisma.Decimal(batch.sellingPrice) : new Prisma.Decimal(0);
+    const unitPrice = batch
+      ? new Prisma.Decimal(batch.sellingPrice)
+      : new Prisma.Decimal(0);
     const quantity = params.quantity ?? 1;
     const item = await this.prisma.invoiceItem.create({
       data: {
