@@ -168,7 +168,6 @@ export class AdmissionService {
           patient: {
             include: {
               admissions: true,
-              transactions: true,
               createdBy: true,
               updatedBy: true,
             },

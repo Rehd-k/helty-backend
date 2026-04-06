@@ -38,10 +38,9 @@ export class BillingAnalyticsService {
 
   /**
    * Net cash in: invoice payments minus invoice refunds in range.
-   * Legacy TransactionPayment rows (pre–invoice-led migration) are included so historical revenue is not lost.
    */
   async totalCashInRange(start: Date, end: Date): Promise<number> {
-    const [ip, ir, tp] = await Promise.all([
+    const [ip, ir] = await Promise.all([
       this.prisma.invoicePayment.aggregate({
         where: { createdAt: { gte: start, lte: end } },
         _sum: { amount: true },
@@ -50,16 +49,8 @@ export class BillingAnalyticsService {
         where: { refundedAt: { gte: start, lte: end } },
         _sum: { amount: true },
       }),
-      this.prisma.transactionPayment.aggregate({
-        where: { paidAt: { gte: start, lte: end } },
-        _sum: { amount: true },
-      }),
     ]);
-    return (
-      toNumber(ip._sum.amount) -
-      toNumber(ir._sum.amount) +
-      toNumber(tp._sum.amount)
-    );
+    return toNumber(ip._sum.amount) - toNumber(ir._sum.amount);
   }
 
   async revenueSummary(period: AnalyticsPeriod, asOf?: string) {

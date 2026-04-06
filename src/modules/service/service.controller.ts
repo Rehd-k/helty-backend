@@ -40,7 +40,6 @@ export class ServiceController {
   @ApiCreatedResponse({ description: 'Service created successfully' })
   @ApiBadRequestResponse({ description: 'Validation error in request body' })
   create(@Body() dto: CreateServiceDto, @Req() req: any) {
-    console.log('Creating service with DTO:', dto);
     return this.serviceService.create(dto, req);
   }
 

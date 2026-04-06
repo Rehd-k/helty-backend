@@ -19,12 +19,15 @@ import { ListStockTransferDto } from './dto/list-stock-transfer.dto';
 @Controller('pharmacy/stock-transfers')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PharmacyStockTransferController {
-  constructor(private readonly service: PharmacyStockTransferService) {}
+  constructor(private readonly service: PharmacyStockTransferService) { }
 
   @Post()
-  @ApiOperation({ summary: 'Create a stock transfer request' })
+  @ApiOperation({
+    summary:
+      'Create and complete a stock transfer (approves and moves stock in one step)',
+  })
   create(@Body() dto: CreateStockTransferDto, @Req() req: any) {
-    return this.service.create(dto, req.user?.sub);
+    return this.service.create(dto, req.user.sub);
   }
 
   @Get()

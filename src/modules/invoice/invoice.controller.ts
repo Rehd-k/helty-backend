@@ -22,15 +22,19 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { InvoicePaymentMethod, InvoicePaymentSource } from '@prisma/client';
 import { InvoiceService } from './invoice.service';
 import {
   AddInvoiceItemDto,
   AllocateInvoiceItemPaymentDto,
+  CreateInvoiceInsuranceClaimDto,
   CreateInvoiceDto,
   RecordInvoicePaymentDto,
+  UpdateInvoiceInsuranceClaimDto,
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
   WalletDepositDto,
+  ListInvoicesByCategoryQueryDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
@@ -74,6 +78,12 @@ export class InvoiceController {
     description: 'Records to return',
     example: 20,
   })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['PENDING', 'PARTIALLY_PAID', 'PAID'],
+    description: 'Filter by invoice status',
+  })
   @ApiOkResponse({ description: 'Paginated list of invoices' })
   findAll(
     @Query()
@@ -82,6 +92,7 @@ export class InvoiceController {
       category?: string;
       query?: string;
       allowIP: boolean;
+      status?: string;
     },
   ) {
     return this.invoiceService.findAll(params);
@@ -97,6 +108,87 @@ export class InvoiceController {
   @ApiOkResponse({ description: 'List of patient invoices' })
   findByPatient(@Param('patientId') patientId: string) {
     return this.invoiceService.findByPatient(patientId);
+  }
+
+  @Get('payments')
+  @ApiOperation({
+    summary: 'List all invoice payments (cashier/head of accounts view)',
+    description:
+      'Returns all invoice payments within date range and a staff-level summary of who processed payments.',
+  })
+  @ApiQuery({ name: 'fromDate', required: false, type: String })
+  @ApiQuery({ name: 'toDate', required: false, type: String })
+  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
+  @ApiQuery({
+    name: 'source',
+    required: false,
+    enum: InvoicePaymentSource,
+    description: 'Filter by payment source (e.g. CASH, WALLET)',
+  })
+  @ApiQuery({
+    name: 'method',
+    required: false,
+    enum: InvoicePaymentMethod,
+    description: 'Filter by payment method (CASH, CARD, TRANSFER, etc.)',
+  })
+  @ApiQuery({
+    name: 'processedById',
+    required: false,
+    description: 'Filter by staff UUID that received payment',
+  })
+  listAllPayments(
+    @Query()
+    query: DateRangeSkipTakeDto & {
+      source?: InvoicePaymentSource;
+      method?: InvoicePaymentMethod;
+      processedById?: string;
+    },
+  ) {
+    return this.invoiceService.listAllPayments(query);
+  }
+
+  @Get('by-service-categories')
+  @ApiOperation({
+    summary: 'List invoices by service category (matching line items only)',
+    description:
+      'Returns invoices that have at least one line item linked to a Service whose ServiceCategory name matches any of the given strings (case-insensitive). Each row includes patient name, human `invoiceId`, phone, age, invoice date, and only the line items that matched. Categories align with seeded `ServiceCategory` names (see REF_Categories.csv). Use repeated `category` query params or comma-separated values.',
+  })
+  @ApiQuery({
+    name: 'category',
+    required: true,
+    isArray: true,
+    type: String,
+    example: ['Laboratory', 'Pharmacy'],
+  })
+  @ApiQuery({ name: 'fromDate', required: false, type: String })
+  @ApiQuery({ name: 'toDate', required: false, type: String })
+  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
+  @ApiOkResponse({
+    description:
+      'Paginated rows: patientName, invoiceId, phone, age, date, services[]',
+  })
+  listByServiceCategories(@Query() query: ListInvoicesByCategoryQueryDto) {
+    return this.invoiceService.listInvoicesByServiceCategories(query);
+  }
+
+  @Get('unregistered-patients')
+  @ApiOperation({
+    summary: 'List invoices for unregistered patients (no hospital patientId)',
+    description:
+      'Returns invoices whose patient has `patientId` null or empty — i.e. not yet assigned a hospital registration id. Each row: patientName, human `invoiceId`, phone, age, invoice date, and all line items as `services` (service name, drug name, or custom description).',
+  })
+  @ApiQuery({ name: 'fromDate', required: false, type: String })
+  @ApiQuery({ name: 'toDate', required: false, type: String })
+  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
+  @ApiOkResponse({
+    description:
+      'Paginated rows: patientName, invoiceId, phone, age, date, services[]',
+  })
+  listUnregisteredPatientInvoices(@Query() query: DateRangeSkipTakeDto) {
+    return this.invoiceService.listInvoicesForUnregisteredPatients(query);
   }
 
   @Get(':id')
@@ -196,7 +288,7 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'Allocate payment to invoice line items',
     description:
-      'Creates an InvoicePayment and InvoiceItemPayment rows (canonical cash-in). Supports partial or full payment per line and one payment split across multiple lines. Uses or creates a billing Transaction linked to this invoice for workflow/audit; does not create TransactionPayment.',
+      'Creates an InvoicePayment and InvoiceItemPayment rows (canonical cash-in). Supports partial or full payment per line and one payment split across multiple lines.',
   })
   @ApiCreatedResponse({
     description: 'Payment recorded and allocations created',
@@ -232,6 +324,38 @@ export class InvoiceController {
     return this.invoiceService.listPayments(id);
   }
 
+  @Get(':id/insurance-claims')
+  @ApiOperation({ summary: 'List insurance claims on an invoice' })
+  listInsuranceClaims(@Param('id') id: string) {
+    return this.invoiceService.listInsuranceClaims(id);
+  }
+
+  @Post(':id/insurance-claims')
+  @ApiOperation({ summary: 'Create insurance claim on an invoice' })
+  createInsuranceClaim(
+    @Param('id') id: string,
+    @Body() dto: CreateInvoiceInsuranceClaimDto,
+    @Req() req: any,
+  ) {
+    return this.invoiceService.createInsuranceClaim(id, dto, req?.user?.sub);
+  }
+
+  @Patch(':id/insurance-claims/:claimId')
+  @ApiOperation({ summary: 'Update insurance claim on an invoice' })
+  updateInsuranceClaim(
+    @Param('id') id: string,
+    @Param('claimId') claimId: string,
+    @Body() dto: UpdateInvoiceInsuranceClaimDto,
+    @Req() req: any,
+  ) {
+    return this.invoiceService.updateInsuranceClaim(
+      id,
+      claimId,
+      dto,
+      req?.user?.sub,
+    );
+  }
+
   @Post(':id/items/:itemId/pause')
   @ApiOperation({
     summary: 'Pause recurring invoice item',
@@ -258,8 +382,10 @@ export class InvoiceController {
   depositToWallet(
     @Param('patientId') patientId: string,
     @Body() dto: WalletDepositDto,
+    @Req() req: any,
   ) {
-    return this.invoiceService.depositToWallet(patientId, dto);
+    const staffId = dto.staffId ?? req?.user?.sub;
+    return this.invoiceService.depositToWallet(patientId, dto, staffId);
   }
 
   @Get('wallets/:patientId')

@@ -82,7 +82,6 @@ export class ServiceService {
     const where: Prisma.ServiceWhereInput = {};
 
     if (search && search.trim() !== '') {
-      console.log(search);
       where.name = {
         contains: search,
         mode: 'insensitive',
@@ -107,7 +106,6 @@ export class ServiceService {
     if (categoryId && categoryId.trim() !== '') {
       where.categoryId = categoryId;
     }
-    console.log(where);
     const [services, total] = await Promise.all([
       this.prisma.service.findMany({
         skip,

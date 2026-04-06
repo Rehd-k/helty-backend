@@ -15,11 +15,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { DateRangeSkipTakeDto } from '../../../common/dto/date-range.dto';
 import {
+  InvoicePaymentMethod,
   InvoicePaymentSource,
   InvoiceStatus,
-  TransactionPaymentMethod,
 } from '@prisma/client';
 
 // ─── Invoice DTOs ──────────────────────────────────────────────────────────────
@@ -61,6 +62,29 @@ export class CreateInvoiceDto {
 }
 
 export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) { }
+
+/** Query for GET /invoices/by-service-categories */
+export class ListInvoicesByCategoryQueryDto extends DateRangeSkipTakeDto {
+  @ApiProperty({
+    type: [String],
+    isArray: true,
+    description:
+      'Service category names (as in REF_Categories / ServiceCategory.name). Repeat `category=` or use comma-separated values.',
+    example: ['Laboratory', 'Pharmacy'],
+  })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return [];
+    const raw = Array.isArray(value) ? value : [value];
+    return raw
+      .flatMap((v) => String(v).split(','))
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one category is required' })
+  @IsString({ each: true })
+  category!: string[];
+}
 
 // ─── InvoiceItem DTOs ──────────────────────────────────────────────────────────
 
@@ -134,6 +158,14 @@ export class UpdateInvoiceItemDto {
   @Min(0)
   @IsOptional()
   unitPrice?: number;
+
+  @ApiPropertyOptional({
+    description: 'Updated settled status',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  settled?: boolean;
 }
 
 export class RecordInvoicePaymentDto {
@@ -152,11 +184,11 @@ export class RecordInvoicePaymentDto {
   @ApiPropertyOptional({
     description:
       'Finer payment method (CARD, etc.). When omitted, derived from `source` where applicable.',
-    enum: TransactionPaymentMethod,
+    enum: InvoicePaymentMethod,
   })
   @IsOptional()
-  @IsEnum(TransactionPaymentMethod)
-  method?: TransactionPaymentMethod;
+  @IsEnum(InvoicePaymentMethod)
+  method?: InvoicePaymentMethod;
 
   @ApiPropertyOptional({
     description: 'Reference for cash/transfer receipt or wallet usage context',
@@ -201,14 +233,6 @@ export class AllocateInvoiceItemPaymentDto {
   @IsNotEmpty()
   staffId!: string;
 
-  @ApiPropertyOptional({
-    description:
-      'Existing billing Transaction UUID linked to this invoice; omit to use or create a default linked transaction',
-  })
-  @IsUUID()
-  @IsOptional()
-  billingTransactionId?: string;
-
   @ApiProperty({
     description: 'Total payment amount (must equal sum of allocations)',
   })
@@ -216,9 +240,9 @@ export class AllocateInvoiceItemPaymentDto {
   @IsPositive()
   amount!: number;
 
-  @ApiProperty({ enum: TransactionPaymentMethod })
-  @IsEnum(TransactionPaymentMethod)
-  method!: TransactionPaymentMethod;
+  @ApiProperty({ enum: InvoicePaymentMethod })
+  @IsEnum(InvoicePaymentMethod)
+  method!: InvoicePaymentMethod;
 
   @ApiPropertyOptional({ description: 'Receipt / transfer reference' })
   @IsOptional()
@@ -262,4 +286,73 @@ export class WalletDepositDto {
   @IsOptional()
   @IsNotEmpty()
   reference?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Staff UUID recording the deposit (optional if the server sets it from the auth token)',
+  })
+  @IsUUID()
+  @IsOptional()
+  staffId?: string;
+}
+
+export class CreateInvoiceInsuranceClaimDto {
+  @ApiProperty({ example: 'NHIS' })
+  @IsString()
+  @IsNotEmpty()
+  provider!: string;
+
+  @ApiPropertyOptional({ example: 'POL-12345' })
+  @IsOptional()
+  @IsString()
+  policyNumber?: string;
+
+  @ApiProperty({ example: 2500 })
+  @IsNumber()
+  @IsPositive()
+  coveredAmount!: number;
+
+  @ApiPropertyOptional({ example: 'Approved by provider desk' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({ description: 'Staff UUID creating the claim' })
+  @IsOptional()
+  @IsUUID()
+  staffId?: string;
+}
+
+export class UpdateInvoiceInsuranceClaimDto {
+  @ApiPropertyOptional({ example: 'NHIS' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  provider?: string;
+
+  @ApiPropertyOptional({ example: 'POL-12345' })
+  @IsOptional()
+  @IsString()
+  policyNumber?: string;
+
+  @ApiPropertyOptional({ example: 3000 })
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  coveredAmount?: number;
+
+  @ApiPropertyOptional({ example: 'APPROVED' })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({ example: 'Updated after review' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({ description: 'Staff UUID updating the claim' })
+  @IsOptional()
+  @IsUUID()
+  staffId?: string;
 }

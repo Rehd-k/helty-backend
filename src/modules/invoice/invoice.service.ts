@@ -5,35 +5,37 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  InvoiceAuditAction,
+  InvoicePaymentMethod,
   InvoicePaymentSource,
   InvoiceStatus,
   PatientStatus,
   Prisma,
-  TransactionAuditAction,
-  TransactionPaymentMethod,
-  TransactionStatus,
   WalletTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   AddInvoiceItemDto,
   AllocateInvoiceItemPaymentDto,
+  CreateInvoiceInsuranceClaimDto,
   CreateInvoiceDto,
   RecordInvoicePaymentDto,
+  UpdateInvoiceInsuranceClaimDto,
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
   WalletDepositDto,
+  ListInvoicesByCategoryQueryDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 
-const TXN_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const INVOICE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-function generateBillingTransactionId(): string {
+function generateInvoiceHumanId(): string {
   const buf = randomBytes(10);
   let s = '';
   for (let i = 0; i < 10; i++) {
-    s += TXN_ID_ALPHABET[buf[i] % TXN_ID_ALPHABET.length];
+    s += INVOICE_ID_ALPHABET[buf[i] % INVOICE_ID_ALPHABET.length];
   }
   return s;
 }
@@ -69,20 +71,32 @@ export class InvoiceService {
     return value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
   }
 
+  private patientAgeYears(dob: Date | null | undefined): number | null {
+    if (!dob) return null;
+    const birth = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age -= 1;
+    }
+    return age;
+  }
+
   /** Maps billing payment method to invoice payment source enum. */
   paymentMethodToInvoiceSource(
-    method: TransactionPaymentMethod,
+    method: InvoicePaymentMethod,
   ): InvoicePaymentSource {
     switch (method) {
-      case TransactionPaymentMethod.CASH:
+      case InvoicePaymentMethod.CASH:
         return InvoicePaymentSource.CASH;
-      case TransactionPaymentMethod.CARD:
+      case InvoicePaymentMethod.CARD:
         return InvoicePaymentSource.CARD;
-      case TransactionPaymentMethod.TRANSFER:
+      case InvoicePaymentMethod.TRANSFER:
         return InvoicePaymentSource.TRANSFER;
-      case TransactionPaymentMethod.INSURANCE:
+      case InvoicePaymentMethod.INSURANCE:
         return InvoicePaymentSource.INSURANCE;
-      case TransactionPaymentMethod.WAIVER:
+      case InvoicePaymentMethod.WAIVER:
         return InvoicePaymentSource.WAIVER;
       default:
         return InvoicePaymentSource.CASH;
@@ -91,18 +105,18 @@ export class InvoiceService {
 
   private sourceToDefaultMethod(
     source: InvoicePaymentSource,
-  ): TransactionPaymentMethod | undefined {
+  ): InvoicePaymentMethod | undefined {
     switch (source) {
       case InvoicePaymentSource.CASH:
-        return TransactionPaymentMethod.CASH;
+        return InvoicePaymentMethod.CASH;
       case InvoicePaymentSource.TRANSFER:
-        return TransactionPaymentMethod.TRANSFER;
+        return InvoicePaymentMethod.TRANSFER;
       case InvoicePaymentSource.CARD:
-        return TransactionPaymentMethod.CARD;
+        return InvoicePaymentMethod.CARD;
       case InvoicePaymentSource.INSURANCE:
-        return TransactionPaymentMethod.INSURANCE;
+        return InvoicePaymentMethod.INSURANCE;
       case InvoicePaymentSource.WAIVER:
-        return TransactionPaymentMethod.WAIVER;
+        return InvoicePaymentMethod.WAIVER;
       case InvoicePaymentSource.WALLET:
       default:
         return undefined;
@@ -160,32 +174,6 @@ export class InvoiceService {
       return unitPrice.mul(totalDays);
     }
     return unitPrice.mul(item.quantity);
-  }
-
-  private billingTxnStatus(
-    totalAmount: Prisma.Decimal,
-    discountAmount: Prisma.Decimal,
-    insuranceCovered: Prisma.Decimal,
-    amountPaid: Prisma.Decimal,
-    previousStatus: TransactionStatus,
-  ): TransactionStatus {
-    if (previousStatus === TransactionStatus.CANCELLED) {
-      return TransactionStatus.CANCELLED;
-    }
-    const outstanding = totalAmount
-      .sub(discountAmount)
-      .sub(insuranceCovered)
-      .sub(amountPaid);
-    if (outstanding.lte(0) && totalAmount.gt(0)) {
-      return TransactionStatus.PAID;
-    }
-    if (amountPaid.gt(0)) {
-      return TransactionStatus.PARTIALLY_PAID;
-    }
-    if (totalAmount.gt(0)) {
-      return TransactionStatus.ACTIVE;
-    }
-    return TransactionStatus.DRAFT;
   }
 
   async recalculateInvoiceTotals(
@@ -274,6 +262,7 @@ export class InvoiceService {
 
     return this.prisma.invoice.create({
       data: {
+        invoiceID: generateInvoiceHumanId(),
         patientId: dto.patientId,
         status: dto.status ?? InvoiceStatus.PENDING,
         createdById: req.user.sub,
@@ -292,33 +281,59 @@ export class InvoiceService {
     return Boolean(value);
   }
 
+  /** Optional `?status=` query (case-insensitive); invalid values throw. */
+  private parseInvoiceListStatus(value: unknown): InvoiceStatus | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const normalized = String(value)
+      .trim()
+      .toUpperCase()
+      .replace(/-/g, '_');
+    const allowed = Object.values(InvoiceStatus) as string[];
+    if (!allowed.includes(normalized)) {
+      throw new BadRequestException(
+        `Invalid invoice status filter. Use one of: ${allowed.join(', ')}.`,
+      );
+    }
+    return normalized as InvoiceStatus;
+  }
+
   private invoiceListWhere(
     from: Date,
     to: Date,
     allowInpatient: boolean,
     rawQuery?: string,
     category?: string,
+    invoiceStatus?: InvoiceStatus,
   ): Prisma.InvoiceWhereInput {
     const patientStatus = allowInpatient
       ? PatientStatus.ADMITED
       : PatientStatus.OUTPATIENT;
-    const createdAt: Prisma.DateTimeFilter = { gte: from, lte: to };
+    const updatedAt: Prisma.DateTimeFilter = { gte: from, lte: to };
+    const statusWhere: Prisma.InvoiceWhereInput = invoiceStatus
+      ? { status: invoiceStatus }
+      : {};
     const q = rawQuery?.trim();
     if (!q) {
-      return { createdAt, patient: { status: patientStatus } };
+      return {
+        ...statusWhere,
+        updatedAt,
+        patient: { status: patientStatus },
+      };
     }
 
     const needle = { contains: q, mode: 'insensitive' as const };
 
     if (category === 'patientId') {
       return {
-        createdAt,
+        ...statusWhere,
+        updatedAt,
         patient: { status: patientStatus, patientId: needle },
       };
     }
     if (category === 'fullName') {
       return {
-        createdAt,
+        ...statusWhere,
+        updatedAt,
         patient: {
           status: patientStatus,
           OR: [{ firstName: needle }, { surname: needle }],
@@ -327,7 +342,8 @@ export class InvoiceService {
     }
     if (category === 'service') {
       return {
-        createdAt,
+        ...statusWhere,
+        updatedAt,
         patient: { status: patientStatus },
         invoiceItems: {
           some: { service: { name: needle } },
@@ -335,11 +351,16 @@ export class InvoiceService {
       };
     }
     if (category) {
-      return { createdAt, patient: { status: patientStatus } };
+      return {
+        ...statusWhere,
+        updatedAt,
+        patient: { status: patientStatus },
+      };
     }
 
     return {
-      createdAt,
+      ...statusWhere,
+      updatedAt,
       AND: [
         { patient: { status: patientStatus } },
         {
@@ -400,6 +421,7 @@ export class InvoiceService {
    * Paginated list of all invoices, most-recent first.
    * Inpatient vs outpatient is enforced via the related patient's `status`
    * (`ADMITED` when allowIP is true, otherwise `OUTPATIENT`).
+   * Optional `status` filters by invoice payment status (PENDING, PARTIALLY_PAID, PAID).
    */
   async findAll(
     params: DateRangeSkipTakeDto & {
@@ -407,17 +429,20 @@ export class InvoiceService {
       category?: string;
       query?: string;
       allowIP: boolean;
+      status?: string;
     },
   ) {
     const { skip = 0, take = 20, fromDate, toDate, query, category } = params;
     const { from, to } = parseDateRange(fromDate, toDate);
     const allowInpatient = this.parseAllowInpatient(params.allowIP);
+    const invoiceStatus = this.parseInvoiceListStatus(params.status);
     const where = this.invoiceListWhere(
       from,
       to,
       allowInpatient,
       query,
       category,
+      invoiceStatus,
     );
 
     const [invoices, total] = await Promise.all([
@@ -425,12 +450,11 @@ export class InvoiceService {
         where,
         skip,
         take,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         include: InvoiceService.invoiceFindAllInclude,
       }),
       this.prisma.invoice.count({ where }),
     ]);
-    console.log(invoices[0]);
     return { invoices, total, skip, take };
   }
 
@@ -537,7 +561,16 @@ export class InvoiceService {
         lineAmountDue: lineTotal.sub(paid),
       };
     });
-    return { ...invoice, invoiceItems, amountDue };
+
+    // Invoice is authoritative for client-facing due amount.
+    // Do not override with linked transaction financial fields.
+    const netAmountDue = amountDue;
+    return {
+      ...invoice,
+      invoiceItems,
+      amountDue,
+      netAmountDue,
+    };
   }
 
   /**
@@ -607,7 +640,7 @@ export class InvoiceService {
       const drug = await this.prisma.drug.findUnique({
         where: { id: dto.drugId },
       });
-      if (!drug) 
+      if (!drug)
         throw new NotFoundException(`Drug ${dto.drugId} not found`);
     }
 
@@ -628,7 +661,6 @@ export class InvoiceService {
       },
     });
     if (item.isRecurringDaily) {
-      console.log('dto.recurringSegmentStartAt', dto.recurringSegmentStartAt);
       const startAt = dto.recurringSegmentStartAt
         ? new Date(dto.recurringSegmentStartAt)
         : new Date();
@@ -781,16 +813,41 @@ export class InvoiceService {
     return { message: 'Recurring item resumed' };
   }
 
-  async recordPayment(
+  private async logInvoiceAudit(
+    tx: Prisma.TransactionClient,
+    params: {
+      invoiceId: string;
+      action: InvoiceAuditAction;
+      description: string;
+      performedById?: string;
+      metadata?: Prisma.InputJsonValue;
+    },
+  ) {
+    await tx.invoiceAuditLog.create({
+      data: {
+        invoiceId: params.invoiceId,
+        action: params.action,
+        description: params.description,
+        performedById: params.performedById,
+        metadata: params.metadata,
+      },
+    });
+  }
+
+  /**
+   * Record a payment inside an existing interactive transaction (invoice + wallet + payment + audit).
+   */
+  async recordPaymentWithTx(
+    tx: Prisma.TransactionClient,
     invoiceId: string,
     dto: RecordInvoicePaymentDto,
     createdByStaffId?: string,
   ) {
-    await this.recalculateInvoiceTotals(invoiceId);
+    await this.recalculateInvoiceTotals(invoiceId, tx);
 
     let bankId: string | undefined;
     if (dto.bankAccountNumber) {
-      const bank = await this.prisma.bank.findUnique({
+      const bank = await tx.bank.findUnique({
         where: { accountNumber: dto.bankAccountNumber },
       });
       if (!bank) {
@@ -801,88 +858,108 @@ export class InvoiceService {
       bankId = bank.id;
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
-      if (!invoice)
-        throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+    if (!invoice)
+      throw new NotFoundException(`Invoice ${invoiceId} not found`);
 
-      const paymentAmount = this.asDecimal(dto.amount);
-      if (paymentAmount.lte(0)) {
-        throw new BadRequestException(
-          'Payment amount must be greater than zero',
-        );
-      }
-
-      const outstanding = this.asDecimal(invoice.totalAmount).sub(
-        invoice.amountPaid,
+    const paymentAmount = this.asDecimal(dto.amount);
+    if (paymentAmount.lte(0)) {
+      throw new BadRequestException(
+        'Payment amount must be greater than zero',
       );
-      if (paymentAmount.gt(outstanding)) {
-        throw new BadRequestException(
-          `Payment amount exceeds outstanding invoice balance ${outstanding.toFixed(2)}`,
-        );
+    }
+
+    const maxPayable = this.asDecimal(invoice.totalAmount).sub(
+      this.asDecimal(invoice.amountPaid),
+    );
+
+    if (paymentAmount.gt(maxPayable)) {
+      throw new BadRequestException(
+        `Payment amount exceeds outstanding balance ${maxPayable.toFixed(2)}`,
+      );
+    }
+
+    const method = dto.method ?? this.sourceToDefaultMethod(dto.source);
+
+    let walletTransactionId: string | undefined;
+    if (dto.source === InvoicePaymentSource.WALLET) {
+      const wallet = await this.ensureWallet(invoice.patientId, tx);
+      if (wallet.balance.lt(paymentAmount)) {
+        throw new BadRequestException('Insufficient wallet balance');
       }
 
-      const method = dto.method ?? this.sourceToDefaultMethod(dto.source);
-
-      let walletTransactionId: string | undefined;
-      if (dto.source === InvoicePaymentSource.WALLET) {
-        const wallet = await this.ensureWallet(invoice.patientId, tx);
-        if (wallet.balance.lt(paymentAmount)) {
-          throw new BadRequestException('Insufficient wallet balance');
-        }
-
-        const walletTxn = await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: WalletTransactionType.DEBIT,
-            amount: paymentAmount,
-            reference: dto.reference ?? 'invoice_payment',
-            invoiceId,
-            ...(createdByStaffId ? { createdById: createdByStaffId } : {}),
-          },
-        });
-        walletTransactionId = walletTxn.id;
-
-        await tx.patientWallet.update({
-          where: { id: wallet.id },
-          data: { balance: wallet.balance.sub(paymentAmount) },
-        });
-      }
-
-      const payment = await tx.invoicePayment.create({
+      const walletTxn = await tx.walletTransaction.create({
         data: {
-          invoiceId,
+          walletId: wallet.id,
+          type: WalletTransactionType.DEBIT,
           amount: paymentAmount,
-          source: dto.source,
-          ...(method !== undefined ? { method } : {}),
-          reference: dto.reference,
-          notes: dto.notes,
-          ...(createdByStaffId
-            ? {
-              receivedById: createdByStaffId,
-              createdById: createdByStaffId,
-            }
-            : {}),
-          ...(bankId ? { bankId } : {}),
-          walletTransactionId,
+          reference: dto.reference ?? 'invoice_payment',
+          invoiceId,
+          ...(createdByStaffId ? { createdById: createdByStaffId } : {}),
         },
       });
+      walletTransactionId = walletTxn.id;
 
-      await tx.invoice.update({
-        where: { id: invoiceId },
-        data: {
-          amountPaid: this.asDecimal(invoice.amountPaid).add(paymentAmount),
-        },
+      await tx.patientWallet.update({
+        where: { id: wallet.id },
+        data: { balance: wallet.balance.sub(paymentAmount) },
       });
-      const updated = await this.recalculateInvoiceTotals(invoiceId, tx);
-      return { payment, invoice: updated };
+    }
+
+    const payment = await tx.invoicePayment.create({
+      data: {
+        invoiceId,
+        amount: paymentAmount,
+        source: dto.source,
+        ...(method !== undefined ? { method } : {}),
+        reference: dto.reference,
+        notes: dto.notes,
+        ...(createdByStaffId
+          ? {
+            receivedById: createdByStaffId,
+            createdById: createdByStaffId,
+          }
+          : {}),
+        ...(bankId ? { bankId } : {}),
+        walletTransactionId,
+      },
     });
+
+    await tx.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        amountPaid: this.asDecimal(invoice.amountPaid).add(paymentAmount),
+      },
+    });
+    const updated = await this.recalculateInvoiceTotals(invoiceId, tx);
+    await this.logInvoiceAudit(tx, {
+      invoiceId,
+      action: InvoiceAuditAction.PAYMENT_RECEIVED,
+      description: `Payment of ₦${paymentAmount.toFixed(2)} recorded via ${dto.source}.`,
+      performedById: createdByStaffId,
+      metadata: {
+        invoicePaymentId: payment.id,
+        amount: paymentAmount.toFixed(2),
+        source: dto.source,
+        reference: dto.reference,
+      } as Prisma.InputJsonValue,
+    });
+
+    return { payment, invoice: updated };
   }
 
-  /**
-   * Record a payment on the billing Transaction ledger and allocate it across
-   * invoice line items (partial or full per line). Atomic: all writes succeed or none.
-   */
+  async recordPayment(
+    invoiceId: string,
+    dto: RecordInvoicePaymentDto,
+    createdByStaffId?: string,
+  ) {
+    await this.recalculateInvoiceTotals(invoiceId);
+    return this.prisma.$transaction((tx) =>
+      this.recordPaymentWithTx(tx, invoiceId, dto, createdByStaffId),
+    );
+  }
+
+  /** Record a payment and allocate it across invoice line items. */
   async allocatePaymentToInvoiceItems(
     invoiceId: string,
     dto: AllocateInvoiceItemPaymentDto,
@@ -979,74 +1056,6 @@ export class InvoiceService {
         );
       }
 
-      let billingTransaction = dto.billingTransactionId
-        ? await tx.transaction.findUnique({
-          where: { id: dto.billingTransactionId },
-        })
-        : await tx.transaction.findFirst({
-          where: {
-            invoiceId,
-            patientId: invoice.patientId,
-            status: { not: TransactionStatus.CANCELLED },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-
-      if (dto.billingTransactionId && !billingTransaction) {
-        throw new NotFoundException(
-          `Billing transaction "${dto.billingTransactionId}" not found`,
-        );
-      }
-
-      if (billingTransaction) {
-        if (billingTransaction.patientId !== invoice.patientId) {
-          throw new BadRequestException(
-            'Billing transaction belongs to a different patient than this invoice',
-          );
-        }
-        if (billingTransaction.invoiceId !== invoiceId) {
-          throw new BadRequestException(
-            'Billing transaction is not linked to this invoice',
-          );
-        }
-        if (billingTransaction.status === TransactionStatus.CANCELLED) {
-          throw new BadRequestException(
-            'Billing transaction is cancelled and cannot accept payments',
-          );
-        }
-      } else {
-        billingTransaction = await tx.transaction.create({
-          data: {
-            transactionID: generateBillingTransactionId(),
-            patientId: invoice.patientId,
-            createdById: dto.staffId,
-            updatedById: dto.staffId,
-            invoiceId,
-            totalAmount: this.asDecimal(invoice.totalAmount),
-            amountPaid: this.asDecimal(invoice.amountPaid),
-            discountAmount: new Prisma.Decimal(0),
-            insuranceCovered: new Prisma.Decimal(0),
-            status: this.billingTxnStatus(
-              this.asDecimal(invoice.totalAmount),
-              new Prisma.Decimal(0),
-              new Prisma.Decimal(0),
-              this.asDecimal(invoice.amountPaid),
-              TransactionStatus.DRAFT,
-            ),
-          },
-        });
-      }
-
-      const txnOutstanding = this.asDecimal(billingTransaction.totalAmount)
-        .sub(billingTransaction.discountAmount)
-        .sub(billingTransaction.insuranceCovered)
-        .sub(billingTransaction.amountPaid);
-      if (paymentAmount.gt(txnOutstanding)) {
-        throw new BadRequestException(
-          `Payment amount exceeds outstanding balance on billing transaction (${txnOutstanding.toFixed(2)})`,
-        );
-      }
-
       const invoicePaymentRow = await tx.invoicePayment.create({
         data: {
           invoiceId,
@@ -1069,26 +1078,6 @@ export class InvoiceService {
         },
       });
 
-      const newTxnAmountPaid = this.asDecimal(
-        billingTransaction.amountPaid,
-      ).add(paymentAmount);
-      const newTxnStatus = this.billingTxnStatus(
-        this.asDecimal(billingTransaction.totalAmount),
-        billingTransaction.discountAmount,
-        billingTransaction.insuranceCovered,
-        newTxnAmountPaid,
-        billingTransaction.status,
-      );
-
-      await tx.transaction.update({
-        where: { id: billingTransaction.id },
-        data: {
-          amountPaid: newTxnAmountPaid,
-          status: newTxnStatus,
-          updatedById: dto.staffId,
-        },
-      });
-
       const allocationRows: Awaited<
         ReturnType<typeof tx.invoiceItemPayment.create>
       >[] = [];
@@ -1096,7 +1085,6 @@ export class InvoiceService {
         const row = await tx.invoiceItemPayment.create({
           data: {
             invoiceItemId: itemId,
-            transactionId: billingTransaction.id,
             invoicePaymentId: invoicePaymentRow.id,
             amount: allocAmt,
           },
@@ -1116,34 +1104,21 @@ export class InvoiceService {
       });
 
       const updatedInvoice = await this.recalculateInvoiceTotals(invoiceId, tx);
-
-      const newTxnOutstanding = this.asDecimal(billingTransaction.totalAmount)
-        .sub(billingTransaction.discountAmount)
-        .sub(billingTransaction.insuranceCovered)
-        .sub(newTxnAmountPaid);
-
-      await tx.transactionAuditLog.create({
-        data: {
-          transactionId: billingTransaction.id,
-          action: TransactionAuditAction.PAYMENT_RECEIVED,
-          description: `Invoice item allocation: ₦${paymentAmount.toFixed(2)} across ${merged.size} line(s) (invoice ${invoiceId})`,
-          performedById: dto.staffId,
-          createdById: dto.staffId,
-          metadata: {
-            invoiceId,
-            invoicePaymentId: invoicePaymentRow.id,
-            allocationIds: allocationRows.map((r) => r.id),
-          },
-        },
+      await this.logInvoiceAudit(tx, {
+        invoiceId,
+        action: InvoiceAuditAction.PAYMENT_RECEIVED,
+        description: `Invoice item allocation: ₦${paymentAmount.toFixed(2)} across ${merged.size} line(s).`,
+        performedById: dto.staffId,
+        metadata: {
+          invoicePaymentId: invoicePaymentRow.id,
+          allocationIds: allocationRows.map((r) => r.id),
+        } as Prisma.InputJsonValue,
       });
 
       return {
         invoicePayment: invoicePaymentRow,
-        billingTransactionId: billingTransaction.id,
         allocations: allocationRows,
         invoice: updatedInvoice,
-        transactionOutstanding: newTxnOutstanding,
-        transactionStatus: newTxnStatus,
       };
     });
   }
@@ -1162,6 +1137,379 @@ export class InvoiceService {
     });
   }
 
+  async listAllPayments(query: DateRangeSkipTakeDto & {
+    source?: InvoicePaymentSource;
+    method?: InvoicePaymentMethod;
+    processedById?: string;
+  }) {
+    const { skip = 0, take = 20, fromDate, toDate, source, method, processedById } =
+      query;
+    const { from, to } = parseDateRange(fromDate, toDate);
+
+    const where: Prisma.InvoicePaymentWhereInput = {
+      createdAt: { gte: from, lte: to },
+      ...(source ? { source } : {}),
+      ...(method ? { method } : {}),
+      ...(processedById ? { receivedById: processedById } : {}),
+    };
+
+    const [payments, total, grouped] = await Promise.all([
+      this.prisma.invoicePayment.findMany({
+        where,
+        skip: Number(skip),
+        take: Number(take),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          invoice: {
+            select: {
+              id: true,
+              invoiceID: true,
+              patientId: true,
+              status: true,
+              patient: {
+                select: {
+                  id: true,
+                  patientId: true,
+                  firstName: true,
+                  surname: true,
+                },
+              },
+              invoiceItems: {
+                select: {
+                  id: true,
+                  customDescription: true,
+                  quantity: true,
+                  unitPrice: true,
+                  amountPaid: true,
+                  service: { select: { id: true, name: true } },
+                  drug: {
+                    select: { id: true, genericName: true, brandName: true },
+                  },
+                },
+              },
+            },
+          },
+          receivedBy: {
+            select: { id: true, firstName: true, lastName: true, staffId: true },
+          },
+          createdBy: {
+            select: { id: true, firstName: true, lastName: true, staffId: true },
+          },
+          bank: { select: { id: true, name: true, accountNumber: true } },
+          walletTransaction: true,
+        },
+      }),
+      this.prisma.invoicePayment.count({ where }),
+      this.prisma.invoicePayment.groupBy({
+        by: ['receivedById'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const staffIds = grouped
+      .map((g) => g.receivedById)
+      .filter((id): id is string => Boolean(id));
+
+    const staffRows = staffIds.length
+      ? await this.prisma.staff.findMany({
+        where: { id: { in: staffIds } },
+        select: { id: true, staffId: true, firstName: true, lastName: true },
+      })
+      : [];
+    const staffById = new Map(staffRows.map((s) => [s.id, s]));
+
+    const staffSummary = grouped.map((g) => ({
+      receivedById: g.receivedById,
+      staff: g.receivedById ? (staffById.get(g.receivedById) ?? null) : null,
+      paymentCount: g._count._all,
+      totalAmount: g._sum.amount ?? new Prisma.Decimal(0),
+    }));
+    return {
+      payments,
+      total,
+      skip,
+      take,
+      staffSummary,
+    };
+  }
+
+  /**
+   * Invoices that include at least one line item whose linked Service belongs to
+   * one of the given ServiceCategory names. Only matching line items are returned.
+   */
+  async listInvoicesByServiceCategories(query: ListInvoicesByCategoryQueryDto) {
+    const { skip = 0, take = 20, fromDate, toDate, category } = query;
+    const normalized = [
+      ...new Set(
+        category.map((c) => c.trim()).filter((c) => c.length > 0),
+      ),
+    ];
+    if (!normalized.length) {
+      throw new BadRequestException('At least one category is required');
+    }
+
+    const dateClause =
+      fromDate || toDate
+        ? (() => {
+          const { from, to } = parseDateRange(fromDate, toDate);
+          return { createdAt: { gte: from, lte: to } as const };
+        })()
+        : {};
+
+    const itemMatchWhere: Prisma.InvoiceItemWhereInput = {
+      serviceId: { not: null },
+      service: {
+        categoryId: { not: null },
+        category: {
+          name: { in: normalized, mode: 'insensitive' },
+        },
+      },
+    };
+
+    const where: Prisma.InvoiceWhereInput = {
+      ...dateClause,
+      invoiceItems: { some: itemMatchWhere },
+    };
+
+    const [invoices, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        skip: Number(skip),
+        take: Number(take),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          patient: {
+            select: {
+              firstName: true,
+              surname: true,
+              phoneNumber: true,
+              dob: true,
+            },
+          },
+          invoiceItems: {
+            where: itemMatchWhere,
+            include: {
+              service: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+
+    const rows = invoices.map((inv) => {
+      const p = inv.patient;
+      const patientName =
+        [p.firstName, p.surname].filter(Boolean).join(' ').trim() || null;
+      return {
+        patientName,
+        invoiceId: inv.invoiceID,
+        phone: p.phoneNumber ?? null,
+        age: this.patientAgeYears(p.dob),
+        date: inv.createdAt.toISOString(),
+        services: inv.invoiceItems.map((it) => ({
+          invoiceItemId: it.id,
+          name: it.service?.name ?? it.customDescription ?? null,
+          category: it.service?.category?.name ?? null,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice.toFixed(2),
+          amountPaid: it.amountPaid.toFixed(2),
+        })),
+      };
+    });
+
+    return {
+      total,
+      skip: Number(skip),
+      take: Number(take),
+      categories: normalized,
+      rows,
+    };
+  }
+
+  /**
+   * Invoices for patients who have no hospital `patientId` yet (null or empty string).
+   */
+  async listInvoicesForUnregisteredPatients(query: DateRangeSkipTakeDto) {
+    const { skip = 0, take = 20, fromDate, toDate } = query;
+
+    const dateClause =
+      fromDate || toDate
+        ? (() => {
+          const { from, to } = parseDateRange(fromDate, toDate);
+          return { createdAt: { gte: from, lte: to } as const };
+        })()
+        : {};
+
+    const where: Prisma.InvoiceWhereInput = {
+      ...dateClause,
+      patient: {
+        OR: [{ patientId: null }, { patientId: '' }],
+      },
+    };
+
+    const [invoices, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        skip: Number(skip),
+        take: Number(take),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          patient: {
+            select: {
+              firstName: true,
+              surname: true,
+              phoneNumber: true,
+              dob: true,
+            },
+          },
+          invoiceItems: {
+            include: {
+              service: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: { select: { id: true, name: true } },
+                },
+              },
+              drug: {
+                select: { id: true, genericName: true, brandName: true },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+
+    const rows = invoices.map((inv) => {
+      const p = inv.patient;
+      const patientName =
+        [p.firstName, p.surname].filter(Boolean).join(' ').trim() || null;
+      return {
+        patientName,
+        invoiceId: inv.invoiceID,
+        phone: p.phoneNumber ?? null,
+        age: this.patientAgeYears(p.dob),
+        date: inv.createdAt.toISOString(),
+        services: inv.invoiceItems.map((it) => {
+          const drugLabel =
+            it.drug?.genericName ??
+            it.drug?.brandName ??
+            null;
+          return {
+            invoiceItemId: it.id,
+            name:
+              it.service?.name ??
+              drugLabel ??
+              it.customDescription ??
+              null,
+            category: it.service?.category?.name ?? null,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice.toFixed(2),
+            amountPaid: it.amountPaid.toFixed(2),
+          };
+        }),
+      };
+    });
+    console.log({
+      total,
+      skip: Number(skip),
+      take: Number(take),
+      rows,
+    });
+    return {
+      total,
+      skip: Number(skip),
+      take: Number(take),
+      rows,
+    };
+  }
+
+  async listInsuranceClaims(invoiceId: string) {
+    await this.findOne(invoiceId);
+    return this.prisma.insuranceClaim.findMany({
+      where: { invoiceId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        createdBy: { select: { id: true, firstName: true, lastName: true } },
+        updatedBy: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+  }
+
+  async createInsuranceClaim(
+    invoiceId: string,
+    dto: CreateInvoiceInsuranceClaimDto,
+    authStaffId?: string,
+  ) {
+    await this.findOne(invoiceId);
+    const staffId = dto.staffId ?? authStaffId;
+
+    if (staffId) {
+      const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+      if (!staff) throw new NotFoundException(`Staff "${staffId}" not found.`);
+    }
+
+    return this.prisma.insuranceClaim.create({
+      data: {
+        invoiceId,
+        provider: dto.provider,
+        policyNumber: dto.policyNumber,
+        coveredAmount: this.asDecimal(dto.coveredAmount),
+        notes: dto.notes,
+        ...(staffId ? { createdById: staffId, updatedById: staffId } : {}),
+      },
+    });
+  }
+
+  async updateInsuranceClaim(
+    invoiceId: string,
+    claimId: string,
+    dto: UpdateInvoiceInsuranceClaimDto,
+    authStaffId?: string,
+  ) {
+    await this.findOne(invoiceId);
+    const claim = await this.prisma.insuranceClaim.findFirst({
+      where: { id: claimId, invoiceId },
+    });
+    if (!claim) {
+      throw new NotFoundException(
+        `Insurance claim "${claimId}" not found on invoice "${invoiceId}".`,
+      );
+    }
+
+    const staffId = dto.staffId ?? authStaffId;
+    if (staffId) {
+      const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+      if (!staff) throw new NotFoundException(`Staff "${staffId}" not found.`);
+    }
+
+    return this.prisma.insuranceClaim.update({
+      where: { id: claim.id },
+      data: {
+        ...(dto.provider !== undefined ? { provider: dto.provider } : {}),
+        ...(dto.policyNumber !== undefined
+          ? { policyNumber: dto.policyNumber }
+          : {}),
+        ...(dto.coveredAmount !== undefined
+          ? { coveredAmount: this.asDecimal(dto.coveredAmount) }
+          : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+        ...(staffId ? { updatedById: staffId } : {}),
+      },
+    });
+  }
+
   async getWallet(patientId: string) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
@@ -1170,7 +1518,11 @@ export class InvoiceService {
     return this.ensureWallet(patientId);
   }
 
-  async depositToWallet(patientId: string, dto: WalletDepositDto) {
+  async depositToWallet(
+    patientId: string,
+    dto: WalletDepositDto,
+    createdByStaffId?: string,
+  ) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
     });
@@ -1186,6 +1538,7 @@ export class InvoiceService {
           type: WalletTransactionType.CREDIT,
           amount,
           reference: dto.reference ?? 'deposit',
+          ...(createdByStaffId ? { createdById: createdByStaffId } : {}),
         },
       });
 
@@ -1272,6 +1625,7 @@ export class InvoiceService {
 
     return this.prisma.invoice.create({
       data: {
+        invoiceID: generateInvoiceHumanId(),
         patientId: params.patientId,
         encounterId: params.encounterId,
         status: InvoiceStatus.PENDING,
@@ -1336,6 +1690,7 @@ export class InvoiceService {
 
     return this.prisma.invoice.create({
       data: {
+        invoiceID: generateInvoiceHumanId(),
         patientId: params.patientId,
         encounterId: params.encounterId,
         status: InvoiceStatus.PENDING,

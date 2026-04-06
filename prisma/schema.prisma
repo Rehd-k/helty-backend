@@ -55,7 +55,6 @@ model Patient {
   radiologyReports RadiologyReport[]
   prescriptions    Prescription[]
   invoice          Invoice[]
-  transactions     Transaction[]
   patientVitals    PatientVitals[]
   allergies        PatientAllergy[]
 
@@ -117,17 +116,16 @@ model Appointment {
 }
 
 model Admission {
-  id            String        @id @default(uuid())
-  patient       Patient       @relation(fields: [patientId], references: [id])
+  id            String     @id @default(uuid())
+  patient       Patient    @relation(fields: [patientId], references: [id])
   patientId     String
-  encounter     Encounter?    @relation("AdmissionEncounter")
+  encounter     Encounter? @relation("AdmissionEncounter")
   admissionDate DateTime
   dischargeDate DateTime?
   ward          String?
   room          String?
   reason        String?
-  transactions  Transaction[]
-  createdAt     DateTime      @default(now())
+  createdAt     DateTime   @default(now())
 
   // Enhanced inpatient structure (keep legacy fields above for compatibility)
   admissionDateTime  DateTime        @default(now())
@@ -751,6 +749,7 @@ model Service {
 
 model Invoice {
   id          String        @id @default(uuid())
+  invoiceID   String        @unique
   patient     Patient       @relation(fields: [patientId], references: [id])
   patientId   String
   status      InvoiceStatus @default(PENDING)
@@ -761,20 +760,22 @@ model Invoice {
   updatedBy   Staff?        @relation("InvoiceUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
 
-  invoiceItems InvoiceItem[]
-  payments     InvoicePayment[]
-  refunds      InvoiceRefund[]
-  walletTxns   WalletTransaction[]
-  transactions Transaction[]
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  staff        Staff               @relation(fields: [staffId], references: [id])
-  staffId      String
+  invoiceItems    InvoiceItem[]
+  payments        InvoicePayment[]
+  refunds         InvoiceRefund[]
+  walletTxns      WalletTransaction[]
+  insuranceClaims InsuranceClaim[]
+  auditLogs       InvoiceAuditLog[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  staff           Staff               @relation(fields: [staffId], references: [id])
+  staffId         String
 
   encounter   Encounter? @relation(fields: [encounterId], references: [id])
   encounterId String?
 
   @@index([patientId])
+  @@index([invoiceID])
   @@index([createdById])
   @@index([updatedById])
   @@index([staffId])
@@ -791,9 +792,6 @@ model InvoiceItem {
 
   drug   Drug?   @relation(fields: [drugId], references: [id])
   drugId String?
-
-  transactionItem   TransactionItem? @relation(fields: [transactionItemId], references: [id], onDelete: SetNull)
-  transactionItemId String?          @unique
 
   customDescription String?
   createdBy         Staff?  @relation("InvoiceItemCreatedBy", fields: [createdById], references: [id])
@@ -813,16 +811,12 @@ model InvoiceItemPayment {
   id               String          @id @default(uuid())
   invoiceItem      InvoiceItem     @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
   invoiceItemId    String
-  /// Legacy rows: allocations tied only to a billing transaction before `InvoicePayment` existed.
-  transaction      Transaction?    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  transactionId    String?
   invoicePayment   InvoicePayment? @relation(fields: [invoicePaymentId], references: [id], onDelete: Cascade)
   invoicePaymentId String?
   amount           Decimal         @db.Decimal(12, 2)
   createdAt        DateTime        @default(now())
 
   @@index([invoiceItemId])
-  @@index([transactionId])
   @@index([invoicePaymentId])
 }
 
@@ -867,25 +861,25 @@ model WalletTransaction {
 }
 
 model InvoicePayment {
-  id                  String                    @id @default(uuid())
-  invoice             Invoice                   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  id                  String                @id @default(uuid())
+  invoice             Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId           String
-  amount              Decimal                   @db.Decimal(12, 2)
+  amount              Decimal               @db.Decimal(12, 2)
   source              InvoicePaymentSource
-  method              TransactionPaymentMethod?
+  method              InvoicePaymentMethod?
   reference           String?
   notes               String?
-  receivedBy          Staff?                    @relation("InvoicePaymentReceivedBy", fields: [receivedById], references: [id])
+  receivedBy          Staff?                @relation("InvoicePaymentReceivedBy", fields: [receivedById], references: [id])
   receivedById        String?
-  bank                Bank?                     @relation(fields: [bankId], references: [id])
+  bank                Bank?                 @relation(fields: [bankId], references: [id])
   bankId              String?
-  createdBy           Staff?                    @relation("InvoicePaymentCreatedBy", fields: [createdById], references: [id])
+  createdBy           Staff?                @relation("InvoicePaymentCreatedBy", fields: [createdById], references: [id])
   createdById         String?
-  paidAt              DateTime                  @default(now())
-  walletTransaction   WalletTransaction?        @relation(fields: [walletTransactionId], references: [id], onDelete: SetNull)
-  walletTransactionId String?                   @unique
+  paidAt              DateTime              @default(now())
+  walletTransaction   WalletTransaction?    @relation(fields: [walletTransactionId], references: [id], onDelete: SetNull)
+  walletTransactionId String?               @unique
   itemAllocations     InvoiceItemPayment[]
-  createdAt           DateTime                  @default(now())
+  createdAt           DateTime              @default(now())
 
   @@index([invoiceId, createdAt])
   @@index([paidAt])
@@ -907,18 +901,23 @@ model InvoiceRefund {
   @@index([invoiceId, refundedAt])
 }
 
+model InvoiceAuditLog {
+  id            String             @id @default(uuid())
+  invoice       Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId     String
+  action        InvoiceAuditAction
+  description   String
+  metadata      Json?
+  performedBy   Staff?             @relation("InvoiceAuditLogPerformedBy", fields: [performedById], references: [id])
+  performedById String?
+  createdAt     DateTime           @default(now())
+
+  @@index([invoiceId, createdAt])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BILLING MODULE
 // ─────────────────────────────────────────────────────────────────────────────
-
-enum TransactionStatus {
-  DRAFT
-  ACTIVE
-  PARTIALLY_PAID
-  PAID
-  CANCELLED
-  REFUNDED
-}
 
 enum InvoiceStatus {
   PENDING
@@ -940,29 +939,22 @@ enum InvoicePaymentSource {
   WAIVER
 }
 
-enum TransactionPaymentMethod {
+enum InvoicePaymentMethod {
   CASH
   CARD
   TRANSFER
   INSURANCE
   WAIVER
+  WALLET
 }
 
-enum DiscountType {
-  PERCENTAGE
-  FIXED
-}
-
-enum TransactionAuditAction {
-  BILL_CREATED
-  ITEM_ADDED
-  ITEM_EDITED
-  DISCOUNT_APPLIED
+enum InvoiceAuditAction {
   PAYMENT_RECEIVED
-  BILL_CANCELLED
   REFUND_ISSUED
-  INSURANCE_APPLIED
-  BILL_REOPENED
+  WALLET_DEPOSIT
+  ITEM_ADDED
+  ITEM_UPDATED
+  ITEM_REMOVED
 }
 
 // Staff: department / account category (paired with StaffRole).
@@ -1275,15 +1267,6 @@ model Staff {
   // one-to-one relation for department head
   headedDepartment Department? @relation("DepartmentHead")
 
-  transactionsCreated   Transaction[]         @relation("TransactionCreatedBy")
-  transactionsCancelled Transaction[]         @relation("TransactionCancelledBy")
-  itemsAdded            TransactionItem[]     @relation("ItemAddedBy")
-  itemPriceEdits        TransactionItem[]     @relation("ItemPriceEditedBy")
-  paymentsReceived      TransactionPayment[]  @relation("PaymentReceivedBy")
-  discountsGranted      TransactionDiscount[] @relation("DiscountGrantedBy")
-  refundsProcessed      TransactionRefund[]   @relation("RefundProcessedBy")
-  auditLogs             TransactionAuditLog[]
-
   createdBy   Staff?  @relation("StaffCreatedBy", fields: [createdById], references: [id])
   createdById String?
   updatedBy   Staff?  @relation("StaffUpdatedBy", fields: [updatedById], references: [id])
@@ -1322,29 +1305,18 @@ model Staff {
   staffCreated             Staff[]           @relation("StaffCreatedBy")
   staffUpdated             Staff[]           @relation("StaffUpdatedBy")
 
-  transactionsUpdated         Transaction[]         @relation("TransactionUpdatedBy")
-  transactionItemsCreated     TransactionItem[]     @relation("TransactionItemCreatedBy")
-  transactionItemsUpdated     TransactionItem[]     @relation("TransactionItemUpdatedBy")
-  transactionPaymentsCreated  TransactionPayment[]  @relation("TransactionPaymentCreatedBy")
-  transactionPaymentsUpdated  TransactionPayment[]  @relation("TransactionPaymentUpdatedBy")
-  transactionDiscountsCreated TransactionDiscount[] @relation("TransactionDiscountCreatedBy")
-  transactionDiscountsUpdated TransactionDiscount[] @relation("TransactionDiscountUpdatedBy")
-  insuranceClaimsCreated      InsuranceClaim[]      @relation("InsuranceClaimCreatedBy")
-  insuranceClaimsUpdated      InsuranceClaim[]      @relation("InsuranceClaimUpdatedBy")
-  transactionRefundsCreated   TransactionRefund[]   @relation("TransactionRefundCreatedBy")
-  transactionRefundsUpdated   TransactionRefund[]   @relation("TransactionRefundUpdatedBy")
-  transactionAuditLogsCreated TransactionAuditLog[] @relation("TransactionAuditLogCreatedBy")
-  transactionAuditLogsUpdated TransactionAuditLog[] @relation("TransactionAuditLogUpdatedBy")
-  invoices                    Invoice[]
-  banksCreated                Bank[]                @relation("BankCreatedBy")
-  banksUpdated                Bank[]                @relation("BankUpdatedBy")
-  banks                       Bank[]
-  consultingRooms             ConsultingRoom[]
-  waitingPatients             WaitingPatient[]
-  consultingRoomsCreated      ConsultingRoom[]      @relation("ConsultingRoomCreatedBy")
-  consultingRoomsUpdated      ConsultingRoom[]      @relation("ConsultingRoomUpdatedBy")
-  waitingPatientsCreated      WaitingPatient[]      @relation("WaitingPatientCreatedBy")
-  waitingPatientsUpdated      WaitingPatient[]      @relation("WaitingPatientUpdatedBy")
+  insuranceClaimsCreated InsuranceClaim[] @relation("InsuranceClaimCreatedBy")
+  insuranceClaimsUpdated InsuranceClaim[] @relation("InsuranceClaimUpdatedBy")
+  invoices               Invoice[]
+  banksCreated           Bank[]           @relation("BankCreatedBy")
+  banksUpdated           Bank[]           @relation("BankUpdatedBy")
+  banks                  Bank[]
+  consultingRooms        ConsultingRoom[]
+  waitingPatients        WaitingPatient[]
+  consultingRoomsCreated ConsultingRoom[] @relation("ConsultingRoomCreatedBy")
+  consultingRoomsUpdated ConsultingRoom[] @relation("ConsultingRoomUpdatedBy")
+  waitingPatientsCreated WaitingPatient[] @relation("WaitingPatientCreatedBy")
+  waitingPatientsUpdated WaitingPatient[] @relation("WaitingPatientUpdatedBy")
 
   admissionsAdmitted                  Admission[]                @relation("AdmissionAdmittedByDoctor")
   admissionMedicationOrdersPrescribed AdmissionMedicationOrder[] @relation("AdmissionMedicationOrderPrescribedBy")
@@ -1404,6 +1376,7 @@ model Staff {
   invoiceRefundsProcessed             InvoiceRefund[]            @relation("InvoiceRefundProcessedBy")
   invoiceRefundsCreated               InvoiceRefund[]            @relation("InvoiceRefundCreatedBy")
   walletTransactionsCreated           WalletTransaction[]        @relation("WalletTransactionCreatedBy")
+  invoiceAuditLogsPerformed           InvoiceAuditLog[]          @relation("InvoiceAuditLogPerformedBy")
 }
 
 enum ChatMessageStatus {
@@ -1538,174 +1511,25 @@ model ImagingRequest {
   updatedAt           DateTime             @updatedAt
 }
 
-// Transaction: master transaction for a patient encounter (outpatient or inpatient)
-model Transaction {
-  id            String            @id @default(uuid())
-  transactionID String            @unique
-  patient       Patient           @relation(fields: [patientId], references: [id])
-  patientId     String
-  admission     Admission?        @relation(fields: [admissionId], references: [id])
-  admissionId   String?
-  status        TransactionStatus @default(DRAFT)
-
-  // financial summary (kept in sync by service layer)
-  totalAmount      Decimal @default(0) @db.Decimal(12, 2)
-  discountAmount   Decimal @default(0) @db.Decimal(12, 2)
-  insuranceCovered Decimal @default(0) @db.Decimal(12, 2)
-  amountPaid       Decimal @default(0) @db.Decimal(12, 2)
-
-  notes              String?
-  createdBy          Staff     @relation("TransactionCreatedBy", fields: [createdById], references: [id])
-  createdById        String
-  updatedBy          Staff?    @relation("TransactionUpdatedBy", fields: [updatedById], references: [id])
-  updatedById        String?
-  cancelledBy        Staff?    @relation("TransactionCancelledBy", fields: [cancelledById], references: [id])
-  cancelledById      String?
-  cancelledAt        DateTime?
-  cancellationReason String?
-
-  items           TransactionItem[]
-  payments        TransactionPayment[]
-  discounts       TransactionDiscount[]
-  insuranceClaims InsuranceClaim[]
-  refunds         TransactionRefund[]
-  auditLogs       TransactionAuditLog[]
-  allocations     InvoiceItemPayment[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
-  invoiceId String?
-}
-
-// TransactionItem: a single charge line on a transaction
-model TransactionItem {
-  id            String      @id @default(uuid())
-  transaction   Transaction @relation(fields: [transactionId], references: [id])
-  transactionId String
-  description   String
-  source        String
-  referenceId   String?
-  quantity      Int         @default(1)
-  unitPrice     Decimal     @db.Decimal(12, 2)
-  totalPrice    Decimal     @db.Decimal(12, 2)
-
-  addedBy         Staff     @relation("ItemAddedBy", fields: [addedById], references: [id])
-  addedById       String
-  priceEditedBy   Staff?    @relation("ItemPriceEditedBy", fields: [priceEditedById], references: [id])
-  priceEditedById String?
-  priceEditedAt   DateTime?
-
-  createdBy   Staff   @relation("TransactionItemCreatedBy", fields: [createdById], references: [id])
-  createdById String
-  updatedBy   Staff?  @relation("TransactionItemUpdatedBy", fields: [updatedById], references: [id])
-  updatedById String?
-
-  invoiceItem InvoiceItem?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// TransactionPayment: a single payment transaction (partial or full)
-model TransactionPayment {
-  id            String                   @id @default(uuid())
-  transaction   Transaction              @relation(fields: [transactionId], references: [id])
-  transactionId String
-  amount        Decimal                  @db.Decimal(12, 2)
-  method        TransactionPaymentMethod
-  reference     String?
-  notes         String?
-  receivedBy    Staff                    @relation("PaymentReceivedBy", fields: [receivedById], references: [id])
-  receivedById  String
-  paidAt        DateTime                 @default(now())
-  createdAt     DateTime                 @default(now())
-
-  // optional link to the bank account that received this payment
-  bank   Bank?   @relation(fields: [bankId], references: [id])
-  bankId String?
-
-  createdBy   Staff?  @relation("TransactionPaymentCreatedBy", fields: [createdById], references: [id])
-  createdById String?
-  updatedBy   Staff?  @relation("TransactionPaymentUpdatedBy", fields: [updatedById], references: [id])
-  updatedById String?
-
-  @@index([paidAt])
-}
-
-// TransactionDiscount: a discount or waiver applied to a transaction
-model TransactionDiscount {
-  id             String       @id @default(uuid())
-  transaction    Transaction  @relation(fields: [transactionId], references: [id])
-  transactionId  String
-  type           DiscountType
-  value          Decimal      @db.Decimal(12, 2)
-  computedAmount Decimal      @db.Decimal(12, 2)
-  reason         String
-  grantedBy      Staff        @relation("DiscountGrantedBy", fields: [grantedById], references: [id])
-  grantedById    String
-  createdAt      DateTime     @default(now())
-
-  createdBy   Staff?  @relation("TransactionDiscountCreatedBy", fields: [createdById], references: [id])
-  createdById String?
-  updatedBy   Staff?  @relation("TransactionDiscountUpdatedBy", fields: [updatedById], references: [id])
-  updatedById String?
-}
-
-// InsuranceClaim: insurance coverage applied to a transaction
+// InsuranceClaim: insurance coverage applied to an invoice
 model InsuranceClaim {
-  id            String      @id @default(uuid())
-  transaction   Transaction @relation(fields: [transactionId], references: [id])
-  transactionId String
+  id            String   @id @default(uuid())
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId     String
   provider      String
   policyNumber  String?
-  coveredAmount Decimal     @db.Decimal(12, 2)
-  status        String      @default("PENDING")
+  coveredAmount Decimal  @db.Decimal(12, 2)
+  status        String   @default("PENDING")
   notes         String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   createdBy   Staff?  @relation("InsuranceClaimCreatedBy", fields: [createdById], references: [id])
   createdById String?
   updatedBy   Staff?  @relation("InsuranceClaimUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
-}
 
-// TransactionRefund: a refund issued on a transaction
-model TransactionRefund {
-  id            String      @id @default(uuid())
-  transaction   Transaction @relation(fields: [transactionId], references: [id])
-  transactionId String
-  amount        Decimal     @db.Decimal(12, 2)
-  reason        String
-  processedBy   Staff       @relation("RefundProcessedBy", fields: [processedById], references: [id])
-  processedById String
-  refundedAt    DateTime    @default(now())
-  createdAt     DateTime    @default(now())
-
-  createdBy   Staff?  @relation("TransactionRefundCreatedBy", fields: [createdById], references: [id])
-  createdById String?
-  updatedBy   Staff?  @relation("TransactionRefundUpdatedBy", fields: [updatedById], references: [id])
-  updatedById String?
-}
-
-// TransactionAuditLog: immutable record of every action on a transaction
-model TransactionAuditLog {
-  id            String                 @id @default(uuid())
-  transaction   Transaction            @relation(fields: [transactionId], references: [id])
-  transactionId String
-  action        TransactionAuditAction
-  description   String
-  performedBy   Staff                  @relation(fields: [performedById], references: [id])
-  performedById String
-  metadata      Json?
-  createdAt     DateTime               @default(now())
-
-  createdBy   Staff?  @relation("TransactionAuditLogCreatedBy", fields: [createdById], references: [id])
-  createdById String?
-  updatedBy   Staff?  @relation("TransactionAuditLogUpdatedBy", fields: [updatedById], references: [id])
-  updatedById String?
+  @@index([invoiceId])
 }
 
 // Bank: hospital bank accounts that can receive payments
@@ -1714,8 +1538,7 @@ model Bank {
   name          String
   accountNumber String @unique
 
-  transactionPayments TransactionPayment[]
-  invoicePayments     InvoicePayment[]
+  invoicePayments InvoicePayment[]
 
   createdBy   Staff?  @relation("BankCreatedBy", fields: [createdById], references: [id])
   createdById String?

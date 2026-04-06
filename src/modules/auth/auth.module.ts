@@ -16,7 +16,7 @@ import { StaffModule } from '../staff/staff.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET') || 'hard-to-guess-secret',
-        signOptions: { expiresIn: '1h' },
+        signOptions: { expiresIn: '24h' },
       }),
     }),
     StaffModule,

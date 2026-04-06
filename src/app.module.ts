@@ -11,7 +11,6 @@ import { LabReportModule } from './modules/lab-report/lab-report.module';
 import { RadiologyReportModule } from './modules/radiology-report/radiology-report.module';
 import { PrescriptionModule } from './modules/prescription/prescription.module';
 import { ServiceModule } from './modules/service/service.module';
-import { TransactionModule } from './modules/billing/billing.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DepartmentModule } from './modules/department/department.module';
@@ -56,7 +55,6 @@ import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module
     DoctorReportModule,
     LabReportModule,
     RadiologyReportModule,
-    TransactionModule,
     PrescriptionModule,
     ServiceModule,
     StaffModule,

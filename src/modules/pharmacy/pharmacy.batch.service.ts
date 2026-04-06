@@ -98,7 +98,7 @@ export class PharmacyBatchService {
     const take = Math.min(Math.max(1, Number(limit) || 20), 100);
     const { from, to } = parseDateRange(fromDate, toDate);
     const where: Prisma.DrugBatchWhereInput = {
-      createdAt: { gte: from, lte: to },
+      // createdAt: { gte: from, lte: to },
     };
 
     if (drugId) where.drugId = drugId;

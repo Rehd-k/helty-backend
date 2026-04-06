@@ -1,13 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import {
+  InvoicePaymentMethod,
   InvoicePaymentSource,
   InvoiceStatus,
   Prisma,
-  TransactionPaymentMethod,
-  TransactionStatus,
   WalletTransactionType,
 } from '@prisma/client';
 import { InvoiceService } from './invoice.service';
+
+function createInvoiceService(prisma: any) {
+  return new InvoiceService(prisma);
+}
 
 describe('InvoiceService', () => {
   const now = new Date('2026-03-27T12:00:00.000Z');
@@ -49,7 +52,7 @@ describe('InvoiceService', () => {
       },
     };
 
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     const updated = await service.recalculateInvoiceTotals('inv-1');
 
     // Closed 12h → ceil 1; open 12h → floor 0 until a full 24h elapses
@@ -81,7 +84,7 @@ describe('InvoiceService', () => {
       },
     };
 
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     const updated = await service.recalculateInvoiceTotals(
       'inv-1',
       prisma,
@@ -92,6 +95,12 @@ describe('InvoiceService', () => {
   });
 
   it('records wallet payment atomically', async () => {
+    const lineItem = {
+      unitPrice: new Prisma.Decimal(500),
+      quantity: 1,
+      isRecurringDaily: false,
+      usageSegments: [],
+    };
     const tx: any = {
       invoice: {
         findUnique: jest.fn().mockResolvedValue({
@@ -99,7 +108,7 @@ describe('InvoiceService', () => {
           patientId: 'pat-1',
           totalAmount: new Prisma.Decimal(500),
           amountPaid: new Prisma.Decimal(100),
-          invoiceItems: [],
+          invoiceItems: [lineItem],
         }),
         update: jest
           .fn()
@@ -125,7 +134,13 @@ describe('InvoiceService', () => {
       invoicePayment: {
         create: jest.fn().mockResolvedValue({ id: 'pay-1' }),
       },
+      invoiceAuditLog: {
+        create: jest.fn().mockResolvedValue({}),
+      },
       bank: { findUnique: jest.fn() },
+      transaction: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const prisma: any = {
@@ -133,7 +148,7 @@ describe('InvoiceService', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: 'inv-1',
           amountPaid: new Prisma.Decimal(100),
-          invoiceItems: [],
+          invoiceItems: [lineItem],
         }),
         update: jest.fn().mockResolvedValue({}),
       },
@@ -141,7 +156,7 @@ describe('InvoiceService', () => {
       $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
     };
 
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     await service.recordPayment(
       'inv-1',
       {
@@ -163,6 +178,12 @@ describe('InvoiceService', () => {
   });
 
   it('rejects wallet payment when balance is insufficient', async () => {
+    const lineItem = {
+      unitPrice: new Prisma.Decimal(500),
+      quantity: 1,
+      isRecurringDaily: false,
+      usageSegments: [],
+    };
     const tx: any = {
       invoice: {
         findUnique: jest.fn().mockResolvedValue({
@@ -170,8 +191,9 @@ describe('InvoiceService', () => {
           patientId: 'pat-1',
           totalAmount: new Prisma.Decimal(500),
           amountPaid: new Prisma.Decimal(100),
-          invoiceItems: [],
+          invoiceItems: [lineItem],
         }),
+        update: jest.fn().mockResolvedValue({}),
       },
       patientWallet: {
         upsert: jest.fn().mockResolvedValue({
@@ -181,6 +203,9 @@ describe('InvoiceService', () => {
         }),
       },
       bank: { findUnique: jest.fn() },
+      transaction: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const prisma: any = {
@@ -188,7 +213,7 @@ describe('InvoiceService', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: 'inv-1',
           amountPaid: new Prisma.Decimal(100),
-          invoiceItems: [],
+          invoiceItems: [lineItem],
         }),
         update: jest.fn().mockResolvedValue({}),
       },
@@ -196,7 +221,7 @@ describe('InvoiceService', () => {
       $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
     };
 
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     await expect(
       service.recordPayment(
         'inv-1',
@@ -235,20 +260,6 @@ describe('InvoiceService', () => {
           status: InvoiceStatus.PARTIALLY_PAID,
         }),
       },
-      transaction: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({
-          id: 'bt-1',
-          patientId: 'pat-1',
-          invoiceId: 'inv-1',
-          totalAmount: new Prisma.Decimal(500),
-          amountPaid: new Prisma.Decimal(0),
-          discountAmount: new Prisma.Decimal(0),
-          insuranceCovered: new Prisma.Decimal(0),
-          status: TransactionStatus.ACTIVE,
-        }),
-        update: jest.fn().mockResolvedValue({}),
-      },
       invoicePayment: {
         create: jest.fn().mockResolvedValue({
           id: 'ip-1',
@@ -262,9 +273,7 @@ describe('InvoiceService', () => {
       invoiceItem: {
         update: jest.fn().mockResolvedValue({}),
       },
-      transactionAuditLog: {
-        create: jest.fn().mockResolvedValue({}),
-      },
+      invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const prisma: any = {
       staff: { findUnique: jest.fn().mockResolvedValue({ id: 'st-1' }) },
@@ -280,11 +289,11 @@ describe('InvoiceService', () => {
 
   it('allocates partial payment to one invoice line atomically', async () => {
     const { tx, prisma } = makeAllocateTxMocks([baseItem()]);
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     const result = await service.allocatePaymentToInvoiceItems('inv-1', {
       staffId: 'st-1',
       amount: 200,
-      method: TransactionPaymentMethod.CASH,
+      method: InvoicePaymentMethod.CASH,
       allocations: [{ invoiceItemId: 'line-1', amount: 200 }],
     });
     expect(tx.invoicePayment.create).toHaveBeenCalled();
@@ -310,12 +319,12 @@ describe('InvoiceService', () => {
       baseItem(),
       baseItem({ id: 'line-2' }),
     ]);
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     await expect(
       service.allocatePaymentToInvoiceItems('inv-1', {
         staffId: 'st-1',
         amount: 100,
-        method: TransactionPaymentMethod.CASH,
+        method: InvoicePaymentMethod.CASH,
         allocations: [
           { invoiceItemId: 'line-1', amount: 80 },
           { invoiceItemId: 'line-2', amount: 50 },
@@ -329,12 +338,12 @@ describe('InvoiceService', () => {
     const { tx, prisma } = makeAllocateTxMocks([
       baseItem({ amountPaid: new Prisma.Decimal(200) }),
     ]);
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     await expect(
       service.allocatePaymentToInvoiceItems('inv-1', {
         staffId: 'st-1',
         amount: 350,
-        method: TransactionPaymentMethod.CASH,
+        method: InvoicePaymentMethod.CASH,
         allocations: [{ invoiceItemId: 'line-1', amount: 350 }],
       }),
     ).rejects.toThrow(BadRequestException);
@@ -343,12 +352,12 @@ describe('InvoiceService', () => {
 
   it('rejects unknown invoice item before recording payment', async () => {
     const { tx, prisma } = makeAllocateTxMocks([baseItem()]);
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     await expect(
       service.allocatePaymentToInvoiceItems('inv-1', {
         staffId: 'st-1',
         amount: 50,
-        method: TransactionPaymentMethod.CASH,
+        method: InvoicePaymentMethod.CASH,
         allocations: [{ invoiceItemId: 'wrong-line', amount: 50 }],
       }),
     ).rejects.toThrow(BadRequestException);
@@ -378,7 +387,7 @@ describe('InvoiceService', () => {
         create: jest.fn(),
       },
     };
-    const service = new InvoiceService(prisma);
+    const service = createInvoiceService(prisma);
     await service.create(
       { patientId: 'pat-1', staffId: 'st-1' },
       { user: { sub: 'staff-actor' } },

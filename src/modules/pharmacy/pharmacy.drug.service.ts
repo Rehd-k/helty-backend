@@ -72,20 +72,27 @@ export class PharmacyDrugService {
   }
 
   async findOne(id: string) {
-    const drug = await this.prisma.drug.findFirst({
-      where: { id, deletedAt: null },
-      include: {
-        manufacturer: true,
-        drugPrices: true,
-        createdBy: { select: { id: true, firstName: true, lastName: true } },
-        updatedBy: { select: { id: true, firstName: true, lastName: true } },
-        _count: { select: { batches: true, prescriptionItems: true } },
-      },
-    });
+    const [drug, batchSum] = await Promise.all([
+      this.prisma.drug.findFirst({
+        where: { id, deletedAt: null },
+        include: {
+          manufacturer: true,
+          drugPrices: true,
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+          updatedBy: { select: { id: true, firstName: true, lastName: true } },
+          _count: { select: { batches: true, prescriptionItems: true } },
+        },
+      }),
+      this.prisma.drugBatch.aggregate({
+        where: { drugId: id },
+        _sum: { quantityRemaining: true },
+      }),
+    ]);
     if (!drug) {
       throw new NotFoundException(`Drug "${id}" not found.`);
     }
-    return drug;
+    const quantity = batchSum._sum.quantityRemaining ?? 0;
+    return { ...drug, quantity };
   }
 
   async update(id: string, dto: UpdateDrugDto, updatedById: string) {
@@ -136,7 +143,7 @@ export class PharmacyDrugService {
         }),
         updatedBy: { connect: { id: updatedById } },
       };
-      console.log(data);
+
       return await this.prisma.$transaction(async (tx) => {
         await tx.drug.update({
           where: { id },
@@ -144,7 +151,6 @@ export class PharmacyDrugService {
         });
 
         if (dto.prices !== undefined) {
-          console.log(dto.prices);
           await tx.drugPrice.deleteMany({ where: { drugId: id } });
           if (dto.prices.length) {
             await tx.drugPrice.createMany({
@@ -321,7 +327,6 @@ export class PharmacyDrugService {
     }
     orderBy.push({ createdAt: sortOrder });
     orderBy.push({ id: sortOrder });
-    console.log(orderBy)
 
     const drugs = await this.prisma.drug.findMany({
       where,

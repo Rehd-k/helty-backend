@@ -60,7 +60,7 @@ export class PharmacyStockTransferService {
       }
     }
 
-    return this.prisma.stockTransfer.create({
+    const created = await this.prisma.stockTransfer.create({
       data: {
         fromLocationId: dto.fromLocationId,
         toLocationId: dto.toLocationId,
@@ -80,6 +80,9 @@ export class PharmacyStockTransferService {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
+
+    await this.approve(created.id, createdById);
+    return this.complete(created.id);
   }
 
   async findAll(query: ListStockTransferDto) {
