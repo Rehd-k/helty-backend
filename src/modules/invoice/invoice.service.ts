@@ -1365,6 +1365,7 @@ export class InvoiceService {
         include: {
           patient: {
             select: {
+              id: true,
               firstName: true,
               surname: true,
               phoneNumber: true,
@@ -1395,6 +1396,7 @@ export class InvoiceService {
       const patientName =
         [p.firstName, p.surname].filter(Boolean).join(' ').trim() || null;
       return {
+        patientId: p.id,
         patientName,
         invoiceId: inv.invoiceID,
         phone: p.phoneNumber ?? null,
