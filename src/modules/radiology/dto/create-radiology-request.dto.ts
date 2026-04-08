@@ -58,9 +58,24 @@ export class CreateRadiologyRequestDto {
 
   @ApiPropertyOptional({
     description:
-      'Service UUID to bill for this radiology request (creates invoice with this service)',
+      'Service UUID to bill for this radiology request when ordering from an encounter (creates invoice line). Ignored when paid-invoice linkage fields are all provided.',
   })
   @IsUUID()
   @IsOptional()
   serviceId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Invoice UUID — use together with invoiceItemId and serviceId for paid-waiting flow',
+  })
+  @IsUUID()
+  @IsOptional()
+  invoiceId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Invoice line item UUID (paid Radiology & Imaging line)',
+  })
+  @IsUUID()
+  @IsOptional()
+  invoiceItemId?: string;
 }

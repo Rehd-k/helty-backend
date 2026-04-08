@@ -5,13 +5,18 @@ import {
 } from '@nestjs/common';
 import { LabOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { InvoiceService } from '../../invoice/invoice.service';
+import { invoiceLinkException } from '../../../common/exceptions/invoice-link.exception';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 
 @Injectable()
 export class LabOrderService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async create(dto: CreateLabOrderDto) {
     const patient = await this.prisma.patient.findUnique({
@@ -39,6 +44,61 @@ export class LabOrderService {
       );
     }
 
+    const orderInclude = {
+      patient: {
+        select: { id: true, firstName: true, surname: true, patientId: true },
+      },
+      doctor: {
+        select: { id: true, firstName: true, lastName: true, staffId: true },
+      },
+      invoiceItem: {
+        select: { id: true, invoiceId: true, serviceId: true },
+      },
+      items: {
+        include: {
+          testVersion: {
+            include: {
+              test: { select: { id: true, name: true, sampleType: true } },
+            },
+          },
+        },
+      },
+    } as const;
+
+    const hasInvoiceLink = !!(dto.invoiceId || dto.invoiceItemId || dto.serviceId);
+    if (hasInvoiceLink) {
+      if (!dto.invoiceId || !dto.invoiceItemId || !dto.serviceId) {
+        throw invoiceLinkException(
+          'INVALID_INVOICE_LINK_PAYLOAD',
+          'invoiceId, invoiceItemId, and serviceId must all be provided together.',
+        );
+      }
+      return this.prisma.$transaction(async (tx) => {
+        await this.invoiceService.assertPaidInvoiceItemConsumable(tx, {
+          invoiceId: dto.invoiceId!,
+          invoiceItemId: dto.invoiceItemId!,
+          serviceId: dto.serviceId!,
+          patientId: dto.patientId,
+          mode: 'lab',
+        });
+        return tx.labOrder.create({
+          data: {
+            patientId: dto.patientId,
+            doctorId: dto.doctorId,
+            status: 'PENDING',
+            invoiceItemId: dto.invoiceItemId!,
+            items: {
+              create: dto.items.map((item) => ({
+                testVersionId: item.testVersionId,
+                status: 'PENDING',
+              })),
+            },
+          },
+          include: orderInclude,
+        });
+      });
+    }
+
     return this.prisma.labOrder.create({
       data: {
         patientId: dto.patientId,
@@ -51,23 +111,7 @@ export class LabOrderService {
           })),
         },
       },
-      include: {
-        patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
-        },
-        doctor: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
-        },
-        items: {
-          include: {
-            testVersion: {
-              include: {
-                test: { select: { id: true, name: true, sampleType: true } },
-              },
-            },
-          },
-        },
-      },
+      include: orderInclude,
     });
   }
 
@@ -95,6 +139,9 @@ export class LabOrderService {
             },
           },
           doctor: { select: { id: true, firstName: true, lastName: true } },
+          invoiceItem: {
+            select: { id: true, invoiceId: true, serviceId: true },
+          },
           items: {
             include: {
               testVersion: {
@@ -118,6 +165,9 @@ export class LabOrderService {
         },
         doctor: {
           select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
+        invoiceItem: {
+          select: { id: true, invoiceId: true, serviceId: true },
         },
         items: {
           include: {
@@ -147,6 +197,9 @@ export class LabOrderService {
       include: {
         patient: { select: { id: true, firstName: true, surname: true } },
         doctor: { select: { id: true, firstName: true, lastName: true } },
+        invoiceItem: {
+          select: { id: true, invoiceId: true, serviceId: true },
+        },
         items: {
           include: {
             testVersion: {

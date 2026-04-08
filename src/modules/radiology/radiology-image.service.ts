@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -7,7 +8,10 @@ const UPLOAD_BASE = path.join(process.cwd(), 'uploads', 'radiology');
 
 @Injectable()
 export class RadiologyImageService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async upload(
     requestId: string,
@@ -37,18 +41,25 @@ export class RadiologyImageService {
     const relativePath = path.relative(uploadsRoot, filePath);
     const normalizedPath = relativePath.split(path.sep).join('/');
 
-    return this.prisma.radiologyImage.create({
-      data: {
-        radiologyRequestId: requestId,
-        fileName: file.originalname || path.basename(filePath),
-        filePath: normalizedPath,
-        mimeType: file.mimetype || null,
-        fileSize: file.size || null,
-        uploadedById,
-      },
-      include: {
-        uploadedBy: { select: { id: true, firstName: true, lastName: true } },
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.radiologyImage.create({
+        data: {
+          radiologyRequestId: requestId,
+          fileName: file.originalname || path.basename(filePath),
+          filePath: normalizedPath,
+          mimeType: file.mimetype || null,
+          fileSize: file.size || null,
+          uploadedById,
+        },
+        include: {
+          uploadedBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+      await this.invoiceService.settleInvoiceItemIfPresent(
+        tx,
+        request.invoiceItemId,
+      );
+      return created;
     });
   }
 

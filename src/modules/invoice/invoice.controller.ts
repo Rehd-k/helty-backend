@@ -152,7 +152,7 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'List invoices by service category (matching line items only)',
     description:
-      'Returns invoices that have at least one line item linked to a Service whose ServiceCategory name matches any of the given strings (case-insensitive). Each row includes patient name, human `invoiceId`, phone, age, invoice date, and only the line items that matched. Categories align with seeded `ServiceCategory` names (see REF_Categories.csv). Use repeated `category` query params or comma-separated values.',
+      'Returns invoices that have at least one line item linked to a Service whose ServiceCategory name matches any of the given strings (case-insensitive). Each row includes a nested `invoice` object (id, invoiceID, status, patientId, patient, invoiceItems with service + category) plus display fields (patientName, phone, age, date). Optional filters: `status` (e.g. PAID; FULLY_PAID accepted as alias), `search`, `transactionId`, `invoiceId` / `invoiceID`, `patientName`. Categories align with seeded `ServiceCategory` names (see REF_Categories.csv).',
   })
   @ApiQuery({
     name: 'category',
@@ -163,11 +163,17 @@ export class InvoiceController {
   })
   @ApiQuery({ name: 'fromDate', required: false, type: String })
   @ApiQuery({ name: 'toDate', required: false, type: String })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'PARTIALLY_PAID', 'PAID'] })
+  @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'transactionId', required: false, type: String })
+  @ApiQuery({ name: 'invoiceId', required: false, type: String })
+  @ApiQuery({ name: 'invoiceID', required: false, type: String })
+  @ApiQuery({ name: 'patientName', required: false, type: String })
   @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
   @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
   @ApiOkResponse({
     description:
-      'Paginated rows: patientName, invoiceId, phone, age, date, services[]',
+      'Paginated rows with nested `invoice` and top-level patient display fields',
   })
   listByServiceCategories(@Query() query: ListInvoicesByCategoryQueryDto) {
     return this.invoiceService.listInvoicesByServiceCategories(query);

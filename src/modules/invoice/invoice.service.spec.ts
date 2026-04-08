@@ -403,4 +403,34 @@ describe('InvoiceService', () => {
       }),
     );
   });
+
+  it('settleInvoiceItemIfPresent is a no-op when id is missing', async () => {
+    const tx: any = {
+      invoiceItem: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    };
+    const service = createInvoiceService({} as any);
+    await service.settleInvoiceItemIfPresent(tx, undefined);
+    expect(tx.invoiceItem.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('settleInvoiceItemIfPresent updates only unsettled invoice item', async () => {
+    const tx: any = {
+      invoiceItem: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const service = createInvoiceService({} as any);
+    await service.settleInvoiceItemIfPresent(tx, 'item-1');
+    expect(tx.invoiceItem.updateMany).toHaveBeenCalledWith({
+      where: { id: 'item-1', settled: false },
+      data: { settled: true },
+    });
+  });
+
+  it('findFirstConsumableConsultationItem returns null when no payable consultation item exists', async () => {
+    const tx: any = {
+      invoice: { findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const service = createInvoiceService({} as any);
+    const result = await service.findFirstConsumableConsultationItem(tx, 'pat-1');
+    expect(result).toBeNull();
+  });
 });

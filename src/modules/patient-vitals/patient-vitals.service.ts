@@ -13,55 +13,125 @@ import {
 
 @Injectable()
 export class PatientVitalsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreatePatientVitalsDto) {
-    const {
-      patientId,
-      waitingPatientId,
-      admissionId,
-      systolic,
-      diastolic,
-      temperature,
-      height,
-      weight,
-      bmi,
-      pulseRate,
-      spo2,
-      painScore,
-      notes,
-      bloodGlucose,
-    } = dto;
-    const hasWaiting = Boolean(waitingPatientId);
-    const hasAdmission = Boolean(admissionId);
-    if (hasWaiting === hasAdmission) {
-      throw new BadRequestException(
-        'Provide exactly one of waitingPatientId or admissionId.',
-      );
-    }
-
-    const vitalsPayload = {
-      systolic,
-      diastolic,
-      temperature,
-      height,
-      weight,
-      bmi,
-      pulseRate,
-      spo2,
-      painScore,
-      notes,
-      bloodGlucose,
-    };
-
-    if (waitingPatientId) {
-      return this.createForWaitingPatient(
-        waitingPatientId,
+    console.log(dto);
+    try {
+      const {
         patientId,
-        vitalsPayload,
+        waitingPatientId,
+        admissionId,
+        invoiceId,
+        systolic,
+        diastolic,
+        temperature,
+        height,
+        weight,
+        bmi,
+        pulseRate,
+        spo2,
+        painScore,
+        notes,
+        bloodGlucose,
+      } = dto;
+      const targetCount = [waitingPatientId, admissionId, invoiceId].filter(
+        Boolean,
+      ).length;
+      if (targetCount !== 1) {
+        throw new BadRequestException(
+          'Provide exactly one of waitingPatientId, admissionId, or invoiceId.',
+        );
+      }
+
+      const vitalsPayload = {
+        systolic,
+        diastolic,
+        temperature,
+        height,
+        weight,
+        bmi,
+        pulseRate,
+        spo2,
+        painScore,
+        notes,
+        bloodGlucose,
+      };
+
+      if (waitingPatientId) {
+        return this.createForWaitingPatient(
+          waitingPatientId,
+          patientId,
+          vitalsPayload,
+        );
+      }
+
+      if (invoiceId) {
+        return this.createForInvoice(invoiceId, patientId, vitalsPayload);
+      }
+      return this.createForAdmission(admissionId!, patientId, vitalsPayload);
+    } catch (error) {
+      console.log(error);
+      throw new BadRequestException(error.message);
+    }
+
+  }
+
+  private async createForInvoice(
+    invoiceId: string,
+    patientId: string | undefined,
+    vitalsPayload: {
+      systolic?: number;
+      diastolic?: number;
+      temperature?: number;
+      height?: number;
+      weight?: number;
+      bmi?: number;
+      pulseRate?: number;
+      spo2?: number;
+      painScore?: number;
+      notes?: string;
+    },
+  ) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { vitals: true },
+    });
+    if (!invoice) {
+      throw new NotFoundException(`Invoice "${invoiceId}" not found.`);
+    }
+    if (patientId && patientId !== invoice.patientId) {
+      throw new BadRequestException(
+        `patientId "${patientId}" does not match the invoice patientId "${invoice.patientId}".`,
       );
     }
-    return this.createForAdmission(admissionId!, patientId, vitalsPayload);
+
+    if (invoice.vitals) {
+      return this.prisma.patientVitals.update({
+        where: { id: invoice.vitals.id },
+        data: vitalsPayload,
+        include: {
+          patient: true,
+          waitingPatient: true,
+          admission: true,
+          invoice: true,
+        },
+      });
+    }
+
+    return this.prisma.patientVitals.create({
+      data: {
+        patient: { connect: { id: invoice.patientId } },
+        invoice: { connect: { id: invoiceId } },
+        ...vitalsPayload,
+      },
+      include: {
+        patient: true,
+        waitingPatient: true,
+        admission: true,
+        invoice: true,
+      },
+    });
   }
 
   private async createForWaitingPatient(
@@ -111,6 +181,7 @@ export class PatientVitalsService {
           patient: true,
           waitingPatient: true,
           admission: true,
+          invoice: true,
         },
       });
     }
@@ -125,6 +196,7 @@ export class PatientVitalsService {
         patient: true,
         waitingPatient: true,
         admission: true,
+        invoice: true,
       },
     });
     await this.prisma.waitingPatient.update({

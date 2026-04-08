@@ -48,6 +48,10 @@ export class LabRequestService {
       },
     });
     if (dto.serviceId) {
+      await this.invoiceService.assertServiceCategoryForEncounterBilling(
+        dto.serviceId,
+        'lab',
+      );
       await this.invoiceService.createWithServiceItem({
         patientId: dto.patientId,
         encounterId: dto.encounterId,

@@ -4,12 +4,16 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { InvoiceService } from '../../invoice/invoice.service';
 import { CreateLabResultDto } from './dto/create-lab-result.dto';
 import { CreateLabResultBatchDto } from './dto/create-lab-result-batch.dto';
 
 @Injectable()
 export class LabResultService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   private async validateFieldBelongsToOrderItem(
     orderItemId: string,
@@ -46,24 +50,34 @@ export class LabResultService {
       throw new NotFoundException(`Staff "${dto.enteredBy}" not found.`);
     }
 
-    return this.prisma.labResult.upsert({
-      where: {
-        orderItemId_fieldId: {
+    return this.prisma.$transaction(async (tx) => {
+      const orderItem = await tx.labOrderItem.findUnique({
+        where: { id: dto.orderItemId },
+        select: { order: { select: { invoiceItemId: true } } },
+      });
+      await this.invoiceService.settleInvoiceItemIfPresent(
+        tx,
+        orderItem?.order?.invoiceItemId,
+      );
+      return tx.labResult.upsert({
+        where: {
+          orderItemId_fieldId: {
+            orderItemId: dto.orderItemId,
+            fieldId: dto.fieldId,
+          },
+        },
+        create: {
           orderItemId: dto.orderItemId,
           fieldId: dto.fieldId,
+          value: dto.value,
+          enteredById: dto.enteredBy,
         },
-      },
-      create: {
-        orderItemId: dto.orderItemId,
-        fieldId: dto.fieldId,
-        value: dto.value,
-        enteredById: dto.enteredBy,
-      },
-      update: { value: dto.value, enteredById: dto.enteredBy },
-      include: {
-        field: true,
-        enteredBy: { select: { id: true, firstName: true, lastName: true } },
-      },
+        update: { value: dto.value, enteredById: dto.enteredBy },
+        include: {
+          field: true,
+          enteredBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
     });
   }
 
@@ -79,26 +93,36 @@ export class LabResultService {
       await this.validateFieldBelongsToOrderItem(dto.orderItemId, r.fieldId);
     }
 
-    const created = await this.prisma.$transaction(
-      dto.results.map((r) =>
-        this.prisma.labResult.upsert({
-          where: {
-            orderItemId_fieldId: {
+    const created = await this.prisma.$transaction(async (tx) => {
+      const orderItem = await tx.labOrderItem.findUnique({
+        where: { id: dto.orderItemId },
+        select: { order: { select: { invoiceItemId: true } } },
+      });
+      await this.invoiceService.settleInvoiceItemIfPresent(
+        tx,
+        orderItem?.order?.invoiceItemId,
+      );
+      return Promise.all(
+        dto.results.map((r) =>
+          tx.labResult.upsert({
+            where: {
+              orderItemId_fieldId: {
+                orderItemId: dto.orderItemId,
+                fieldId: r.fieldId,
+              },
+            },
+            create: {
               orderItemId: dto.orderItemId,
               fieldId: r.fieldId,
+              value: r.value,
+              enteredById: dto.enteredBy,
             },
-          },
-          create: {
-            orderItemId: dto.orderItemId,
-            fieldId: r.fieldId,
-            value: r.value,
-            enteredById: dto.enteredBy,
-          },
-          update: { value: r.value, enteredById: dto.enteredBy },
-          include: { field: true },
-        }),
-      ),
-    );
+            update: { value: r.value, enteredById: dto.enteredBy },
+            include: { field: true },
+          }),
+        ),
+      );
+    });
     return created;
   }
 

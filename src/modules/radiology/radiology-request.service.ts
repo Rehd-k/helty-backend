@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
+import { invoiceLinkException } from '../../common/exceptions/invoice-link.exception';
 import { CreateRadiologyRequestDto } from './dto/create-radiology-request.dto';
 import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
@@ -56,6 +57,59 @@ export class RadiologyRequestService {
       }
     }
 
+    const requestInclude = {
+      patient: {
+        select: { id: true, firstName: true, surname: true, patientId: true },
+      },
+      encounter: { select: { id: true, encounterType: true, status: true } },
+      requestedBy: {
+        select: { id: true, firstName: true, lastName: true, staffId: true },
+      },
+      department: { select: { id: true, name: true } },
+      invoiceItem: {
+        select: {
+          id: true,
+          invoiceId: true,
+          serviceId: true,
+        },
+      },
+    } as const;
+
+    const hasInvoiceLink =
+      !!(dto.invoiceId || dto.invoiceItemId || dto.serviceId);
+    if (hasInvoiceLink) {
+      if (!dto.invoiceId || !dto.invoiceItemId || !dto.serviceId) {
+        throw invoiceLinkException(
+          'INVALID_INVOICE_LINK_PAYLOAD',
+          'invoiceId, invoiceItemId, and serviceId must all be provided together.',
+        );
+      }
+      return this.prisma.$transaction(async (tx) => {
+        await this.invoiceService.assertPaidInvoiceItemConsumable(tx, {
+          invoiceId: dto.invoiceId!,
+          invoiceItemId: dto.invoiceItemId!,
+          serviceId: dto.serviceId!,
+          patientId: dto.patientId,
+          mode: 'radiology',
+        });
+        return tx.radiologyRequest.create({
+          data: {
+            patientId: dto.patientId,
+            encounterId: dto.encounterId ?? undefined,
+            requestedById: dto.requestedById,
+            departmentId: dto.departmentId ?? undefined,
+            clinicalNotes: dto.clinicalNotes ?? null,
+            reasonForInvestigation: dto.reasonForInvestigation ?? null,
+            priority: dto.priority ?? 'ROUTINE',
+            scanType: dto.scanType,
+            bodyPart: dto.bodyPart ?? null,
+            invoiceItemId: dto.invoiceItemId!,
+          },
+          include: requestInclude,
+        });
+      });
+    }
+
     const radiologyRequest = await this.prisma.radiologyRequest.create({
       data: {
         patientId: dto.patientId,
@@ -68,18 +122,13 @@ export class RadiologyRequestService {
         scanType: dto.scanType,
         bodyPart: dto.bodyPart ?? null,
       },
-      include: {
-        patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
-        },
-        encounter: { select: { id: true, encounterType: true, status: true } },
-        requestedBy: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
-        },
-        department: { select: { id: true, name: true } },
-      },
+      include: requestInclude,
     });
     if (dto.encounterId && dto.serviceId) {
+      await this.invoiceService.assertServiceCategoryForEncounterBilling(
+        dto.serviceId,
+        'radiology',
+      );
       await this.invoiceService.createWithServiceItem({
         patientId: dto.patientId,
         encounterId: dto.encounterId,

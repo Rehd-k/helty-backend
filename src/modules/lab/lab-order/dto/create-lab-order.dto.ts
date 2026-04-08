@@ -5,9 +5,10 @@ import {
   IsArray,
   ArrayMinSize,
   ValidateNested,
+  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class LabOrderItemDto {
   @ApiProperty({ description: 'Lab test version UUID (must be active)' })
@@ -36,4 +37,25 @@ export class CreateLabOrderDto {
   @ValidateNested({ each: true })
   @Type(() => LabOrderItemDto)
   items: LabOrderItemDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Invoice UUID — use together with invoiceItemId and serviceId for paid-waiting flow',
+  })
+  @IsUUID()
+  @IsOptional()
+  invoiceId?: string;
+
+  @ApiPropertyOptional({ description: 'Paid laboratory invoice line item UUID' })
+  @IsUUID()
+  @IsOptional()
+  invoiceItemId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Service UUID on the invoice line (must match the billed laboratory service)',
+  })
+  @IsUUID()
+  @IsOptional()
+  serviceId?: string;
 }

@@ -25,9 +25,10 @@ export class WaitingPatientController {
   constructor(private readonly waitingPatientService: WaitingPatientService) {}
 
   @Post()
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.GONE)
   @ApiOperation({
-    summary: 'Add a patient to the waiting list (not in a consulting room yet)',
+    summary:
+      'Deprecated: direct waiting-patient creation removed (use paid consultation invoices)',
   })
   create(@Body() dto: CreateWaitingPatientDto) {
     return this.waitingPatientService.create(dto);
@@ -36,7 +37,7 @@ export class WaitingPatientController {
   @Get()
   @ApiOperation({
     summary:
-      'List waiting patients with optional filters and pagination (use unassignedOnly to list those not yet sent to a room)',
+      'List nursing queue from paid consultation invoices (registered patients only)',
   })
   findAll(@Query() query: QueryWaitingPatientDto) {
     return this.waitingPatientService.findAll(query);
@@ -44,7 +45,8 @@ export class WaitingPatientController {
 
   @Get('consulting-room/:consultingRoomId')
   @ApiOperation({
-    summary: 'List waiting patients for a specific consulting room',
+    summary:
+      'List invoice-backed waiting patients assigned to a specific consulting room',
   })
   @ApiParam({
     name: 'consultingRoomId',
@@ -57,9 +59,9 @@ export class WaitingPatientController {
   @Post(':id/send-to-room')
   @ApiOperation({
     summary:
-      'Send a waiting patient to a consulting room (vitals must exist for the patient first)',
+      'Assign consulting room on paid consultation invoice (vitals must already be linked)',
   })
-  @ApiParam({ name: 'id', description: 'Waiting patient entry UUID' })
+  @ApiParam({ name: 'id', description: 'Invoice UUID' })
   sendToConsultingRoom(
     @Param('id') id: string,
     @Body() dto: SendToConsultingRoomDto,
@@ -68,8 +70,8 @@ export class WaitingPatientController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a waiting patient entry by ID' })
-  @ApiParam({ name: 'id', description: 'Waiting patient UUID' })
+  @ApiOperation({ summary: 'Get one invoice-backed queue entry by invoice ID' })
+  @ApiParam({ name: 'id', description: 'Invoice UUID' })
   findOne(@Param('id') id: string) {
     return this.waitingPatientService.findOne(id);
   }
@@ -77,17 +79,17 @@ export class WaitingPatientController {
   @Patch(':id')
   @ApiOperation({
     summary:
-      'Update a waiting patient entry (e.g., assign or move to a room; vitals required before assigning a room)',
+      'Update invoice-backed queue assignment (consulting room only; seen is encounter-driven)',
   })
-  @ApiParam({ name: 'id', description: 'Waiting patient UUID' })
+  @ApiParam({ name: 'id', description: 'Invoice UUID' })
   update(@Param('id') id: string, @Body() dto: UpdateWaitingPatientDto) {
     return this.waitingPatientService.update(id, dto);
   }
 
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Remove a waiting patient entry' })
-  @ApiParam({ name: 'id', description: 'Waiting patient UUID' })
+  @HttpCode(HttpStatus.GONE)
+  @ApiOperation({ summary: 'Deprecated: queue rows are derived from invoices' })
+  @ApiParam({ name: 'id', description: 'Invoice UUID' })
   async remove(@Param('id') id: string) {
     await this.waitingPatientService.remove(id);
   }

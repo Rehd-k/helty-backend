@@ -59,6 +59,22 @@ export class CreateInvoiceDto {
   @IsUUID()
   @IsOptional()
   encounterId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional consulting room UUID assigned for nursing queue',
+    example: 'uuid-here',
+  })
+  @IsUUID()
+  @IsOptional()
+  consultingRoomId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional vitals UUID linked to this invoice (one-to-one)',
+    example: 'uuid-here',
+  })
+  @IsUUID()
+  @IsOptional()
+  vitalsId?: string;
 }
 
 export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) { }
@@ -84,6 +100,58 @@ export class ListInvoicesByCategoryQueryDto extends DateRangeSkipTakeDto {
   @ArrayMinSize(1, { message: 'At least one category is required' })
   @IsString({ each: true })
   category!: string[];
+
+  @ApiPropertyOptional({
+    enum: InvoiceStatus,
+    description:
+      'Filter by invoice status. Use PAID for paid-waiting lists. FULLY_PAID is accepted as an alias for PAID.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    const v = String(value).trim().toUpperCase().replace(/\s+/g, '_');
+    if (v === 'FULLY_PAID') return InvoiceStatus.PAID;
+    return value;
+  })
+  @IsEnum(InvoiceStatus)
+  status?: InvoiceStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Broad search: matches invoice UUID, human invoiceID (substring), patient first/surname, hospital patientId, or payment reference',
+  })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by payment reference (substring, case-insensitive)',
+  })
+  @IsOptional()
+  @IsString()
+  transactionId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by human invoice number or invoice UUID (substring on invoiceID; exact UUID matches id)',
+  })
+  @IsOptional()
+  @IsString()
+  invoiceId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Same as `invoiceId` (alternate query key used by some clients)',
+  })
+  @IsOptional()
+  @IsString()
+  invoiceID?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by patient first or last name (substring, case-insensitive)',
+  })
+  @IsOptional()
+  @IsString()
+  patientName?: string;
 }
 
 // ─── InvoiceItem DTOs ──────────────────────────────────────────────────────────

@@ -4,13 +4,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import { CreateRadiologyReportDto } from './dto/radiology-report.dto';
 import { UpdateRadiologyReportDto } from './dto/radiology-report.dto';
 import { RadiologyRequestStatus } from '@prisma/client';
 
 @Injectable()
 export class RadiologyReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async create(
     requestId: string,
@@ -40,8 +44,8 @@ export class RadiologyReportService {
 
     const signedAt = new Date();
 
-    const [report] = await this.prisma.$transaction([
-      this.prisma.radiologyStudyReport.create({
+    return this.prisma.$transaction(async (tx) => {
+      const report = await tx.radiologyStudyReport.create({
         data: {
           radiologyRequestId: requestId,
           findings: dto.findings ?? null,
@@ -54,13 +58,17 @@ export class RadiologyReportService {
         include: {
           signedBy: { select: { id: true, firstName: true, lastName: true } },
         },
-      }),
-      this.prisma.radiologyRequest.update({
+      });
+      await tx.radiologyRequest.update({
         where: { id: requestId },
         data: { status: RadiologyRequestStatus.REPORTED },
-      }),
-    ]);
-    return report;
+      });
+      await this.invoiceService.settleInvoiceItemIfPresent(
+        tx,
+        request.invoiceItemId,
+      );
+      return report;
+    });
   }
 
   async update(requestId: string, dto: UpdateRadiologyReportDto) {

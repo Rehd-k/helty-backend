@@ -1,85 +1,75 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsDateString,
+  IsInt,
   IsNotEmpty,
   IsOptional,
-  IsString,
-  IsInt,
   IsPositive,
+  IsString,
+  IsUUID,
   Min,
-  IsDateString,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class CreateWaitingPatientDto {
   @ApiProperty({
     description:
-      'Patient UUID being added to the waiting list (not yet in a consulting room)',
+      'Deprecated: waiting-patient records are no longer created directly.',
   })
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   patientId: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Staff UUID of the user adding this waiting patient entry (for audit)',
-  })
-  @IsString()
-  @IsOptional()
-  staffId?: string;
 }
 
-/** Use only after patient has vitals recorded. See POST /waiting-patients/:id/send-to-room */
 export class SendToConsultingRoomDto {
   @ApiProperty({
-    description: 'Consulting room UUID to send this waiting patient to',
+    description: 'Consulting room UUID to assign to this paid consultation invoice',
   })
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   consultingRoomId: string;
 
   @ApiPropertyOptional({
-    description: 'Staff UUID of the user sending the patient to the room',
+    description: 'Staff UUID of the user assigning the consulting room',
   })
-  @IsString()
+  @IsUUID()
   @IsOptional()
   staffId?: string;
 }
 
 export class UpdateWaitingPatientDto {
   @ApiPropertyOptional({
-    description:
-      'Consulting room UUID to move the waiting patient to (vitals must exist before assigning a room)',
+    description: 'Consulting room UUID to move this invoice-backed queue entry',
   })
-  @IsString()
+  @IsUUID()
   @IsOptional()
   consultingRoomId?: string;
 
   @ApiPropertyOptional({
-    description: 'Whether the patient has been seen by the doctor',
+    description:
+      'Whether patient has been seen. Derived from encounter linkage; not set directly here.',
   })
   @IsBoolean()
   @IsOptional()
   seen?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Staff UUID of the user updating this waiting patient entry',
+    description: 'Staff UUID of the user updating this queue entry',
   })
-  @IsString()
+  @IsUUID()
   @IsOptional()
   staffId?: string;
 }
 
 export class QueryWaitingPatientDto {
-  @ApiPropertyOptional({
-    description: 'Filter by consulting room UUID',
-  })
-  @IsString()
+  @ApiPropertyOptional({ description: 'Filter by consulting room UUID' })
+  @IsUUID()
   @IsOptional()
   consultingRoomId?: string;
 
   @ApiPropertyOptional({
-    description: 'If true, return only waiting patients not yet sent to a room',
+    description: 'If true, return only entries not yet assigned to a room',
   })
   @Transform(({ value }) =>
     value === undefined ? undefined : value === 'true' || value === true,
@@ -89,7 +79,7 @@ export class QueryWaitingPatientDto {
   unassignedOnly?: boolean;
 
   @ApiPropertyOptional({
-    description: 'If true, return only seen patients',
+    description: 'If true, return only entries already linked to an encounter',
   })
   @Transform(({ value }) =>
     value === undefined ? undefined : value === 'true' || value === true,
@@ -98,10 +88,8 @@ export class QueryWaitingPatientDto {
   @IsOptional()
   seen?: boolean;
 
-  @ApiPropertyOptional({
-    description: 'Filter by patient UUID',
-  })
-  @IsString()
+  @ApiPropertyOptional({ description: 'Filter by patient UUID' })
+  @IsUUID()
   @IsOptional()
   patientId?: string;
 
@@ -124,7 +112,7 @@ export class QueryWaitingPatientDto {
 
   @ApiPropertyOptional({
     description:
-      'Start date (ISO 8601). Will be normalized to start-of-day. Defaults to today if omitted/empty/invalid.',
+      'Optional start date (ISO 8601). If omitted together with toDate, no date filter is applied.',
     example: '2025-01-01',
   })
   @IsOptional()
@@ -133,10 +121,11 @@ export class QueryWaitingPatientDto {
 
   @ApiPropertyOptional({
     description:
-      'End date (ISO 8601). Will be normalized to end-of-day. Defaults to today if omitted/empty/invalid.',
+      'Optional end date (ISO 8601). If omitted together with fromDate, no date filter is applied.',
     example: '2025-12-31',
   })
   @IsOptional()
   @IsDateString()
   toDate?: string;
 }
+

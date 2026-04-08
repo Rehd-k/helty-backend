@@ -28,6 +28,12 @@ import {
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { invoiceLinkException } from '../../common/exceptions/invoice-link.exception';
+import {
+  LAB_BILLING_CATEGORIES,
+  RADIOLOGY_BILLING_CATEGORY,
+  CONSULTATION_BILLING_CATEGORY,
+} from './invoice-link.constants';
 
 const INVOICE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -59,6 +65,49 @@ export class InvoiceService {
     });
   }
 
+  private async assertConsultingRoomExists(consultingRoomId: string) {
+    const room = await this.prisma.consultingRoom.findUnique({
+      where: { id: consultingRoomId },
+      select: { id: true },
+    });
+    if (!room) {
+      throw new NotFoundException(
+        `Consulting room "${consultingRoomId}" not found.`,
+      );
+    }
+  }
+
+  private async assertVitalsLinkValid(params: {
+    vitalsId: string;
+    patientId: string;
+    invoiceIdToIgnore?: string;
+  }) {
+    const vitals = await this.prisma.patientVitals.findUnique({
+      where: { id: params.vitalsId },
+      select: {
+        id: true,
+        patientId: true,
+        invoice: { select: { id: true } },
+      },
+    });
+    if (!vitals) {
+      throw new NotFoundException(`Patient vitals "${params.vitalsId}" not found.`);
+    }
+    if (vitals.patientId && vitals.patientId !== params.patientId) {
+      throw new BadRequestException(
+        'Selected vitals does not belong to the invoice patient.',
+      );
+    }
+    if (
+      vitals.invoice &&
+      vitals.invoice.id !== params.invoiceIdToIgnore
+    ) {
+      throw new BadRequestException(
+        'This vitals record is already linked to another invoice.',
+      );
+    }
+  }
+
   private assertInvoiceNotPaid(status: InvoiceStatus) {
     if (status === InvoiceStatus.PAID) {
       throw new BadRequestException(
@@ -69,6 +118,257 @@ export class InvoiceService {
 
   private asDecimal(value: number | string | Prisma.Decimal) {
     return value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
+  }
+
+  private static readonly uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  private isUuid(s: string): boolean {
+    return InvoiceService.uuidRe.test(s);
+  }
+
+  private buildBroadInvoiceSearchOr(q: string): Prisma.InvoiceWhereInput[] {
+    const or: Prisma.InvoiceWhereInput[] = [
+      { invoiceID: { contains: q, mode: 'insensitive' } },
+      {
+        patient: {
+          OR: [
+            { firstName: { contains: q, mode: 'insensitive' } },
+            { surname: { contains: q, mode: 'insensitive' } },
+            { patientId: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      },
+      {
+        payments: {
+          some: { reference: { contains: q, mode: 'insensitive' } },
+        },
+      },
+    ];
+    if (this.isUuid(q)) {
+      or.push({ id: q });
+    }
+    return or;
+  }
+
+  /**
+   * Validates a paid invoice line for radiology/lab consumption inside a transaction.
+   * Call immediately before creating the request/order that sets `invoiceItemId`.
+   */
+  async assertPaidInvoiceItemConsumable(
+    tx: Prisma.TransactionClient,
+    params: {
+      invoiceId: string;
+      invoiceItemId: string;
+      serviceId: string;
+      patientId: string;
+      mode: 'radiology' | 'lab';
+    },
+  ): Promise<void> {
+    const invoice = await tx.invoice.findUnique({
+      where: { id: params.invoiceId },
+      select: { id: true, patientId: true, status: true },
+    });
+    if (!invoice) {
+      throw invoiceLinkException(
+        'INVOICE_ITEM_NOT_FOUND',
+        'Invoice not found.',
+      );
+    }
+    if (invoice.patientId !== params.patientId) {
+      throw invoiceLinkException(
+        'INVOICE_PATIENT_MISMATCH',
+        'This invoice does not belong to the selected patient.',
+      );
+    }
+    if (invoice.status !== InvoiceStatus.PAID) {
+      throw invoiceLinkException(
+        'INVOICE_NOT_PAID',
+        'This invoice is not paid. Only paid invoices can be used for this flow.',
+      );
+    }
+
+    const item = await tx.invoiceItem.findFirst({
+      where: {
+        id: params.invoiceItemId,
+        invoiceId: params.invoiceId,
+      },
+      include: {
+        service: {
+          include: { category: { select: { name: true } } },
+        },
+      },
+    });
+
+    if (!item) {
+      throw invoiceLinkException(
+        'INVOICE_ITEM_NOT_FOUND',
+        'Invoice line item not found on this invoice.',
+      );
+    }
+
+    if (item.serviceId !== params.serviceId) {
+      throw invoiceLinkException(
+        'INVOICE_ITEM_SERVICE_MISMATCH',
+        'The selected service does not match this invoice line.',
+      );
+    }
+    if (item.settled) {
+      throw invoiceLinkException(
+        'INVOICE_ITEM_ALREADY_CONSUMED',
+        'This paid invoice item has already been settled and cannot be reused.',
+      );
+    }
+
+    const categoryName = item.service?.category?.name ?? null;
+
+    if (params.mode === 'radiology') {
+      if (
+        !categoryName ||
+        categoryName.trim().toLowerCase() !==
+          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+      ) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_CATEGORY_MISMATCH',
+          'This invoice line is not a Radiology & Imaging service.',
+        );
+      }
+      const existing = await tx.radiologyRequest.findFirst({
+        where: { invoiceItemId: params.invoiceItemId },
+      });
+      if (existing) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_ALREADY_CONSUMED',
+          'This paid invoice item has already been used for a radiology request.',
+        );
+      }
+    } else {
+      const okCat = LAB_BILLING_CATEGORIES.some(
+        (c) =>
+          !!categoryName &&
+          categoryName.trim().toLowerCase() === c.trim().toLowerCase(),
+      );
+      if (!okCat) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_CATEGORY_MISMATCH',
+          'This invoice line is not a laboratory service.',
+        );
+      }
+      const existing = await tx.labOrder.findFirst({
+        where: { invoiceItemId: params.invoiceItemId },
+      });
+      if (existing) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_ALREADY_CONSUMED',
+          'This paid invoice item has already been used for a lab order.',
+        );
+      }
+    }
+  }
+
+  /**
+   * Idempotently marks an invoice item as settled.
+   * No-op when `invoiceItemId` is empty or already settled.
+   */
+  async settleInvoiceItemIfPresent(
+    tx: Prisma.TransactionClient,
+    invoiceItemId?: string | null,
+  ): Promise<void> {
+    if (!invoiceItemId) return;
+    await tx.invoiceItem.updateMany({
+      where: { id: invoiceItemId, settled: false },
+      data: { settled: true },
+    });
+  }
+
+  /**
+   * Picks the first paid, unsettled consultation invoice line for a patient.
+   * Selection is deterministic: oldest invoice first, then oldest item first.
+   */
+  async findFirstConsumableConsultationItem(
+    tx: Prisma.TransactionClient,
+    patientId: string,
+  ): Promise<{ invoiceId: string; invoiceItemId: string } | null> {
+    const invoice = await tx.invoice.findFirst({
+      where: {
+        patientId,
+        status: InvoiceStatus.PAID,
+        encounterId: null,
+        invoiceItems: {
+          some: {
+            settled: false,
+            service: {
+              category: {
+                name: {
+                  equals: CONSULTATION_BILLING_CATEGORY,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          },
+        },
+      },
+      include: {
+        invoiceItems: {
+          where: {
+            settled: false,
+            service: {
+              category: {
+                name: {
+                  equals: CONSULTATION_BILLING_CATEGORY,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const invoiceItemId = invoice?.invoiceItems?.[0]?.id;
+    if (!invoice || !invoiceItemId) return null;
+    return { invoiceId: invoice.id, invoiceItemId };
+  }
+
+  /** When auto-adding a service line from an encounter, enforce Radiology vs Lab category rules. */
+  async assertServiceCategoryForEncounterBilling(
+    serviceId: string,
+    mode: 'radiology' | 'lab',
+  ): Promise<void> {
+    const svc = await this.prisma.service.findUnique({
+      where: { id: serviceId },
+      include: { category: { select: { name: true } } },
+    });
+    if (!svc) {
+      throw new NotFoundException(`Service "${serviceId}" not found.`);
+    }
+    const name = svc.category?.name ?? null;
+    if (mode === 'radiology') {
+      if (
+        !name ||
+        name.trim().toLowerCase() !==
+          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+      ) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_CATEGORY_MISMATCH',
+          'Encounter billing for imaging/radiology must use a Radiology & Imaging service.',
+        );
+      }
+    } else {
+      const okCat = LAB_BILLING_CATEGORIES.some(
+        (c) =>
+          !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
+      );
+      if (!okCat) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_CATEGORY_MISMATCH',
+          'Encounter billing for laboratory orders must use a Laboratory service category.',
+        );
+      }
+    }
   }
 
   private patientAgeYears(dob: Date | null | undefined): number | null {
@@ -230,6 +530,8 @@ export class InvoiceService {
         service: { select: { id: true, name: true, cost: true } },
       },
     },
+    consultingRoom: { select: { id: true, name: true } },
+    vitals: true,
   } satisfies Prisma.InvoiceInclude;
 
   /**
@@ -241,6 +543,16 @@ export class InvoiceService {
    * or `updatedBy` when reusing an open invoice.
    */
   async create(dto: CreateInvoiceDto, req: any) {
+    if (dto.consultingRoomId) {
+      await this.assertConsultingRoomExists(dto.consultingRoomId);
+    }
+    if (dto.vitalsId) {
+      await this.assertVitalsLinkValid({
+        vitalsId: dto.vitalsId,
+        patientId: dto.patientId,
+      });
+    }
+
     const existing = await this.findOpenInvoiceForPatient(dto.patientId);
     if (existing) {
       await this.prisma.invoice.update({
@@ -250,6 +562,10 @@ export class InvoiceService {
           ...(dto.encounterId !== undefined && {
             encounterId: dto.encounterId,
           }),
+          ...(dto.consultingRoomId !== undefined && {
+            consultingRoomId: dto.consultingRoomId,
+          }),
+          ...(dto.vitalsId !== undefined && { vitalsId: dto.vitalsId }),
           updatedById: req.user.sub,
         },
       });
@@ -268,6 +584,8 @@ export class InvoiceService {
         createdById: req.user.sub,
         staffId: dto.staffId ?? '',
         encounterId: dto.encounterId ?? undefined,
+        consultingRoomId: dto.consultingRoomId ?? undefined,
+        vitalsId: dto.vitalsId ?? undefined,
       },
       include: InvoiceService.invoiceCreateInclude,
     });
@@ -414,6 +732,8 @@ export class InvoiceService {
       },
     },
     createdBy: { select: { id: true, firstName: true, lastName: true } },
+    consultingRoom: { select: { id: true, name: true } },
+    vitals: true,
     _count: { select: { invoiceItems: true } },
   } satisfies Prisma.InvoiceInclude;
 
@@ -544,6 +864,8 @@ export class InvoiceService {
             },
           },
         },
+        consultingRoom: { select: { id: true, name: true } },
+        vitals: true,
       },
     });
 
@@ -578,12 +900,25 @@ export class InvoiceService {
    * Authenticated staff member is recorded as `updatedBy`.
    */
   async update(id: string, dto: UpdateInvoiceDto, req: any) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+    if (dto.consultingRoomId) {
+      await this.assertConsultingRoomExists(dto.consultingRoomId);
+    }
+    if (dto.vitalsId) {
+      await this.assertVitalsLinkValid({
+        vitalsId: dto.vitalsId,
+        patientId: existing.patientId,
+        invoiceIdToIgnore: id,
+      });
+    }
     return this.prisma.invoice.update({
       where: { id },
       data: {
         status: dto.status,
         staffId: dto.staffId,
+        encounterId: dto.encounterId,
+        consultingRoomId: dto.consultingRoomId,
+        vitalsId: dto.vitalsId,
         updatedById: req.user.sub,
       },
       include: {
@@ -591,6 +926,8 @@ export class InvoiceService {
           select: { id: true, patientId: true, firstName: true, surname: true },
         },
         updatedBy: { select: { id: true, firstName: true, lastName: true } },
+        consultingRoom: { select: { id: true, name: true } },
+        vitals: true,
         invoiceItems: {
           include: {
             service: { select: { id: true, name: true, cost: true } },
@@ -1240,7 +1577,19 @@ export class InvoiceService {
    * one of the given ServiceCategory names. Only matching line items are returned.
    */
   async listInvoicesByServiceCategories(query: ListInvoicesByCategoryQueryDto) {
-    const { skip = 0, take = 20, fromDate, toDate, category } = query;
+    const {
+      skip = 0,
+      take = 20,
+      fromDate,
+      toDate,
+      category,
+      status,
+      search,
+      transactionId,
+      invoiceId,
+      invoiceID,
+      patientName,
+    } = query;
     const normalized = [
       ...new Set(
         category.map((c) => c.trim()).filter((c) => c.length > 0),
@@ -1268,9 +1617,49 @@ export class InvoiceService {
       },
     };
 
+    const andExtra: Prisma.InvoiceWhereInput[] = [];
+    const humanInvoice = invoiceId?.trim() || invoiceID?.trim();
+    if (humanInvoice) {
+      const or: Prisma.InvoiceWhereInput[] = [
+        { invoiceID: { contains: humanInvoice, mode: 'insensitive' } },
+      ];
+      if (this.isUuid(humanInvoice)) {
+        or.push({ id: humanInvoice });
+      }
+      andExtra.push({ OR: or });
+    }
+    if (transactionId?.trim()) {
+      andExtra.push({
+        payments: {
+          some: {
+            reference: {
+              contains: transactionId.trim(),
+              mode: 'insensitive',
+            },
+          },
+        },
+      });
+    }
+    if (patientName?.trim()) {
+      const pn = patientName.trim();
+      andExtra.push({
+        patient: {
+          OR: [
+            { firstName: { contains: pn, mode: 'insensitive' } },
+            { surname: { contains: pn, mode: 'insensitive' } },
+          ],
+        },
+      });
+    }
+    if (search?.trim()) {
+      andExtra.push({ OR: this.buildBroadInvoiceSearchOr(search.trim()) });
+    }
+
     const where: Prisma.InvoiceWhereInput = {
       ...dateClause,
+      ...(status ? { status } : {}),
       invoiceItems: { some: itemMatchWhere },
+      ...(andExtra.length ? { AND: andExtra } : {}),
     };
 
     const [invoices, total] = await Promise.all([
@@ -1282,10 +1671,12 @@ export class InvoiceService {
         include: {
           patient: {
             select: {
+              id: true,
               firstName: true,
               surname: true,
               phoneNumber: true,
               dob: true,
+              patientId: true,
             },
           },
           invoiceItems: {
@@ -1307,22 +1698,41 @@ export class InvoiceService {
 
     const rows = invoices.map((inv) => {
       const p = inv.patient;
-      const patientName =
+      const patientDisplayName =
         [p.firstName, p.surname].filter(Boolean).join(' ').trim() || null;
       return {
-        patientName,
-        invoiceId: inv.invoiceID,
+        patientName: patientDisplayName,
         phone: p.phoneNumber ?? null,
         age: this.patientAgeYears(p.dob),
         date: inv.createdAt.toISOString(),
-        services: inv.invoiceItems.map((it) => ({
-          invoiceItemId: it.id,
-          name: it.service?.name ?? it.customDescription ?? null,
-          category: it.service?.category?.name ?? null,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice.toFixed(2),
-          amountPaid: it.amountPaid.toFixed(2),
-        })),
+        invoice: {
+          id: inv.id,
+          invoiceID: inv.invoiceID,
+          invoiceId: inv.invoiceID,
+          status: inv.status,
+          patientId: inv.patientId,
+          patient: { id: p.id, patientId: p.patientId ?? null },
+          invoiceItems: inv.invoiceItems.map((it) => ({
+            id: it.id,
+            serviceId: it.serviceId,
+            service: it.service
+              ? {
+                  id: it.service.id,
+                  name: it.service.name,
+                  category: it.service.category
+                    ? {
+                        id: it.service.category.id,
+                        name: it.service.category.name,
+                      }
+                    : null,
+                }
+              : null,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice.toFixed(2),
+            amountPaid: it.amountPaid.toFixed(2),
+            customDescription: it.customDescription,
+          })),
+        },
       };
     });
 

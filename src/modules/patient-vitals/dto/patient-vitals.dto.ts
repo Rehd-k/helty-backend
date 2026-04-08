@@ -32,6 +32,14 @@ export class CreatePatientVitalsDto {
   admissionId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'Invoice UUID for outpatient paid queue flow. Mutually exclusive with waitingPatientId and admissionId.',
+  })
+  @IsString()
+  @IsOptional()
+  invoiceId?: string;
+
+  @ApiPropertyOptional({
     description: 'Systolic blood pressure in mmHg',
     example: 120,
   })

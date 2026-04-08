@@ -47,6 +47,10 @@ export class ImagingRequestService {
       },
     });
     if (dto.serviceId) {
+      await this.invoiceService.assertServiceCategoryForEncounterBilling(
+        dto.serviceId,
+        'radiology',
+      );
       await this.invoiceService.createWithServiceItem({
         patientId: dto.patientId,
         drugId: dto.drugId,
@@ -54,8 +58,7 @@ export class ImagingRequestService {
         staffId: dto.requestedByDoctorId,
         serviceId: dto.serviceId,
       });
-    }
-     if (dto.drugId) {
+    } else if (dto.drugId) {
       await this.invoiceService.createWithServiceItem({
         patientId: dto.patientId,
         drugId: dto.drugId,

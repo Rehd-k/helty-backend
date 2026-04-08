@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import {
   CreateEncounterDto,
   StartOutpatientEncounterDto,
@@ -19,12 +20,70 @@ import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class EncounterService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async create(dto: CreateEncounterDto, req: any) {
     await this.validatePatientAndDoctor(dto.patientId, dto.doctorId);
     if (dto.admissionId) {
       await this.validateAdmissionForPatient(dto.admissionId, dto.patientId);
+    }
+
+    if (dto.encounterType === EncounterType.OUTPATIENT) {
+      return this.prisma.$transaction(async (tx) => {
+        const consultationItem =
+          await this.invoiceService.findFirstConsumableConsultationItem(
+            tx,
+            dto.patientId,
+          );
+        if (!consultationItem) {
+          throw new BadRequestException(
+            'No paid unsettled consultation invoice item is available for this patient.',
+          );
+        }
+
+        const encounter = await tx.encounter.create({
+          data: {
+            patientId: dto.patientId,
+            doctorId: dto.doctorId,
+            admissionId: dto.admissionId,
+            encounterType: dto.encounterType,
+            startTime: new Date(Date.now()),
+            endTime: dto.endTime ? new Date(dto.endTime) : undefined,
+            chiefComplaint: dto.chiefComplaint,
+            triageNotes: dto.triageNotes,
+            status: dto.status ?? EncounterStatus.ONGOING,
+            createdById: req.user.sub,
+          },
+          include: {
+            patient: {
+              select: {
+                id: true,
+                firstName: true,
+                surname: true,
+                patientId: true,
+              },
+            },
+            doctor: {
+              select: { id: true, firstName: true, lastName: true, staffId: true },
+            },
+            admission: dto.admissionId
+              ? { select: { id: true, status: true } }
+              : false,
+          },
+        });
+        await this.invoiceService.settleInvoiceItemIfPresent(
+          tx,
+          consultationItem.invoiceItemId,
+        );
+        await tx.invoice.update({
+          where: { id: consultationItem.invoiceId },
+          data: { encounterId: encounter.id },
+        });
+        return encounter;
+      });
     }
 
     return this.prisma.encounter.create({
@@ -60,24 +119,46 @@ export class EncounterService {
 
     const createdById = dto.createdById ?? dto.doctorId;
 
-    const encounter = await this.prisma.encounter.create({
-      data: {
-        patientId: dto.patientId,
-        doctorId: dto.doctorId,
-        encounterType: EncounterType.OUTPATIENT,
-        startTime: new Date(),
-        chiefComplaint: dto.chiefComplaint,
-        status: EncounterStatus.ONGOING,
-        createdById,
-      },
-      include: {
-        patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
+    const encounter = await this.prisma.$transaction(async (tx) => {
+      const consultationItem =
+        await this.invoiceService.findFirstConsumableConsultationItem(
+          tx,
+          dto.patientId,
+        );
+      if (!consultationItem) {
+        throw new BadRequestException(
+          'No paid unsettled consultation invoice item is available for this patient.',
+        );
+      }
+
+      const createdEncounter = await tx.encounter.create({
+        data: {
+          patientId: dto.patientId,
+          doctorId: dto.doctorId,
+          encounterType: EncounterType.OUTPATIENT,
+          startTime: new Date(),
+          chiefComplaint: dto.chiefComplaint,
+          status: EncounterStatus.ONGOING,
+          createdById,
         },
-        doctor: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
+        include: {
+          patient: {
+            select: { id: true, firstName: true, surname: true, patientId: true },
+          },
+          doctor: {
+            select: { id: true, firstName: true, lastName: true, staffId: true },
+          },
         },
-      },
+      });
+      await this.invoiceService.settleInvoiceItemIfPresent(
+        tx,
+        consultationItem.invoiceItemId,
+      );
+      await tx.invoice.update({
+        where: { id: consultationItem.invoiceId },
+        data: { encounterId: createdEncounter.id },
+      });
+      return createdEncounter;
     });
 
     if (dto.waitingPatientId) {
@@ -154,6 +235,14 @@ export class EncounterService {
     const expandSet = expand
       ? new Set(expand.split(',').map((s) => s.trim().toLowerCase()))
       : new Set<string>();
+    const encounterBase = await this.prisma.encounter.findUnique({
+      where: { id },
+      select: { id: true, patientId: true },
+    });
+    if (!encounterBase) {
+      throw new NotFoundException(`Encounter "${id}" not found.`);
+    }
+
     const encounter = await this.prisma.encounter.findUnique({
       where: { id },
       include: {
@@ -170,22 +259,45 @@ export class EncounterService {
         },
         admission: true,
         appointment: expandSet.has('appointment') || expandSet.has('*'),
-        doctorReports: true,
-        prescriptions: true,
-        labReports: true,
-        radiologyReports: true,
+        doctorReports: { where: { encounterId: encounterBase.id } },
+        prescriptions: {
+          where: {
+            encounterId: encounterBase.id,
+            patientId: encounterBase.patientId,
+          },
+        },
+        labReports: {
+          where: {
+            encounterId: encounterBase.id,
+            patientId: encounterBase.patientId,
+          },
+        },
+        radiologyReports: {
+          where: {
+            encounterId: encounterBase.id,
+            patientId: encounterBase.patientId,
+          },
+        },
         diagnoses: true,
-        labRequests: true,
-        imagingRequests: true,
+        labRequests: {
+          where: {
+            encounterId: encounterBase.id,
+            patientId: encounterBase.patientId,
+          },
+        },
+        imagingRequests: {
+          where: {
+            encounterId: encounterBase.id,
+            patientId: encounterBase.patientId,
+          },
+        },
         medicationOrders:
           expandSet.has('medicationorders') || expandSet.has('*'),
         legacyLabOrders: expandSet.has('laborders') || expandSet.has('*'),
         imagingOrders: expandSet.has('imagingorders') || expandSet.has('*'),
       },
     });
-    if (!encounter) {
-      throw new NotFoundException(`Encounter "${id}" not found.`);
-    }
+    if (!encounter) throw new NotFoundException(`Encounter "${id}" not found.`);
     return encounter;
   }
 

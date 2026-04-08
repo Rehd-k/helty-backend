@@ -771,8 +771,12 @@ model Invoice {
   staff           Staff               @relation(fields: [staffId], references: [id])
   staffId         String
 
-  encounter   Encounter? @relation(fields: [encounterId], references: [id])
-  encounterId String?
+  encounter        Encounter?      @relation(fields: [encounterId], references: [id])
+  encounterId      String?
+  consultingRoom   ConsultingRoom? @relation(fields: [consultingRoomId], references: [id], onDelete: SetNull)
+  consultingRoomId String?
+  vitals           PatientVitals?  @relation("InvoiceVitals", fields: [vitalsId], references: [id], onDelete: SetNull)
+  vitalsId         String?         @unique
 
   @@index([patientId])
   @@index([invoiceID])
@@ -780,6 +784,7 @@ model Invoice {
   @@index([updatedById])
   @@index([staffId])
   @@index([encounterId])
+  @@index([consultingRoomId])
 }
 
 model InvoiceItem {
@@ -803,6 +808,8 @@ model InvoiceItem {
   isRecurringDaily Boolean                   @default(false)
   usageSegments    InvoiceItemUsageSegment[]
   allocations      InvoiceItemPayment[]
+  radiologyRequest RadiologyRequest?
+  labOrder         LabOrder?
 
   @@index([invoiceId])
 }
@@ -1577,6 +1584,7 @@ model PatientVitals {
   patientId         String?
   nurse             Nurse?          @relation(fields: [recordedByNurseId], references: [id])
   recordedByNurseId String?
+  invoice           Invoice?        @relation("InvoiceVitals")
 
   shiftType  ShiftType?
   recordedAt DateTime   @default(now())
@@ -1598,6 +1606,7 @@ model ConsultingRoom {
   staff           Staff?           @relation(fields: [staffId], references: [id])
   staffId         String?
   waitingPatients WaitingPatient[]
+  invoices        Invoice[]
 }
 
 model WaitingPatient {
@@ -1854,11 +1863,13 @@ model LabTestField {
 }
 
 model LabOrder {
-  id        String         @id @default(uuid())
-  patientId String
-  doctorId  String
-  status    LabOrderStatus @default(PENDING)
-  createdAt DateTime       @default(now())
+  id            String         @id @default(uuid())
+  patientId     String
+  doctorId      String
+  status        LabOrderStatus @default(PENDING)
+  invoiceItem   InvoiceItem?   @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId String?        @unique
+  createdAt     DateTime       @default(now())
 
   patient Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
   doctor  Staff          @relation("LabOrderDoctor", fields: [doctorId], references: [id], onDelete: Restrict)
@@ -1867,6 +1878,7 @@ model LabOrder {
   @@index([patientId])
   @@index([doctorId])
   @@index([status])
+  @@index([invoiceItemId])
 }
 
 model LabOrderItem {
@@ -2423,6 +2435,8 @@ model RadiologyRequest {
   scanType               RadiologyModality
   bodyPart               String?
   status                 RadiologyRequestStatus @default(PENDING)
+  invoiceItem            InvoiceItem?           @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId          String?                @unique
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
 
@@ -2436,6 +2450,7 @@ model RadiologyRequest {
   @@index([requestedById])
   @@index([createdAt])
   @@index([priority])
+  @@index([invoiceItemId])
 }
 
 model RadiologySchedule {

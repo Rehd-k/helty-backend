@@ -5,6 +5,7 @@ import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { HttpExceptionShapeFilter } from './common/filters/http-exception-shape.filter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 
 async function bootstrap() {
@@ -20,7 +21,10 @@ async function bootstrap() {
 
   app.enableCors({});
 
-  app.useGlobalFilters(new PrismaExceptionFilter());
+  app.useGlobalFilters(
+    new HttpExceptionShapeFilter(),
+    new PrismaExceptionFilter(),
+  );
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // Swagger

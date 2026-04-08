@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,61 +13,98 @@ import {
   UpdateWaitingPatientDto,
 } from './dto/waiting-patient.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { CONSULTATION_BILLING_CATEGORY } from '../invoice/invoice-link.constants';
 
 @Injectable()
 export class WaitingPatientService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
-  /** Ensures the patient has at least one vitals record before allowing room assignment. */
-  private async assertPatientHasVitals(patientId: string): Promise<void> {
-    const count = await this.prisma.patientVitals.count({
-      where: { patientId },
-    });
-    if (count === 0) {
-      throw new BadRequestException(
-        'Vitals must be added for this patient before sending them to a consulting room.',
-      );
-    }
-  }
-
-  /** Add a patient to the waiting list (not yet in a consulting room). */
-  async create(dto: CreateWaitingPatientDto) {
-    const patient = await this.prisma.patient.findUnique({
-      where: { id: dto.patientId },
-    });
-    if (!patient) {
-      throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
-    }
-
-    if (dto.staffId) {
-      const staff = await this.prisma.staff.findUnique({
-        where: { id: dto.staffId },
-      });
-      if (!staff) {
-        throw new NotFoundException(`Staff "${dto.staffId}" not found.`);
-      }
-    }
-
-    return this.prisma.waitingPatient.create({
-      data: {
-        patient: { connect: { id: dto.patientId } },
-        ...(dto.staffId && {
-          createdBy: { connect: { id: dto.staffId } },
-          updatedBy: { connect: { id: dto.staffId } },
-        }),
+  private queueBaseWhere(dateRange?: { from: Date; to: Date }): Prisma.InvoiceWhereInput {
+    return {
+      ...(dateRange ? { createdAt: { gte: dateRange.from, lte: dateRange.to } } : {}),
+      status: 'PAID',
+      patient: {
+        patientId: { not: null },
+        NOT: { patientId: '' },
       },
-      include: {
-        patient: true,
-        consultingRoom: true,
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
+      invoiceItems: {
+        some: {
+          settled: false,
+          service: {
+            category: {
+              name: {
+                equals: CONSULTATION_BILLING_CATEGORY,
+                mode: 'insensitive',
+              },
+            },
           },
         },
       },
-    });
+    };
+  }
+
+  private queueInclude = {
+    patient: {
+      select: {
+        id: true,
+        firstName: true,
+        surname: true,
+        email: true,
+        patientId: true
+      }
+    },
+    consultingRoom: { select: { id: true, name: true } },
+    vitals: true,
+    encounter: { select: { id: true, status: true, startTime: true } },
+    invoiceItems: {
+      where: {
+        settled: false,
+        service: {
+          category: {
+            name: {
+              equals: CONSULTATION_BILLING_CATEGORY,
+              mode: 'insensitive',
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        serviceId: true,
+        settled: true,
+        service: { select: { id: true, name: true } },
+      },
+    },
+  } satisfies Prisma.InvoiceInclude;
+
+  private toQueueRow(inv: any) {
+    return {
+      id: inv.id,
+      invoiceId: inv.id,
+      invoiceID: inv.invoiceID,
+      patientId: inv.patientId,
+      consultingRoomId: inv.consultingRoomId ?? null,
+      seen: Boolean(inv.encounterId),
+      createdAt: inv.createdAt,
+      updatedAt: inv.updatedAt,
+      patient: inv.patient,
+      consultingRoom: inv.consultingRoom ?? null,
+      vitals: inv.vitals ?? null,
+      encounter: inv.encounter ?? null,
+      consultationServices: (inv.invoiceItems ?? []).map((it: any) => ({
+        invoiceItemId: it.id,
+        serviceId: it.serviceId ?? null,
+        settled: Boolean(it.settled),
+        name: it.service?.name ?? null,
+      })),
+      invoice: inv,
+    };
+  }
+
+  async create(_dto: CreateWaitingPatientDto) {
+    throw new GoneException(
+      'Waiting-patient creation is deprecated. Queue rows are now derived from paid consultation invoices.',
+    );
   }
 
   async findAll(query: QueryWaitingPatientDto) {
@@ -81,102 +119,53 @@ export class WaitingPatientService {
       fromDate,
     } = query;
 
-    const { from, to } = parseDateRange(fromDate, toDate);
-
-    const where: Prisma.WaitingPatientWhereInput = {
-      createdAt: { gte: from, lte: to },
-      patient: { patientId: { not: null } },
-    };
-
-    if (unassignedOnly) {
-      where.consultingRoomId = null;
-    } else if (seen) {
-      where.seen = true;
-    } else if (consultingRoomId) {
+    const dateRange =
+      fromDate || toDate ? parseDateRange(fromDate, toDate) : undefined;
+    const where: Prisma.InvoiceWhereInput = this.queueBaseWhere(dateRange);
+    if (consultingRoomId) {
       where.consultingRoomId = consultingRoomId;
+    } else if (unassignedOnly) {
+      where.consultingRoomId = null;
     } else if (unassignedOnly === false) {
       where.consultingRoomId = { not: null };
     }
 
-    if (patientId) {
-      where.patientId = patientId;
-    }
+    if (seen === true) where.encounterId = { not: null };
+    if (seen === false) where.encounterId = null;
+    if (patientId) where.patientId = patientId;
 
-    const [data, total] = await Promise.all([
-      this.prisma.waitingPatient.findMany({
+    const [rows, total] = await Promise.all([
+      this.prisma.invoice.findMany({
         where,
         skip,
         take,
         orderBy: { createdAt: 'asc' },
-        include: {
-          patient: true,
-          vitals: true,
-          consultingRoom: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-
-          service: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-        },
+        include: this.queueInclude,
       }),
-      this.prisma.waitingPatient.count({}),
+      this.prisma.invoice.count({ where }),
     ]);
 
-    return { data, total, skip, take };
+    return { data: rows.map((r) => this.toQueueRow(r)), total, skip, take };
   }
 
   async findOne(id: string) {
-    const waiting = await this.prisma.waitingPatient.findUnique({
-      where: { id },
-      include: {
-        patient: true,
-        consultingRoom: true,
-        vitals: true,
-
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        updatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
+    const inv = await this.prisma.invoice.findFirst({
+      where: { ...this.queueBaseWhere(), id },
+      include: this.queueInclude,
     });
-
-    if (!waiting) {
-      throw new NotFoundException(`Waiting patient "${id}" not found.`);
+    if (!inv) {
+      throw new NotFoundException(`Queue entry for invoice "${id}" not found.`);
     }
-
-    return waiting;
+    return this.toQueueRow(inv);
   }
 
-  /** Send a waiting patient to a consulting room. Vitals must exist for the patient first. */
   async sendToConsultingRoom(id: string, dto: SendToConsultingRoomDto) {
-    const waiting = await this.findOne(id);
-
-    await this.assertPatientHasVitals(waiting.patientId);
-
+    const row = await this.findOne(id);
+    if (!row.vitals) {
+      throw new BadRequestException(
+        'Vitals must be linked to this invoice before sending to consulting room.',
+      );
+    }
     const room = await this.prisma.consultingRoom.findUnique({
       where: { id: dto.consultingRoomId },
     });
@@ -185,7 +174,6 @@ export class WaitingPatientService {
         `Consulting room "${dto.consultingRoomId}" not found.`,
       );
     }
-
     if (dto.staffId) {
       const staff = await this.prisma.staff.findUnique({
         where: { id: dto.staffId },
@@ -195,33 +183,15 @@ export class WaitingPatientService {
       }
     }
 
-    return this.prisma.waitingPatient.update({
+    const updated = await this.prisma.invoice.update({
       where: { id },
       data: {
-        consultingRoom: { connect: { id: dto.consultingRoomId } },
-        ...(dto.staffId && {
-          updatedBy: { connect: { id: dto.staffId } },
-        }),
+        consultingRoomId: dto.consultingRoomId,
+        ...(dto.staffId ? { updatedById: dto.staffId } : {}),
       },
-      include: {
-        patient: true,
-        consultingRoom: true,
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        updatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
+      include: this.queueInclude,
     });
+    return this.toQueueRow(updated);
   }
 
   async findByConsultingRoom(consultingRoomId: string) {
@@ -234,88 +204,52 @@ export class WaitingPatientService {
       );
     }
 
-    return this.prisma.waitingPatient.findMany({
-      where: { consultingRoomId },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        patient: true,
-        consultingRoom: true,
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
+    const rows = await this.prisma.invoice.findMany({
+      where: {
+        ...this.queueBaseWhere(),
+        consultingRoomId,
       },
+      orderBy: { createdAt: 'asc' },
+      include: this.queueInclude,
     });
+    return rows.map((r) => this.toQueueRow(r));
   }
 
   async update(id: string, dto: UpdateWaitingPatientDto) {
-    const waiting = await this.findOne(id);
-    const { consultingRoomId, seen, staffId } = dto;
-
-    if (consultingRoomId) {
-      await this.assertPatientHasVitals(waiting.patientId);
-
+    await this.findOne(id);
+    if (dto.seen !== undefined) {
+      throw new BadRequestException(
+        'Seen flag is encounter-driven. Link encounterId on invoice instead.',
+      );
+    }
+    if (dto.consultingRoomId) {
       const room = await this.prisma.consultingRoom.findUnique({
-        where: { id: consultingRoomId },
+        where: { id: dto.consultingRoomId },
       });
       if (!room) {
         throw new NotFoundException(
-          `Consulting room "${consultingRoomId}" not found.`,
+          `Consulting room "${dto.consultingRoomId}" not found.`,
         );
       }
     }
 
-    if (staffId) {
-      const staff = await this.prisma.staff.findUnique({
-        where: { id: staffId },
-      });
-      if (!staff) {
-        throw new NotFoundException(`Staff "${staffId}" not found.`);
-      }
-    }
-
-    return this.prisma.waitingPatient.update({
+    const updated = await this.prisma.invoice.update({
       where: { id },
       data: {
-        ...(consultingRoomId && {
-          consultingRoom: { connect: { id: consultingRoomId } },
+        ...(dto.consultingRoomId !== undefined && {
+          consultingRoomId: dto.consultingRoomId,
         }),
-        ...(seen !== undefined && { seen }),
-        ...(staffId && {
-          updatedBy: { connect: { id: staffId } },
-        }),
+        ...(dto.staffId ? { updatedById: dto.staffId } : {}),
       },
-      include: {
-        patient: true,
-        consultingRoom: true,
-        createdBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        updatedBy: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
+      include: this.queueInclude,
     });
+    return this.toQueueRow(updated);
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-
-    await this.prisma.waitingPatient.delete({
-      where: { id },
-    });
-
-    return { message: 'Waiting patient entry removed successfully.' };
+  async remove(_id: string) {
+    throw new GoneException(
+      'Queue entries are derived from invoices and cannot be deleted here.',
+    );
   }
 }
+

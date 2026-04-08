@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { InvoiceModule } from '../invoice/invoice.module';
 import { LabCategoryController } from './lab-category/lab-category.controller';
 import { LabCategoryService } from './lab-category/lab-category.service';
 import { LabTestController } from './lab-test/lab-test.controller';
@@ -16,7 +17,7 @@ import { LabResultController } from './lab-result/lab-result.controller';
 import { LabResultService } from './lab-result/lab-result.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, InvoiceModule],
   controllers: [
     LabCategoryController,
     LabTestController,
