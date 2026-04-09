@@ -14,6 +14,13 @@ export class PharmacyDrugService {
   constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreateDrugDto, createdById: string) {
+    // Generate a random service code in the format "PHAR" + 6 digit number (e.g., PHAR000002)
+    function generateServiceCode(): string {
+      const randomNumber = Math.floor(100000 + Math.random() * 900000);
+      return `PHAR${randomNumber}`;
+    }
+    const generatedServiceCode = generateServiceCode();
+    dto.searviceCode = generatedServiceCode;
     try {
       return await this.prisma.$transaction(async (tx) => {
         const createdDrug = await tx.drug.create({

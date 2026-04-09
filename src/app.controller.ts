@@ -15,6 +15,11 @@ export class AppController {
     return {};
   }
 
+  @Get('server-time')
+  serverTime(): { iso: string; unixMs: number } {
+    return this.appService.getServerDateTime();
+  }
+
   @Public()
   @Post()
   postHello(@Body() body: any): string {

@@ -29,7 +29,7 @@ export class CreateDrugDto {
   genericName: string;
 
   @ApiProperty({ example: 'DRG001' })
-  @IsString()
+  @IsOptional()
   searviceCode: string;
 
   @ApiProperty({ example: 'Panadol' })

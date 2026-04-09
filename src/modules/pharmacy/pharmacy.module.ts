@@ -22,6 +22,8 @@ import { PharmacyGoodsReceiptController } from './pharmacy.goods-receipt.control
 import { PharmacyGoodsReceiptService } from './pharmacy.goods-receipt.service';
 import { PharmacyStockTransferController } from './pharmacy.stock-transfer.controller';
 import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service';
+import { PharmacyDashboardController } from './pharmacy.dashboard.controller';
+import { PharmacyDashboardService } from './pharmacy.dashboard.service';
 
 @Module({
   imports: [PrismaModule],
@@ -37,6 +39,7 @@ import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service'
     PharmacyPurchaseOrderController,
     PharmacyGoodsReceiptController,
     PharmacyStockTransferController,
+    PharmacyDashboardController,
   ],
   providers: [
     PharmacyDrugService,
@@ -50,6 +53,7 @@ import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service'
     PharmacyPurchaseOrderService,
     PharmacyGoodsReceiptService,
     PharmacyStockTransferService,
+    PharmacyDashboardService,
   ],
   exports: [
     PharmacyDrugService,
@@ -63,6 +67,7 @@ import { PharmacyStockTransferService } from './pharmacy.stock-transfer.service'
     PharmacyPurchaseOrderService,
     PharmacyGoodsReceiptService,
     PharmacyStockTransferService,
+    PharmacyDashboardService,
   ],
 })
 export class PharmacyModule {}
