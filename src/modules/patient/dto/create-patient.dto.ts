@@ -9,6 +9,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { PatientStatus } from '@prisma/client';
 
 export enum Title {
   MR = 'Mr',
@@ -141,17 +142,7 @@ export class CreatePatientDto {
 
   @IsString()
   @IsOptional()
-  cardNo?: string;
-
-  // @IsString()
-  // @MinLength(2)
-  // @MaxLength(50)
-  // createdBy: string;
-
-  // @IsString()
-  // @MinLength(2)
-  // @MaxLength(50)
-  // updateBy: string;
+  cardNo?: string
 }
 
 export class UpdatePatientDto {
@@ -207,6 +198,12 @@ export class UpdatePatientDto {
   @IsString()
   @IsOptional()
   nextOfKinRelationship?: string;
+
+  @IsString()
+  @IsOptional()
+  status?: PatientStatus;
+
+  
 }
 
 export class PatientResponseDto {
@@ -228,4 +225,5 @@ export class PatientResponseDto {
   hmo?: string;
   createdAt: Date;
   updatedAt: Date;
+  status: string;
 }

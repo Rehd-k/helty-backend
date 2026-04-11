@@ -14,16 +14,16 @@ export class RadiologyImageService {
   ) {}
 
   async upload(
-    requestId: string,
+    orderItemId: string,
     file: Express.Multer.File,
     uploadedById: string,
   ) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
     const staff = await this.prisma.staff.findUnique({
@@ -44,7 +44,7 @@ export class RadiologyImageService {
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.radiologyImage.create({
         data: {
-          radiologyRequestId: requestId,
+          radiologyOrderItemId: orderItemId,
           fileName: file.originalname || path.basename(filePath),
           filePath: normalizedPath,
           mimeType: file.mimetype || null,
@@ -57,23 +57,23 @@ export class RadiologyImageService {
       });
       await this.invoiceService.settleInvoiceItemIfPresent(
         tx,
-        request.invoiceItemId,
+        orderItem.invoiceItemId,
       );
       return created;
     });
   }
 
-  async listByRequestId(requestId: string) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+  async listByOrderItemId(orderItemId: string) {
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
     return this.prisma.radiologyImage.findMany({
-      where: { radiologyRequestId: requestId },
+      where: { radiologyOrderItemId: orderItemId },
       orderBy: { uploadedAt: 'asc' },
       include: {
         uploadedBy: { select: { id: true, firstName: true, lastName: true } },

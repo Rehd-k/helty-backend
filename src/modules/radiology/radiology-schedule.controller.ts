@@ -19,7 +19,7 @@ import {
 } from './dto/radiology-schedule.dto';
 
 @ApiTags('Radiology – Scheduling')
-@Controller('radiology/requests/:requestId/schedule')
+@Controller('radiology/order-items/:orderItemId/schedule')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('RADIOLOGY_RECEPTIONIST', 'RADIOGRAPHER', 'RADIOLOGY')
 export class RadiologyScheduleController {
@@ -29,26 +29,26 @@ export class RadiologyScheduleController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Schedule an imaging procedure for a request' })
+  @ApiOperation({ summary: 'Schedule an imaging procedure for an order item' })
   create(
-    @Param('requestId') requestId: string,
+    @Param('orderItemId') orderItemId: string,
     @Body() dto: CreateRadiologyScheduleDto,
   ) {
-    return this.radiologyScheduleService.create(requestId, dto);
+    return this.radiologyScheduleService.create(orderItemId, dto);
   }
 
   @Patch()
   @ApiOperation({ summary: 'Reschedule or update schedule' })
   update(
-    @Param('requestId') requestId: string,
+    @Param('orderItemId') orderItemId: string,
     @Body() dto: UpdateRadiologyScheduleDto,
   ) {
-    return this.radiologyScheduleService.update(requestId, dto);
+    return this.radiologyScheduleService.update(orderItemId, dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get schedule for a request' })
-  getSchedule(@Param('requestId') requestId: string) {
-    return this.radiologyScheduleService.getByRequestId(requestId);
+  @ApiOperation({ summary: 'Get schedule for an order item' })
+  getSchedule(@Param('orderItemId') orderItemId: string) {
+    return this.radiologyScheduleService.getByOrderItemId(orderItemId);
   }
 }

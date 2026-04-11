@@ -29,10 +29,10 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
 const radiologyFileInterceptor = FileInterceptor('file', {
   storage: diskStorage({
     destination: (req, _file, cb) => {
-      const requestId = req.params?.requestId;
-      const id = Array.isArray(requestId) ? requestId[0] : requestId;
+      const orderItemId = req.params?.orderItemId;
+      const id = Array.isArray(orderItemId) ? orderItemId[0] : orderItemId;
       if (!id) {
-        return cb(new Error('requestId required'), '');
+        return cb(new Error('orderItemId required'), '');
       }
       const dir = path.join(UPLOAD_BASE, id);
       fs.mkdirSync(dir, { recursive: true });
@@ -78,10 +78,10 @@ const radiologyFileInterceptor = FileInterceptor('file', {
 export class RadiologyImageController {
   constructor(private readonly radiologyImageService: RadiologyImageService) {}
 
-  @Post('requests/:requestId/images')
+  @Post('order-items/:orderItemId/images')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(radiologyFileInterceptor)
-  @ApiOperation({ summary: 'Upload an image/file for a radiology request' })
+  @ApiOperation({ summary: 'Upload an image/file for a radiology order item' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -90,7 +90,7 @@ export class RadiologyImageController {
     },
   })
   upload(
-    @Param('requestId') requestId: string,
+    @Param('orderItemId') orderItemId: string,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: { user?: { sub?: string } },
   ) {
@@ -98,13 +98,13 @@ export class RadiologyImageController {
     if (!uploadedById) {
       throw new Error('Unauthorized');
     }
-    return this.radiologyImageService.upload(requestId, file, uploadedById);
+    return this.radiologyImageService.upload(orderItemId, file, uploadedById);
   }
 
-  @Get('requests/:requestId/images')
-  @ApiOperation({ summary: 'List images for a radiology request' })
-  list(@Param('requestId') requestId: string) {
-    return this.radiologyImageService.listByRequestId(requestId);
+  @Get('order-items/:orderItemId/images')
+  @ApiOperation({ summary: 'List images for a radiology order item' })
+  list(@Param('orderItemId') orderItemId: string) {
+    return this.radiologyImageService.listByOrderItemId(orderItemId);
   }
 
   @Get('images/:id/file')

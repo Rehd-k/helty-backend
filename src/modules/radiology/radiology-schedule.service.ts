@@ -12,23 +12,23 @@ import { RadiologyRequestStatus } from '@prisma/client';
 export class RadiologyScheduleService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(requestId: string, dto: CreateRadiologyScheduleDto) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+  async create(orderItemId: string, dto: CreateRadiologyScheduleDto) {
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
       include: { schedule: true },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
-    if (request.schedule) {
+    if (orderItem.schedule) {
       throw new BadRequestException(
-        'This request already has a schedule. Use PATCH to update.',
+        'This order item already has a schedule. Use PATCH to update.',
       );
     }
-    if (request.status !== RadiologyRequestStatus.PENDING) {
-      throw new BadRequestException('Only PENDING requests can be scheduled.');
+    if (orderItem.status !== RadiologyRequestStatus.PENDING) {
+      throw new BadRequestException('Only PENDING order items can be scheduled.');
     }
     if (dto.radiographerId) {
       const staff = await this.prisma.staff.findUnique({
@@ -52,7 +52,7 @@ export class RadiologyScheduleService {
     const [schedule] = await this.prisma.$transaction([
       this.prisma.radiologySchedule.create({
         data: {
-          radiologyRequestId: requestId,
+          radiologyOrderItemId: orderItemId,
           scheduledAt: new Date(dto.scheduledAt),
           radiographerId: dto.radiographerId ?? null,
           machineId: dto.machineId ?? null,
@@ -64,27 +64,27 @@ export class RadiologyScheduleService {
           machine: true,
         },
       }),
-      this.prisma.radiologyRequest.update({
-        where: { id: requestId },
+      this.prisma.radiologyOrderItem.update({
+        where: { id: orderItemId },
         data: { status: RadiologyRequestStatus.SCHEDULED },
       }),
     ]);
     return schedule;
   }
 
-  async update(requestId: string, dto: UpdateRadiologyScheduleDto) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+  async update(orderItemId: string, dto: UpdateRadiologyScheduleDto) {
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
       include: { schedule: true },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
-    if (!request.schedule) {
+    if (!orderItem.schedule) {
       throw new NotFoundException(
-        'No schedule found for this request. Use POST to create.',
+        'No schedule found for this order item. Use POST to create.',
       );
     }
     if (dto.radiographerId !== undefined) {
@@ -107,7 +107,7 @@ export class RadiologyScheduleService {
     }
 
     return this.prisma.radiologySchedule.update({
-      where: { radiologyRequestId: requestId },
+      where: { radiologyOrderItemId: orderItemId },
       data: {
         ...(dto.scheduledAt && { scheduledAt: new Date(dto.scheduledAt) }),
         ...(dto.radiographerId !== undefined && {
@@ -124,9 +124,9 @@ export class RadiologyScheduleService {
     });
   }
 
-  async getByRequestId(requestId: string) {
+  async getByOrderItemId(orderItemId: string) {
     const schedule = await this.prisma.radiologySchedule.findUnique({
-      where: { radiologyRequestId: requestId },
+      where: { radiologyOrderItemId: orderItemId },
       include: {
         radiographer: { select: { id: true, firstName: true, lastName: true } },
         machine: true,
@@ -134,7 +134,7 @@ export class RadiologyScheduleService {
     });
     if (!schedule) {
       throw new NotFoundException(
-        `No schedule found for radiology request "${requestId}".`,
+        `No schedule found for radiology order item "${orderItemId}".`,
       );
     }
     return schedule;

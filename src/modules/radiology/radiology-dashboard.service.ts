@@ -20,19 +20,19 @@ export class RadiologyDashboardService {
 
     const [totalToday, pending, completed, waitingReports, urgentCount] =
       await Promise.all([
-        this.prisma.radiologyRequest.count({
+        this.prisma.radiologyOrderItem.count({
           where: { createdAt: { gte: startOfToday } },
         }),
-        this.prisma.radiologyRequest.count({
+        this.prisma.radiologyOrderItem.count({
           where: { status: RadiologyRequestStatus.PENDING },
         }),
-        this.prisma.radiologyRequest.count({
+        this.prisma.radiologyOrderItem.count({
           where: { status: RadiologyRequestStatus.COMPLETED },
         }),
-        this.prisma.radiologyRequest.count({
+        this.prisma.radiologyOrderItem.count({
           where: { status: RadiologyRequestStatus.COMPLETED },
         }),
-        this.prisma.radiologyRequest.count({
+        this.prisma.radiologyOrderItem.count({
           where: {
             priority: 'EMERGENCY',
             status: {
@@ -46,7 +46,7 @@ export class RadiologyDashboardService {
         }),
       ]);
 
-    const completedWithoutReport = await this.prisma.radiologyRequest.count({
+    const completedWithoutReport = await this.prisma.radiologyOrderItem.count({
       where: {
         status: RadiologyRequestStatus.COMPLETED,
         report: null,

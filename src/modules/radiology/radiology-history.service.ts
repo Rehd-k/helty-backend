@@ -13,33 +13,39 @@ export class RadiologyHistoryService {
       throw new NotFoundException(`Patient "${patientId}" not found.`);
     }
 
-    const requests = await this.prisma.radiologyRequest.findMany({
+    const orders = await this.prisma.radiologyOrder.findMany({
       where: { patientId },
       orderBy: { createdAt: 'desc' },
       include: {
         requestedBy: { select: { id: true, firstName: true, lastName: true } },
-        schedule: {
+        items: {
           include: {
-            machine: true,
-            radiographer: {
-              select: { id: true, firstName: true, lastName: true },
+            schedule: {
+              include: {
+                machine: true,
+                radiographer: {
+                  select: { id: true, firstName: true, lastName: true },
+                },
+              },
             },
-          },
-        },
-        procedure: {
-          include: {
-            performedBy: {
-              select: { id: true, firstName: true, lastName: true },
+            procedure: {
+              include: {
+                performedBy: {
+                  select: { id: true, firstName: true, lastName: true },
+                },
+                machine: true,
+              },
             },
-            machine: true,
+            report: {
+              include: {
+                signedBy: {
+                  select: { id: true, firstName: true, lastName: true },
+                },
+              },
+            },
+            images: { select: { id: true, fileName: true, uploadedAt: true } },
           },
         },
-        report: {
-          include: {
-            signedBy: { select: { id: true, firstName: true, lastName: true } },
-          },
-        },
-        images: { select: { id: true, fileName: true, uploadedAt: true } },
       },
     });
 
@@ -51,7 +57,7 @@ export class RadiologyHistoryService {
         surname: patient.surname,
         patientId: patient.patientId,
       },
-      requests,
+      orders,
     };
   }
 }

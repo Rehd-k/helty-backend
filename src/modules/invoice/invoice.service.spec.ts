@@ -433,4 +433,21 @@ describe('InvoiceService', () => {
     const result = await service.findFirstConsumableConsultationItem(tx, 'pat-1');
     expect(result).toBeNull();
   });
+
+  it('settleConsultationItemsForEncounter updates unsettled consultation lines for encounter invoices', async () => {
+    const tx: any = {
+      invoiceItem: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    };
+    const service = createInvoiceService({} as any);
+    await service.settleConsultationItemsForEncounter(tx, 'enc-1');
+    expect(tx.invoiceItem.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          settled: false,
+          invoice: { encounterId: 'enc-1' },
+        }),
+        data: { settled: true },
+      }),
+    );
+  });
 });

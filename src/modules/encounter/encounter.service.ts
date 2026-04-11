@@ -17,13 +17,45 @@ import {
 } from './dto/encounter-diagnosis.dto';
 import { EncounterType, EncounterStatus } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
+import { labRequestWithBillingInclude } from '../lab-request/lab-request-includes';
 
 @Injectable()
 export class EncounterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) {}
+  ) { }
+
+  /** Ongoing encounter for the same patient, type, and admission scope (reuse instead of duplicate create). */
+  private async findUnfinishedEncounterForCreate(dto: CreateEncounterDto) {
+    return this.prisma.encounter.findFirst({
+      where: {
+        patientId: dto.patientId,
+        encounterType: dto.encounterType,
+        status: EncounterStatus.ONGOING,
+        ...(dto.admissionId != null
+          ? { admissionId: dto.admissionId }
+          : { admissionId: null }),
+      },
+      orderBy: { startTime: 'desc' },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            firstName: true,
+            surname: true,
+            patientId: true,
+          },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
+        admission: dto.admissionId
+          ? { select: { id: true, status: true } }
+          : false,
+      },
+    });
+  }
 
   async create(dto: CreateEncounterDto, req: any) {
     await this.validatePatientAndDoctor(dto.patientId, dto.doctorId);
@@ -31,6 +63,16 @@ export class EncounterService {
       await this.validateAdmissionForPatient(dto.admissionId, dto.patientId);
     }
 
+    const existing = await this.findUnfinishedEncounterForCreate(dto);
+    if (existing) {
+      return { encounter: existing, reused: true };
+    }
+
+    const encounter = await this.createOne(dto, req);
+    return { encounter, reused: false };
+  }
+
+  private async createOne(dto: CreateEncounterDto, req: any) {
     if (dto.encounterType === EncounterType.OUTPATIENT) {
       return this.prisma.$transaction(async (tx) => {
         const consultationItem =
@@ -74,10 +116,6 @@ export class EncounterService {
               : false,
           },
         });
-        await this.invoiceService.settleInvoiceItemIfPresent(
-          tx,
-          consultationItem.invoiceItemId,
-        );
         await tx.invoice.update({
           where: { id: consultationItem.invoiceId },
           data: { encounterId: encounter.id },
@@ -117,6 +155,37 @@ export class EncounterService {
   async startOutpatient(dto: StartOutpatientEncounterDto) {
     await this.validatePatientAndDoctor(dto.patientId, dto.doctorId);
 
+    const existing = await this.prisma.encounter.findFirst({
+      where: {
+        patientId: dto.patientId,
+        encounterType: EncounterType.OUTPATIENT,
+        status: EncounterStatus.ONGOING,
+        admissionId: null,
+      },
+      orderBy: { startTime: 'desc' },
+      include: {
+        patient: {
+          select: { id: true, firstName: true, surname: true, patientId: true },
+        },
+        doctor: {
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        },
+      },
+    });
+    if (existing) {
+      if (dto.waitingPatientId) {
+        try {
+          await this.prisma.waitingPatient.update({
+            where: { id: dto.waitingPatientId },
+            data: { seen: true },
+          });
+        } catch {
+          // Don't fail if waiting patient update fails (e.g. wrong id)
+        }
+      }
+      return { encounter: existing, reused: true };
+    }
+
     const createdById = dto.createdById ?? dto.doctorId;
 
     const encounter = await this.prisma.$transaction(async (tx) => {
@@ -150,10 +219,6 @@ export class EncounterService {
           },
         },
       });
-      await this.invoiceService.settleInvoiceItemIfPresent(
-        tx,
-        consultationItem.invoiceItemId,
-      );
       await tx.invoice.update({
         where: { id: consultationItem.invoiceId },
         data: { encounterId: createdEncounter.id },
@@ -172,7 +237,7 @@ export class EncounterService {
       }
     }
 
-    return encounter;
+    return { encounter, reused: false };
   }
 
   async findAll(query: QueryEncounterDto) {
@@ -246,7 +311,16 @@ export class EncounterService {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id },
       include: {
-        patient: true,
+        patient: {
+          select: {
+            patientId: true,
+            surname: true,
+            firstName: true,
+            gender: true,
+            hmo: true,
+            status: true
+          }
+        },
         doctor: {
           select: {
             id: true,
@@ -284,17 +358,12 @@ export class EncounterService {
             encounterId: encounterBase.id,
             patientId: encounterBase.patientId,
           },
+          include: labRequestWithBillingInclude,
         },
-        imagingRequests: {
-          where: {
-            encounterId: encounterBase.id,
-            patientId: encounterBase.patientId,
-          },
-        },
+        radiologyOrders: { where: { encounterId: encounterBase.id } },
         medicationOrders:
           expandSet.has('medicationorders') || expandSet.has('*'),
         legacyLabOrders: expandSet.has('laborders') || expandSet.has('*'),
-        imagingOrders: expandSet.has('imagingorders') || expandSet.has('*'),
       },
     });
     if (!encounter) throw new NotFoundException(`Encounter "${id}" not found.`);
@@ -350,21 +419,37 @@ export class EncounterService {
   /** Set encounter status to COMPLETED and endTime to now. */
   async complete(id: string, updatedById?: string) {
     await this.findOne(id);
-    return this.prisma.encounter.update({
-      where: { id },
-      data: {
-        status: EncounterStatus.COMPLETED,
-        endTime: new Date(),
-        ...(updatedById && { updatedById }),
-      },
-      include: {
-        patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
+    return this.prisma.$transaction(async (tx) => {
+      const encounter = await tx.encounter.update({
+        where: { id },
+        data: {
+          status: EncounterStatus.COMPLETED,
+          endTime: new Date(),
+          ...(updatedById && { updatedById }),
         },
-        doctor: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
+          },
+          doctor: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffId: true,
+            },
+          },
         },
-      },
+      });
+      if (encounter.encounterType === EncounterType.OUTPATIENT) {
+        await this.invoiceService.settleConsultationItemsForEncounter(tx, id);
+      }
+      return encounter;
     });
   }
 

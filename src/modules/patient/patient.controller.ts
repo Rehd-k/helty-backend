@@ -21,7 +21,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 @Controller('patients')
 export class PatientController {
   private readonly log = new Logger(PatientController.name);
-  constructor(private readonly patientService: PatientService) {}
+  constructor(private readonly patientService: PatientService) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -31,8 +31,7 @@ export class PatientController {
     description: 'Patient created successfully',
   })
   create(@Body() createPatientDto: CreatePatientDto, @Req() req: any) {
-    this.log.log('GET / called');
-    // this.loggerService.info('req.user')s
+
     return this.patientService.create(createPatientDto, req);
   }
 
@@ -98,8 +97,10 @@ export class PatientController {
     status: 200,
     description: 'Patient updated successfully',
   })
-  update(@Param('id') id: string, @Body() updatePatientDto: UpdatePatientDto) {
-    return this.patientService.update(id, updatePatientDto);
+  update(@Param('id') id: string, @Body() updatePatientDto: any, @Req() req: any) {
+    this.log.log('GET / called');
+    console.log(updatePatientDto);
+    return this.patientService.update(id, updatePatientDto, req);
   }
 
   @Delete(':id')

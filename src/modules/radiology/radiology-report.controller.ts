@@ -20,7 +20,7 @@ import {
 } from './dto/radiology-report.dto';
 
 @ApiTags('Radiology – Reporting')
-@Controller('radiology/requests/:requestId/report')
+@Controller('radiology/order-items/:orderItemId/report')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('CONSULTANT', 'INPATIENT_DOCTOR', 'RADIOLOGIST', 'RADIOLOGY')
 export class RadiologyReportController {
@@ -34,7 +34,7 @@ export class RadiologyReportController {
     summary: 'Create radiology report (digitally signed by radiologist)',
   })
   create(
-    @Param('requestId') requestId: string,
+    @Param('orderItemId') orderItemId: string,
     @Body() dto: CreateRadiologyReportDto,
     @Req() req: { user?: { sub?: string } },
   ) {
@@ -42,21 +42,21 @@ export class RadiologyReportController {
     if (!signedById) {
       throw new Error('Unauthorized');
     }
-    return this.radiologyReportService.create(requestId, dto, signedById);
+    return this.radiologyReportService.create(orderItemId, dto, signedById);
   }
 
   @Patch()
   @ApiOperation({ summary: 'Update radiology report' })
   update(
-    @Param('requestId') requestId: string,
+    @Param('orderItemId') orderItemId: string,
     @Body() dto: UpdateRadiologyReportDto,
   ) {
-    return this.radiologyReportService.update(requestId, dto);
+    return this.radiologyReportService.update(orderItemId, dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get report for a request (for viewing/print)' })
-  getReport(@Param('requestId') requestId: string) {
-    return this.radiologyReportService.getByRequestId(requestId);
+  @ApiOperation({ summary: 'Get report for an order item (for viewing/print)' })
+  getReport(@Param('orderItemId') orderItemId: string) {
+    return this.radiologyReportService.getByOrderItemId(orderItemId);
   }
 }

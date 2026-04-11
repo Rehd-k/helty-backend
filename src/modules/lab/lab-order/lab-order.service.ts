@@ -3,7 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { LabOrderStatus } from '@prisma/client';
+import { LabOrderStatus, LabRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InvoiceService } from '../../invoice/invoice.service';
 import { invoiceLinkException } from '../../../common/exceptions/invoice-link.exception';
@@ -81,7 +81,7 @@ export class LabOrderService {
           patientId: dto.patientId,
           mode: 'lab',
         });
-        return tx.labOrder.create({
+        const order = await tx.labOrder.create({
           data: {
             patientId: dto.patientId,
             doctorId: dto.doctorId,
@@ -96,6 +96,14 @@ export class LabOrderService {
           },
           include: orderInclude,
         });
+        await tx.labRequest.updateMany({
+          where: {
+            invoiceItemId: dto.invoiceItemId!,
+            status: { not: LabRequestStatus.CANCELLED },
+          },
+          data: { status: LabRequestStatus.COLLECTED },
+        });
+        return order;
       });
     }
 
@@ -191,7 +199,7 @@ export class LabOrderService {
 
   async update(id: string, dto: UpdateLabOrderDto) {
     await this.findOne(id);
-    return this.prisma.labOrder.update({
+    const updated = await this.prisma.labOrder.update({
       where: { id },
       data: dto,
       include: {
@@ -208,6 +216,26 @@ export class LabOrderService {
           },
         },
       },
+    });
+    if (
+      dto.status === LabOrderStatus.VERIFIED ||
+      dto.status === LabOrderStatus.COMPLETED
+    ) {
+      await this.syncLabRequestCompletedForInvoiceItem(updated.invoiceItemId);
+    }
+    return updated;
+  }
+
+  private async syncLabRequestCompletedForInvoiceItem(
+    invoiceItemId: string | null,
+  ) {
+    if (!invoiceItemId) return;
+    await this.prisma.labRequest.updateMany({
+      where: {
+        invoiceItemId,
+        status: { not: LabRequestStatus.CANCELLED },
+      },
+      data: { status: LabRequestStatus.COMPLETED },
     });
   }
 }

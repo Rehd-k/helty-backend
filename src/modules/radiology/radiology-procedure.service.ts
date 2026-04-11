@@ -12,27 +12,27 @@ import { RadiologyRequestStatus } from '@prisma/client';
 export class RadiologyProcedureService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(requestId: string, dto: CreateRadiologyProcedureDto) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+  async create(orderItemId: string, dto: CreateRadiologyProcedureDto) {
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
       include: { procedure: true },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
-    if (request.procedure) {
+    if (orderItem.procedure) {
       throw new BadRequestException(
-        'This request already has a procedure record. Use PATCH to update.',
+        'This order item already has a procedure record. Use PATCH to update.',
       );
     }
     if (
-      request.status !== RadiologyRequestStatus.SCHEDULED &&
-      request.status !== RadiologyRequestStatus.PENDING
+      orderItem.status !== RadiologyRequestStatus.SCHEDULED &&
+      orderItem.status !== RadiologyRequestStatus.PENDING
     ) {
       throw new BadRequestException(
-        'Only SCHEDULED or PENDING requests can start a procedure.',
+        'Only SCHEDULED or PENDING order items can start a procedure.',
       );
     }
     const staff = await this.prisma.staff.findUnique({
@@ -55,7 +55,7 @@ export class RadiologyProcedureService {
     const [procedure] = await this.prisma.$transaction([
       this.prisma.radiologyProcedure.create({
         data: {
-          radiologyRequestId: requestId,
+          radiologyOrderItemId: orderItemId,
           performedById: dto.performedById,
           machineId: dto.machineId ?? null,
           startTime: new Date(dto.startTime),
@@ -69,27 +69,27 @@ export class RadiologyProcedureService {
           machine: true,
         },
       }),
-      this.prisma.radiologyRequest.update({
-        where: { id: requestId },
+      this.prisma.radiologyOrderItem.update({
+        where: { id: orderItemId },
         data: { status: RadiologyRequestStatus.IN_PROGRESS },
       }),
     ]);
     return procedure;
   }
 
-  async update(requestId: string, dto: UpdateRadiologyProcedureDto) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+  async update(orderItemId: string, dto: UpdateRadiologyProcedureDto) {
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
       include: { procedure: true },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
-    if (!request.procedure) {
+    if (!orderItem.procedure) {
       throw new NotFoundException(
-        'No procedure record for this request. Use POST to create.',
+        'No procedure record for this order item. Use POST to create.',
       );
     }
 
@@ -98,7 +98,7 @@ export class RadiologyProcedureService {
     if (dto.notes !== undefined) updateData.notes = dto.notes;
 
     const procedure = await this.prisma.radiologyProcedure.update({
-      where: { radiologyRequestId: requestId },
+      where: { radiologyOrderItemId: orderItemId },
       data: updateData,
       include: {
         performedBy: { select: { id: true, firstName: true, lastName: true } },
@@ -107,8 +107,8 @@ export class RadiologyProcedureService {
     });
 
     if (dto.endTime) {
-      await this.prisma.radiologyRequest.update({
-        where: { id: requestId },
+      await this.prisma.radiologyOrderItem.update({
+        where: { id: orderItemId },
         data: { status: RadiologyRequestStatus.COMPLETED },
       });
     }
@@ -116,9 +116,9 @@ export class RadiologyProcedureService {
     return procedure;
   }
 
-  async getByRequestId(requestId: string) {
+  async getByOrderItemId(orderItemId: string) {
     const procedure = await this.prisma.radiologyProcedure.findUnique({
-      where: { radiologyRequestId: requestId },
+      where: { radiologyOrderItemId: orderItemId },
       include: {
         performedBy: { select: { id: true, firstName: true, lastName: true } },
         machine: true,
@@ -126,7 +126,7 @@ export class RadiologyProcedureService {
     });
     if (!procedure) {
       throw new NotFoundException(
-        `No procedure record for radiology request "${requestId}".`,
+        `No procedure record for radiology order item "${orderItemId}".`,
       );
     }
     return procedure;

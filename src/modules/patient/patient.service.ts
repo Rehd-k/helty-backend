@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { customAlphabet } from 'nanoid';
@@ -79,6 +79,23 @@ export class PatientService {
     'nextOfKinPhone',
     'nextOfKinRelationship',
   ]);
+
+  /** Fields accepted on PATCH; only keys present in the body (not undefined) are written. */
+  private static readonly PATIENT_PATCH_KEYS = [
+    'patientId',
+    'surname',
+    'firstName',
+    'otherName',
+    'email',
+    'phoneNumber',
+    'addressOfResidence',
+    'hmo',
+    'nextOfKinName',
+    'nextOfKinPhone',
+    'nextOfKinAddress',
+    'nextOfKinRelationship',
+    'status',
+  ] as const;
 
   private readonly ALLOWED_SORT_FIELDS = new Set([
     'patientId',
@@ -295,15 +312,30 @@ export class PatientService {
     });
   }
 
-  async update(id: string, updatePatientDto: UpdatePatientDto) {
-    const patientId = `${this.nanoid()}`;
-
-    if (!updatePatientDto.patientId) {
-      updatePatientDto.patientId = patientId;
+  async update(id: string, updatePatientDto: UpdatePatientDto, req: any) {
+    const existing = await this.prisma.patient.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Patient with id ${id} not found`);
     }
+
+    const data: Prisma.PatientUpdateInput = {
+      updatedBy: { connect: { id: req.user.sub } },
+    };
+
+    for (const key of PatientService.PATIENT_PATCH_KEYS) {
+      const value = updatePatientDto[key];
+      if (value !== undefined) {
+        (data as Record<string, unknown>)[key] = value;
+      }
+    }
+
+    if (!existing.patientId && updatePatientDto.patientId === undefined) {
+      (data as Record<string, unknown>).patientId = this.nanoid();
+    }
+
     return this.prisma.patient.update({
       where: { id },
-      data: updatePatientDto,
+      data,
     });
   }
   async remove(id: string) {

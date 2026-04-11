@@ -17,22 +17,22 @@ export class RadiologyReportService {
   ) {}
 
   async create(
-    requestId: string,
+    orderItemId: string,
     dto: CreateRadiologyReportDto,
     signedById: string,
   ) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
       include: { report: true },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
-    if (request.report) {
+    if (orderItem.report) {
       throw new BadRequestException(
-        'This request already has a report. Use PATCH to update.',
+        'This order item already has a report. Use PATCH to update.',
       );
     }
     const radiologist = await this.prisma.staff.findUnique({
@@ -47,7 +47,7 @@ export class RadiologyReportService {
     return this.prisma.$transaction(async (tx) => {
       const report = await tx.radiologyStudyReport.create({
         data: {
-          radiologyRequestId: requestId,
+          radiologyOrderItemId: orderItemId,
           findings: dto.findings ?? null,
           impression: dto.impression ?? null,
           recommendations: dto.recommendations ?? null,
@@ -59,36 +59,36 @@ export class RadiologyReportService {
           signedBy: { select: { id: true, firstName: true, lastName: true } },
         },
       });
-      await tx.radiologyRequest.update({
-        where: { id: requestId },
+      await tx.radiologyOrderItem.update({
+        where: { id: orderItemId },
         data: { status: RadiologyRequestStatus.REPORTED },
       });
       await this.invoiceService.settleInvoiceItemIfPresent(
         tx,
-        request.invoiceItemId,
+        orderItem.invoiceItemId,
       );
       return report;
     });
   }
 
-  async update(requestId: string, dto: UpdateRadiologyReportDto) {
-    const request = await this.prisma.radiologyRequest.findUnique({
-      where: { id: requestId },
+  async update(orderItemId: string, dto: UpdateRadiologyReportDto) {
+    const orderItem = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: orderItemId },
       include: { report: true },
     });
-    if (!request) {
+    if (!orderItem) {
       throw new NotFoundException(
-        `Radiology request "${requestId}" not found.`,
+        `Radiology order item "${orderItemId}" not found.`,
       );
     }
-    if (!request.report) {
+    if (!orderItem.report) {
       throw new NotFoundException(
-        'No report for this request. Use POST to create.',
+        'No report for this order item. Use POST to create.',
       );
     }
 
     return this.prisma.radiologyStudyReport.update({
-      where: { radiologyRequestId: requestId },
+      where: { radiologyOrderItemId: orderItemId },
       data: {
         ...(dto.findings !== undefined && { findings: dto.findings }),
         ...(dto.impression !== undefined && { impression: dto.impression }),
@@ -103,22 +103,25 @@ export class RadiologyReportService {
     });
   }
 
-  async getByRequestId(requestId: string) {
+  async getByOrderItemId(orderItemId: string) {
     const report = await this.prisma.radiologyStudyReport.findUnique({
-      where: { radiologyRequestId: requestId },
+      where: { radiologyOrderItemId: orderItemId },
       include: {
         signedBy: {
           select: { id: true, firstName: true, lastName: true, staffId: true },
         },
-        radiologyRequest: {
+        radiologyOrderItem: {
           select: {
             id: true,
-            patientId: true,
             scanType: true,
             bodyPart: true,
             priority: true,
-            patient: {
-              select: { firstName: true, surname: true, patientId: true },
+            order: {
+              select: {
+                patient: {
+                  select: { firstName: true, surname: true, patientId: true },
+                },
+              },
             },
           },
         },
@@ -126,7 +129,7 @@ export class RadiologyReportService {
     });
     if (!report) {
       throw new NotFoundException(
-        `No report found for radiology request "${requestId}".`,
+        `No report found for radiology order item "${orderItemId}".`,
       );
     }
     return report;

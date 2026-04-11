@@ -18,8 +18,8 @@ import { CreateRadiologyRequestDto } from './dto/create-radiology-request.dto';
 import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
 
-@ApiTags('Radiology – Requests')
-@Controller('radiology/requests')
+@ApiTags('Radiology - Requests')
+@Controller('radiology/orders')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes(
   'CONSULTANT',
@@ -37,7 +37,7 @@ export class RadiologyRequestController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Create a radiology request (doctor orders imaging)',
+    summary: 'Create a radiology order with one or more items',
   })
   create(@Body() dto: CreateRadiologyRequestDto) {
     return this.radiologyRequestService.create(dto);
@@ -45,7 +45,7 @@ export class RadiologyRequestController {
 
   @Get()
   @ApiOperation({
-    summary: 'List radiology requests with optional filters (worklist)',
+    summary: 'List radiology orders with optional filters (worklist)',
   })
   findAll(@Query() query: ListRadiologyRequestsQueryDto) {
     return this.radiologyRequestService.findAll(query);
@@ -53,8 +53,7 @@ export class RadiologyRequestController {
 
   @Get(':id')
   @ApiOperation({
-    summary:
-      'Get one radiology request with schedule, procedure, images, report',
+    summary: 'Get one radiology order with items and workflow artifacts',
   })
   findOne(@Param('id') id: string) {
     return this.radiologyRequestService.findOne(id);
@@ -62,7 +61,7 @@ export class RadiologyRequestController {
 
   @Patch(':id')
   @ApiOperation({
-    summary: 'Update radiology request (e.g. cancel, status, notes)',
+    summary: 'Update radiology order (e.g. status)',
   })
   update(@Param('id') id: string, @Body() dto: UpdateRadiologyRequestDto) {
     return this.radiologyRequestService.update(id, dto);

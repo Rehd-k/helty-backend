@@ -9,7 +9,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { RadiologyRequestStatus, RadiologyPriority } from '@prisma/client';
+import { RadiologyRequestStatus } from '@prisma/client';
 
 export class ListRadiologyRequestsQueryDto {
   @ApiPropertyOptional({ enum: RadiologyRequestStatus })
@@ -31,11 +31,6 @@ export class ListRadiologyRequestsQueryDto {
   @IsDateString()
   @IsOptional()
   toDate?: string;
-
-  @ApiPropertyOptional({ enum: RadiologyPriority })
-  @IsEnum(RadiologyPriority)
-  @IsOptional()
-  priority?: RadiologyPriority;
 
   @ApiPropertyOptional({ default: 0 })
   @IsOptional()

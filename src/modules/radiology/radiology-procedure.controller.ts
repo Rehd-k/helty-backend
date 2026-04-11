@@ -19,7 +19,7 @@ import {
 } from './dto/radiology-procedure.dto';
 
 @ApiTags('Radiology – Procedure')
-@Controller('radiology/requests/:requestId/procedure')
+@Controller('radiology/order-items/:orderItemId/procedure')
 @UseGuards(JwtAuthGuard, AccessGuard)
 @AccountTypes('RADIOGRAPHER', 'RADIOLOGY')
 export class RadiologyProcedureController {
@@ -29,26 +29,26 @@ export class RadiologyProcedureController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Record imaging procedure (scan start)' })
+  @ApiOperation({ summary: 'Record imaging procedure (scan start) for an order item' })
   create(
-    @Param('requestId') requestId: string,
+    @Param('orderItemId') orderItemId: string,
     @Body() dto: CreateRadiologyProcedureDto,
   ) {
-    return this.radiologyProcedureService.create(requestId, dto);
+    return this.radiologyProcedureService.create(orderItemId, dto);
   }
 
   @Patch()
   @ApiOperation({ summary: 'Update procedure (e.g. end time, notes)' })
   update(
-    @Param('requestId') requestId: string,
+    @Param('orderItemId') orderItemId: string,
     @Body() dto: UpdateRadiologyProcedureDto,
   ) {
-    return this.radiologyProcedureService.update(requestId, dto);
+    return this.radiologyProcedureService.update(orderItemId, dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get procedure record for a request' })
-  getProcedure(@Param('requestId') requestId: string) {
-    return this.radiologyProcedureService.getByRequestId(requestId);
+  @ApiOperation({ summary: 'Get procedure record for an order item' })
+  getProcedure(@Param('orderItemId') orderItemId: string) {
+    return this.radiologyProcedureService.getByOrderItemId(orderItemId);
   }
 }

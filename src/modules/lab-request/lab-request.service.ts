@@ -11,6 +11,7 @@ import {
 } from './dto/create-lab-request.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { labRequestWithBillingInclude } from './lab-request-includes';
 
 @Injectable()
 export class LabRequestService {
@@ -37,29 +38,29 @@ export class LabRequestService {
         testType: dto.testType,
         notes: dto.notes,
       },
-      include: {
-        encounter: { select: { id: true, encounterType: true, status: true } },
-        patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
-        },
-        requestedBy: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
-        },
-      },
     });
     if (dto.serviceId) {
       await this.invoiceService.assertServiceCategoryForEncounterBilling(
         dto.serviceId,
         'lab',
       );
-      await this.invoiceService.createWithServiceItem({
-        patientId: dto.patientId,
-        encounterId: dto.encounterId,
-        staffId: dto.requestedByDoctorId,
-        serviceId: dto.serviceId,
+      const { invoice, invoiceItemId } =
+        await this.invoiceService.createWithServiceItem({
+          patientId: dto.patientId,
+          encounterId: dto.encounterId,
+          staffId: dto.requestedByDoctorId,
+          serviceId: dto.serviceId,
+        });
+      return this.prisma.labRequest.update({
+        where: { id: labRequest.id },
+        data: { invoiceId: invoice.id, invoiceItemId },
+        include: labRequestWithBillingInclude,
       });
     }
-    return labRequest;
+    return this.prisma.labRequest.findUniqueOrThrow({
+      where: { id: labRequest.id },
+      include: labRequestWithBillingInclude,
+    });
   }
 
   async findAll(
@@ -90,22 +91,7 @@ export class LabRequestService {
         skip,
         take,
         orderBy: { createdAt: 'desc' },
-        include: {
-          encounter: {
-            select: { id: true, encounterType: true, status: true },
-          },
-          patient: {
-            select: {
-              id: true,
-              firstName: true,
-              surname: true,
-              patientId: true,
-            },
-          },
-          requestedBy: {
-            select: { id: true, firstName: true, lastName: true },
-          },
-        },
+        include: labRequestWithBillingInclude,
       }),
       this.prisma.labRequest.count({ where }),
     ]);
@@ -115,13 +101,7 @@ export class LabRequestService {
   async findOne(id: string) {
     const request = await this.prisma.labRequest.findUnique({
       where: { id },
-      include: {
-        encounter: true,
-        patient: true,
-        requestedBy: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
-        },
-      },
+      include: labRequestWithBillingInclude,
     });
     if (!request) {
       throw new NotFoundException(`Lab request "${id}" not found.`);
@@ -133,10 +113,7 @@ export class LabRequestService {
     return this.prisma.labRequest.findMany({
       where: { encounterId },
       orderBy: { createdAt: 'desc' },
-      include: {
-        patient: { select: { id: true, firstName: true, surname: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true } },
-      },
+      include: labRequestWithBillingInclude,
     });
   }
 
@@ -145,16 +122,18 @@ export class LabRequestService {
     return this.prisma.labRequest.update({
       where: { id },
       data: dto,
-      include: {
-        encounter: { select: { id: true, status: true } },
-        patient: { select: { id: true, firstName: true, surname: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true } },
-      },
+      include: labRequestWithBillingInclude,
     });
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const found = await this.prisma.labRequest.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!found) {
+      throw new NotFoundException(`Lab request "${id}" not found.`);
+    }
     await this.prisma.labRequest.delete({ where: { id } });
     return { message: 'Lab request removed successfully.' };
   }

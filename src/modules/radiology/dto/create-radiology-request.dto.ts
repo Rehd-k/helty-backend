@@ -1,34 +1,18 @@
 import {
+  ArrayMinSize,
+  IsArray,
   IsString,
   IsOptional,
   IsNotEmpty,
   IsUUID,
   IsEnum,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RadiologyPriority, RadiologyModality } from '@prisma/client';
+import { Type } from 'class-transformer';
 
-export class CreateRadiologyRequestDto {
-  @ApiProperty({ description: 'Patient UUID' })
-  @IsUUID()
-  @IsNotEmpty()
-  patientId: string;
-
-  @ApiPropertyOptional({ description: 'Encounter UUID (optional)' })
-  @IsUUID()
-  @IsOptional()
-  encounterId?: string;
-
-  @ApiProperty({ description: 'Staff UUID of the ordering doctor' })
-  @IsUUID()
-  @IsNotEmpty()
-  requestedById: string;
-
-  @ApiPropertyOptional({ description: 'Department UUID' })
-  @IsUUID()
-  @IsOptional()
-  departmentId?: string;
-
+export class CreateRadiologyOrderItemDto {
   @ApiPropertyOptional({
     description: 'Clinical notes / reason for investigation',
   })
@@ -58,14 +42,6 @@ export class CreateRadiologyRequestDto {
 
   @ApiPropertyOptional({
     description:
-      'Service UUID to bill for this radiology request when ordering from an encounter (creates invoice line). Ignored when paid-invoice linkage fields are all provided.',
-  })
-  @IsUUID()
-  @IsOptional()
-  serviceId?: string;
-
-  @ApiPropertyOptional({
-    description:
       'Invoice UUID — use together with invoiceItemId and serviceId for paid-waiting flow',
   })
   @IsUUID()
@@ -78,4 +54,44 @@ export class CreateRadiologyRequestDto {
   @IsUUID()
   @IsOptional()
   invoiceItemId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Service UUID to validate against the selected paid invoice line item.',
+  })
+  @IsUUID()
+  @IsOptional()
+  serviceId?: string;
+}
+
+export class CreateRadiologyRequestDto {
+  @ApiProperty({ description: 'Patient UUID' })
+  @IsUUID()
+  @IsNotEmpty()
+  patientId: string;
+
+  @ApiPropertyOptional({ description: 'Encounter UUID (optional)' })
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
+
+  @ApiProperty({ description: 'Staff UUID of the ordering doctor' })
+  @IsUUID()
+  @IsNotEmpty()
+  requestedById: string;
+
+  @ApiPropertyOptional({ description: 'Department UUID' })
+  @IsUUID()
+  @IsOptional()
+  departmentId?: string;
+
+  @ApiProperty({
+    type: [CreateRadiologyOrderItemDto],
+    description: 'At least one radiology order item',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Order must contain at least one item' })
+  @ValidateNested({ each: true })
+  @Type(() => CreateRadiologyOrderItemDto)
+  items: CreateRadiologyOrderItemDto[];
 }

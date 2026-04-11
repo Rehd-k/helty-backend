@@ -22,7 +22,7 @@ export class RadiologyWorklistController {
   @Get()
   @ApiOperation({
     summary:
-      'Get radiology worklist (queue of pending/scheduled/in progress/completed/reported requests)',
+      'Get radiology worklist (queue of pending/scheduled/in progress/completed/reported orders)',
   })
   getWorklist(@Query() query: ListRadiologyRequestsQueryDto) {
     return this.radiologyRequestService.findAll(query);

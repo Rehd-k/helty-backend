@@ -10,7 +10,9 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { EncounterService } from './encounter.service';
 import {
   CreateEncounterDto,
@@ -30,19 +32,39 @@ export class EncounterController {
   constructor(private readonly encounterService: EncounterService) {}
 
   @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new encounter' })
-  create(@Body() createEncounterDto: CreateEncounterDto, @Req() req: Request) {
-    return this.encounterService.create(createEncounterDto, req);
+  @ApiOperation({
+    summary: 'Create a new encounter',
+    description:
+      'If the patient already has an ongoing encounter of the same type (and admission, if any), that encounter is returned (200) instead of creating another. Consultation invoice lines are settled when the encounter is completed.',
+  })
+  async create(
+    @Body() createEncounterDto: CreateEncounterDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { encounter, reused } = await this.encounterService.create(
+      createEncounterDto,
+      req,
+    );
+    res.status(reused ? HttpStatus.OK : HttpStatus.CREATED);
+    return encounter;
   }
 
   @Post('start-outpatient')
-  @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Start an outpatient encounter (e.g. when doctor begins consult)',
+    description:
+      'If the patient already has an ongoing outpatient encounter, it is returned (200). Otherwise a new encounter is created (201). Consultation lines settle on encounter completion.',
   })
-  startOutpatient(@Body() dto: StartOutpatientEncounterDto) {
-    return this.encounterService.startOutpatient(dto);
+  async startOutpatient(
+    @Body() dto: StartOutpatientEncounterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { encounter, reused } = await this.encounterService.startOutpatient(
+      dto,
+    );
+    res.status(reused ? HttpStatus.OK : HttpStatus.CREATED);
+    return encounter;
   }
 
   @Get()
@@ -97,7 +119,7 @@ export class EncounterController {
   @ApiOperation({
     summary: 'Get encounter by ID',
     description:
-      'Optional query: expand=medicationOrders,labOrders,imagingOrders,appointment (or * for all)',
+      'Optional query: expand=medicationOrders,labOrders,appointment (or * for all)',
   })
   findOne(@Param('id') id: string, @Query('expand') expand?: string) {
     return this.encounterService.findOne(id, expand);
@@ -115,6 +137,8 @@ export class EncounterController {
   @Patch(':id/complete')
   @ApiOperation({
     summary: 'Mark encounter as completed (sets endTime and status)',
+    description:
+      'For outpatient encounters, consultation invoice lines linked to this encounter are marked settled.',
   })
   complete(@Param('id') id: string, @Body() body: { updatedById?: string }) {
     return this.encounterService.complete(id, body?.updatedById);

@@ -226,20 +226,20 @@ export class InvoiceService {
       if (
         !categoryName ||
         categoryName.trim().toLowerCase() !==
-          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+        RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
       ) {
         throw invoiceLinkException(
           'INVOICE_ITEM_CATEGORY_MISMATCH',
           'This invoice line is not a Radiology & Imaging service.',
         );
       }
-      const existing = await tx.radiologyRequest.findFirst({
+      const existing = await tx.radiologyOrderItem.findFirst({
         where: { invoiceItemId: params.invoiceItemId },
       });
       if (existing) {
         throw invoiceLinkException(
           'INVOICE_ITEM_ALREADY_CONSUMED',
-          'This paid invoice item has already been used for a radiology request.',
+          'This paid invoice item has already been used for a radiology order item.',
         );
       }
     } else {
@@ -277,6 +277,31 @@ export class InvoiceService {
     if (!invoiceItemId) return;
     await tx.invoiceItem.updateMany({
       where: { id: invoiceItemId, settled: false },
+      data: { settled: true },
+    });
+  }
+
+  /**
+   * Marks all unsettled consultation lines on invoices linked to this encounter as settled.
+   * Used when an outpatient encounter is completed (consumes the consultation charge).
+   */
+  async settleConsultationItemsForEncounter(
+    tx: Prisma.TransactionClient,
+    encounterId: string,
+  ): Promise<void> {
+    await tx.invoiceItem.updateMany({
+      where: {
+        settled: false,
+        invoice: { encounterId },
+        service: {
+          category: {
+            name: {
+              equals: CONSULTATION_BILLING_CATEGORY,
+              mode: 'insensitive',
+            },
+          },
+        },
+      },
       data: { settled: true },
     });
   }
@@ -350,7 +375,7 @@ export class InvoiceService {
       if (
         !name ||
         name.trim().toLowerCase() !==
-          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+        RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
       ) {
         throw invoiceLinkException(
           'INVOICE_ITEM_CATEGORY_MISMATCH',
@@ -850,6 +875,7 @@ export class InvoiceService {
                 department: { select: { id: true, name: true } },
               },
             },
+            drug: { select: { id: true, genericName: true } },
             usageSegments: true,
           },
         },
@@ -887,6 +913,7 @@ export class InvoiceService {
     // Invoice is authoritative for client-facing due amount.
     // Do not override with linked transaction financial fields.
     const netAmountDue = amountDue;
+    console.log(invoice);
     return {
       ...invoice,
       invoiceItems,
@@ -930,7 +957,7 @@ export class InvoiceService {
         vitals: true,
         invoiceItems: {
           include: {
-            service: { select: { id: true, name: true, cost: true } },
+            service: { select: { id: true, name: true, cost: true } }
           },
         },
       },
@@ -1717,15 +1744,15 @@ export class InvoiceService {
             serviceId: it.serviceId,
             service: it.service
               ? {
-                  id: it.service.id,
-                  name: it.service.name,
-                  category: it.service.category
-                    ? {
-                        id: it.service.category.id,
-                        name: it.service.category.name,
-                      }
-                    : null,
-                }
+                id: it.service.id,
+                name: it.service.name,
+                category: it.service.category
+                  ? {
+                    id: it.service.category.id,
+                    name: it.service.category.name,
+                  }
+                  : null,
+              }
               : null,
             quantity: it.quantity,
             unitPrice: it.unitPrice.toFixed(2),
@@ -2051,6 +2078,7 @@ export class InvoiceService {
   /**
    * Create an invoice with one service line, or append the line to the patient's
    * existing PENDING / PARTIALLY_PAID invoice when present.
+   * Returns the invoice (with items) and the id of the line created for this call.
    */
   async createWithServiceItem(params: {
     patientId: string;
@@ -2088,19 +2116,20 @@ export class InvoiceService {
           staffId: params.staffId,
         },
       });
-      await this.addItem(open.id, {
+      const addedItem = await this.addItem(open.id, {
         serviceId: params.serviceId,
         drugId: params.drugId,
         quantity,
         unitPrice: service.cost,
       });
-      return this.prisma.invoice.findUniqueOrThrow({
+      const invoice = await this.prisma.invoice.findUniqueOrThrow({
         where: { id: open.id },
         include,
       });
+      return { invoice, invoiceItemId: addedItem.id };
     }
 
-    return this.prisma.invoice.create({
+    const invoice = await this.prisma.invoice.create({
       data: {
         invoiceID: generateInvoiceHumanId(),
         patientId: params.patientId,
@@ -2118,6 +2147,11 @@ export class InvoiceService {
       },
       include,
     });
+    const invoiceItemId = invoice.invoiceItems[0]?.id;
+    if (!invoiceItemId) {
+      throw new BadRequestException('Invoice was created without a line item.');
+    }
+    return { invoice, invoiceItemId };
   }
 
   /**

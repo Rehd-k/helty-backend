@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { LabRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InvoiceService } from '../../invoice/invoice.service';
 import { CreateLabResultDto } from './dto/create-lab-result.dto';
@@ -40,6 +41,48 @@ export class LabResultService {
     }
   }
 
+  /** When every required field on every order line has a result, mark linked LabRequest COMPLETED. */
+  private async maybeCompleteLabRequestIfOrderResultsComplete(
+    orderId: string,
+  ): Promise<void> {
+    const order = await this.prisma.labOrder.findUnique({
+      where: { id: orderId },
+      select: {
+        invoiceItemId: true,
+        items: {
+          select: {
+            results: { select: { fieldId: true } },
+            testVersion: {
+              select: {
+                fields: {
+                  where: { required: true },
+                  select: { id: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!order?.invoiceItemId) return;
+
+    for (const item of order.items) {
+      const requiredIds = item.testVersion.fields.map((f) => f.id);
+      const resultFieldIds = new Set(item.results.map((r) => r.fieldId));
+      for (const req of requiredIds) {
+        if (!resultFieldIds.has(req)) return;
+      }
+    }
+
+    await this.prisma.labRequest.updateMany({
+      where: {
+        invoiceItemId: order.invoiceItemId,
+        status: { not: LabRequestStatus.CANCELLED },
+      },
+      data: { status: LabRequestStatus.COMPLETED },
+    });
+  }
+
   async create(dto: CreateLabResultDto) {
     await this.validateFieldBelongsToOrderItem(dto.orderItemId, dto.fieldId);
 
@@ -50,7 +93,15 @@ export class LabResultService {
       throw new NotFoundException(`Staff "${dto.enteredBy}" not found.`);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const link = await this.prisma.labOrderItem.findUnique({
+      where: { id: dto.orderItemId },
+      select: { orderId: true },
+    });
+    if (!link) {
+      throw new NotFoundException(`Lab order item "${dto.orderItemId}" not found.`);
+    }
+
+    const out = await this.prisma.$transaction(async (tx) => {
       const orderItem = await tx.labOrderItem.findUnique({
         where: { id: dto.orderItemId },
         select: { order: { select: { invoiceItemId: true } } },
@@ -79,6 +130,8 @@ export class LabResultService {
         },
       });
     });
+    await this.maybeCompleteLabRequestIfOrderResultsComplete(link.orderId);
+    return out;
   }
 
   async createBatch(dto: CreateLabResultBatchDto) {
@@ -91,6 +144,14 @@ export class LabResultService {
 
     for (const r of dto.results) {
       await this.validateFieldBelongsToOrderItem(dto.orderItemId, r.fieldId);
+    }
+
+    const link = await this.prisma.labOrderItem.findUnique({
+      where: { id: dto.orderItemId },
+      select: { orderId: true },
+    });
+    if (!link) {
+      throw new NotFoundException(`Lab order item "${dto.orderItemId}" not found.`);
     }
 
     const created = await this.prisma.$transaction(async (tx) => {
@@ -123,6 +184,7 @@ export class LabResultService {
         ),
       );
     });
+    await this.maybeCompleteLabRequestIfOrderResultsComplete(link.orderId);
     return created;
   }
 

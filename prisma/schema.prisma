@@ -68,18 +68,17 @@ model Patient {
   waitingPatients WaitingPatient[]
   encounters      Encounter[]
   labRequests     LabRequest[]
-  imagingRequests ImagingRequest[]
 
   wardId String?
   ward   Ward?   @relation(fields: [wardId], references: [id])
 
   pregnancies               Pregnancy[]
   babiesAsMother            Baby[]
-  babiesRegisteredAsPatient Baby[]             @relation("BabyRegisteredPatient")
+  babiesRegisteredAsPatient Baby[]            @relation("BabyRegisteredPatient")
   gynaeProcedures           GynaeProcedure[]
   postnatalVisitsAsSubject  PostnatalVisit[]
   labOrders                 LabOrder[]
-  radiologyRequests         RadiologyRequest[]
+  radiologyOrders           RadiologyOrder[]
   medicationOrders          MedicationOrder[]
 }
 
@@ -777,6 +776,7 @@ model Invoice {
   consultingRoomId String?
   vitals           PatientVitals?  @relation("InvoiceVitals", fields: [vitalsId], references: [id], onDelete: SetNull)
   vitalsId         String?         @unique
+  labRequests      LabRequest[]
 
   @@index([patientId])
   @@index([invoiceID])
@@ -802,14 +802,15 @@ model InvoiceItem {
   createdBy         Staff?  @relation("InvoiceItemCreatedBy", fields: [createdById], references: [id])
   createdById       String?
 
-  quantity         Int                       @default(1)
-  unitPrice        Decimal                   @default(0) @db.Decimal(12, 2)
-  amountPaid       Decimal                   @default(0) @db.Decimal(12, 2)
-  isRecurringDaily Boolean                   @default(false)
-  usageSegments    InvoiceItemUsageSegment[]
-  allocations      InvoiceItemPayment[]
-  radiologyRequest RadiologyRequest?
-  labOrder         LabOrder?
+  quantity           Int                       @default(1)
+  unitPrice          Decimal                   @default(0) @db.Decimal(12, 2)
+  amountPaid         Decimal                   @default(0) @db.Decimal(12, 2)
+  isRecurringDaily   Boolean                   @default(false)
+  usageSegments      InvoiceItemUsageSegment[]
+  allocations        InvoiceItemPayment[]
+  radiologyOrderItem RadiologyOrderItem?
+  labOrder           LabOrder?
+  labRequest         LabRequest?
 
   @@index([invoiceId])
 }
@@ -1118,13 +1119,6 @@ enum LabRequestStatus {
   CANCELLED
 }
 
-enum ImagingRequestStatus {
-  REQUESTED
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-}
-
 enum RadiologyPriority {
   ROUTINE
   URGENT
@@ -1252,7 +1246,7 @@ model Department {
   services            Service[]
   wards               Ward[]
   nurses              Nurse[]
-  radiologyRequests   RadiologyRequest[]
+  radiologyOrders     RadiologyOrder[]
   purchaseNotes       PurchaseNote[]
   storeStockMovements StoreStockMovement[]
 }
@@ -1335,7 +1329,7 @@ model Staff {
   encountersCreated                   Encounter[]                @relation("EncounterCreatedBy")
   encountersUpdated                   Encounter[]                @relation("EncounterUpdatedBy")
   labRequestsOrdered                  LabRequest[]               @relation("LabRequestOrderedBy")
-  imagingRequestsOrdered              ImagingRequest[]           @relation("ImagingRequestOrderedBy")
+  radiologyOrdersRequested            RadiologyOrder[]           @relation("RadiologyOrderOrderedBy")
   prescriptionsAsDoctor               Prescription[]             @relation("PrescriptionDoctor")
   purchaseOrdersCreated               PurchaseOrder[]            @relation("PurchaseOrderCreatedBy")
   purchaseOrdersApproved              PurchaseOrder[]            @relation("PurchaseOrderApprovedBy")
@@ -1369,7 +1363,6 @@ model Staff {
   labResultsEntered                   LabResult[]                @relation("LabResultEnteredBy")
   chatMessagesSent                    ChatMessage[]              @relation("ChatMessageSender")
   chatMessagesReceived                ChatMessage[]              @relation("ChatMessageRecipient")
-  radiologyRequestsRequested          RadiologyRequest[]         @relation("RadiologyRequestOrderedBy")
   radiologySchedulesAsRadiographer    RadiologySchedule[]        @relation("RadiologyScheduleRadiographer")
   radiologyProceduresPerformed        RadiologyProcedure[]       @relation("RadiologyProcedurePerformedBy")
   radiologyImagesUploaded             RadiologyImage[]           @relation("RadiologyImageUploadedBy")
@@ -1450,19 +1443,17 @@ model Encounter {
   followUpInstructions   String?
   referral               String?
 
-  doctorReports     DoctorReport[]
-  prescriptions     Prescription[]
-  labReports        LabReport[]
-  radiologyReports  RadiologyReport[]
-  diagnoses         EncounterDiagnosis[]
-  labRequests       LabRequest[]
-  imagingRequests   ImagingRequest[]
-  medicationOrders  MedicationOrder[]
-  legacyLabOrders   LegacyLabOrder[]
-  imagingOrders     ImagingOrder[]
-  antenatalVisits   AntenatalVisit[]
-  gynaeProcedures   GynaeProcedure[]
-  radiologyRequests RadiologyRequest[]
+  doctorReports    DoctorReport[]
+  prescriptions    Prescription[]
+  labReports       LabReport[]
+  radiologyReports RadiologyReport[]
+  diagnoses        EncounterDiagnosis[]
+  labRequests      LabRequest[]
+  medicationOrders MedicationOrder[]
+  legacyLabOrders  LegacyLabOrder[]
+  radiologyOrders  RadiologyOrder[]
+  antenatalVisits  AntenatalVisit[]
+  gynaeProcedures  GynaeProcedure[]
 
   createdBy   Staff     @relation("EncounterCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -1497,25 +1488,14 @@ model LabRequest {
   testType            String?
   notes               String?
   status              LabRequestStatus @default(REQUESTED)
+  invoice             Invoice?         @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceId           String?
+  invoiceItem         InvoiceItem?     @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId       String?          @unique
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
-}
 
-// Imaging/radiology order tied to an encounter (before results in RadiologyReport)
-model ImagingRequest {
-  id                  String               @id @default(uuid())
-  encounter           Encounter            @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  encounterId         String
-  patient             Patient              @relation(fields: [patientId], references: [id])
-  patientId           String
-  requestedBy         Staff                @relation("ImagingRequestOrderedBy", fields: [requestedByDoctorId], references: [id])
-  requestedByDoctorId String
-  studyType           String?
-  modality            String?
-  notes               String?
-  status              ImagingRequestStatus @default(REQUESTED)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  @@index([invoiceId])
 }
 
 // InsuranceClaim: insurance coverage applied to an invoice
@@ -1928,39 +1908,6 @@ model LabResult {
   @@unique([orderItemId, fieldId])
   @@index([orderItemId])
   @@index([fieldId])
-}
-
-model ImagingCatalog {
-  id                String    @id @default(uuid())
-  name              String
-  area              String?
-  contrastAvailable Boolean   @default(false)
-  cost              Float?
-  createdAt         DateTime? @default(now())
-  updatedAt         DateTime? @updatedAt
-
-  imagingOrders ImagingOrder[]
-
-  @@index([name])
-}
-
-model ImagingOrder {
-  id                 String    @id @default(uuid())
-  encounterId        String
-  catalogId          String
-  studyName          String
-  area               String?
-  contrast           Boolean   @default(false)
-  urgency            String?   @default("Routine") // Routine, Urgent, STAT
-  notesToRadiologist String?
-  status             String    @default("Ordered") // Ordered, InProgress, Completed, Reported
-  createdAt          DateTime? @default(now())
-  updatedAt          DateTime? @updatedAt
-
-  encounter Encounter      @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  catalog   ImagingCatalog @relation(fields: [catalogId], references: [id], onDelete: Restrict)
-
-  @@index([encounterId])
 }
 
 model NurseAssignment {
@@ -2419,16 +2366,32 @@ model RadiologyMachine {
   @@index([isActive])
 }
 
-model RadiologyRequest {
+model RadiologyOrder {
+  id            String                 @id @default(uuid())
+  patient       Patient                @relation(fields: [patientId], references: [id])
+  patientId     String
+  encounter     Encounter?             @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  encounterId   String?
+  requestedBy   Staff                  @relation("RadiologyOrderOrderedBy", fields: [requestedById], references: [id])
+  requestedById String
+  department    Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId  String?
+  status        RadiologyRequestStatus @default(PENDING)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  items RadiologyOrderItem[]
+
+  @@index([patientId])
+  @@index([status])
+  @@index([requestedById])
+  @@index([createdAt])
+}
+
+model RadiologyOrderItem {
   id                     String                 @id @default(uuid())
-  patient                Patient                @relation(fields: [patientId], references: [id])
-  patientId              String
-  encounter              Encounter?             @relation(fields: [encounterId], references: [id], onDelete: SetNull)
-  encounterId            String?
-  requestedBy            Staff                  @relation("RadiologyRequestOrderedBy", fields: [requestedById], references: [id])
-  requestedById          String
-  department             Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  departmentId           String?
+  order                  RadiologyOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId                String
   clinicalNotes          String?
   reasonForInvestigation String?
   priority               RadiologyPriority      @default(ROUTINE)
@@ -2445,25 +2408,23 @@ model RadiologyRequest {
   images    RadiologyImage[]
   report    RadiologyStudyReport?
 
-  @@index([patientId])
+  @@index([orderId])
   @@index([status])
-  @@index([requestedById])
-  @@index([createdAt])
   @@index([priority])
   @@index([invoiceItemId])
 }
 
 model RadiologySchedule {
-  id                 String            @id @default(uuid())
-  radiologyRequest   RadiologyRequest  @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
-  radiologyRequestId String            @unique
-  scheduledAt        DateTime
-  radiographer       Staff?            @relation("RadiologyScheduleRadiographer", fields: [radiographerId], references: [id], onDelete: SetNull)
-  radiographerId     String?
-  machine            RadiologyMachine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
-  machineId          String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                   String             @id @default(uuid())
+  radiologyOrderItem   RadiologyOrderItem @relation(fields: [radiologyOrderItemId], references: [id], onDelete: Cascade)
+  radiologyOrderItemId String             @unique
+  scheduledAt          DateTime
+  radiographer         Staff?             @relation("RadiologyScheduleRadiographer", fields: [radiographerId], references: [id], onDelete: SetNull)
+  radiographerId       String?
+  machine              RadiologyMachine?  @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  machineId            String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   @@index([scheduledAt])
   @@index([radiographerId])
@@ -2471,51 +2432,51 @@ model RadiologySchedule {
 }
 
 model RadiologyProcedure {
-  id                 String            @id @default(uuid())
-  radiologyRequest   RadiologyRequest  @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
-  radiologyRequestId String            @unique
-  performedBy        Staff             @relation("RadiologyProcedurePerformedBy", fields: [performedById], references: [id])
-  performedById      String
-  machine            RadiologyMachine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
-  machineId          String?
-  startTime          DateTime
-  endTime            DateTime?
-  notes              String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                   String             @id @default(uuid())
+  radiologyOrderItem   RadiologyOrderItem @relation(fields: [radiologyOrderItemId], references: [id], onDelete: Cascade)
+  radiologyOrderItemId String             @unique
+  performedBy          Staff              @relation("RadiologyProcedurePerformedBy", fields: [performedById], references: [id])
+  performedById        String
+  machine              RadiologyMachine?  @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  machineId            String?
+  startTime            DateTime
+  endTime              DateTime?
+  notes                String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   @@index([performedById])
   @@index([machineId])
 }
 
 model RadiologyImage {
-  id                 String           @id @default(uuid())
-  radiologyRequest   RadiologyRequest @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
-  radiologyRequestId String
-  fileName           String
-  filePath           String
-  mimeType           String?
-  fileSize           Int?
-  uploadedBy         Staff            @relation("RadiologyImageUploadedBy", fields: [uploadedById], references: [id])
-  uploadedById       String
-  uploadedAt         DateTime         @default(now())
+  id                   String             @id @default(uuid())
+  radiologyOrderItem   RadiologyOrderItem @relation(fields: [radiologyOrderItemId], references: [id], onDelete: Cascade)
+  radiologyOrderItemId String
+  fileName             String
+  filePath             String
+  mimeType             String?
+  fileSize             Int?
+  uploadedBy           Staff              @relation("RadiologyImageUploadedBy", fields: [uploadedById], references: [id])
+  uploadedById         String
+  uploadedAt           DateTime           @default(now())
 
-  @@index([radiologyRequestId])
+  @@index([radiologyOrderItemId])
 }
 
 model RadiologyStudyReport {
-  id                 String           @id @default(uuid())
-  radiologyRequest   RadiologyRequest @relation(fields: [radiologyRequestId], references: [id], onDelete: Cascade)
-  radiologyRequestId String           @unique
-  findings           String?
-  impression         String?
-  recommendations    String?
-  severity           ReportSeverity?
-  signedBy           Staff            @relation("RadiologyReportSignedBy", fields: [signedById], references: [id])
-  signedById         String
-  signedAt           DateTime
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  id                   String             @id @default(uuid())
+  radiologyOrderItem   RadiologyOrderItem @relation(fields: [radiologyOrderItemId], references: [id], onDelete: Cascade)
+  radiologyOrderItemId String             @unique
+  findings             String?
+  impression           String?
+  recommendations      String?
+  severity             ReportSeverity?
+  signedBy             Staff              @relation("RadiologyReportSignedBy", fields: [signedById], references: [id])
+  signedById           String
+  signedAt             DateTime
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   @@index([signedById])
 }
