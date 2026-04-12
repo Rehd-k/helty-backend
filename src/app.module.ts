@@ -39,6 +39,7 @@ import { PurchasesModule } from './modules/purchases/purchases.module';
 import { BillingAnalyticsModule } from './modules/billing-analytics/billing-analytics.module';
 import { FrontdeskModule } from './modules/frontdesk/frontdesk.module';
 import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module';
+import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboard.module';
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module
     BillingAnalyticsModule,
     FrontdeskModule,
     HeltyDesktopModule,
+    NursesDashboardModule,
   ],
   controllers: [AppController],
   providers: [

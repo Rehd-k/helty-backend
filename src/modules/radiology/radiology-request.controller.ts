@@ -32,7 +32,7 @@ import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-que
 export class RadiologyRequestController {
   constructor(
     private readonly radiologyRequestService: RadiologyRequestService,
-  ) {}
+  ) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

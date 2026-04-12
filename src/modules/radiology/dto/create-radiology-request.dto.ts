@@ -7,6 +7,7 @@ import {
   IsUUID,
   IsEnum,
   ValidateNested,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RadiologyPriority, RadiologyModality } from '@prisma/client';
@@ -41,6 +42,14 @@ export class CreateRadiologyOrderItemDto {
   bodyPart?: string;
 
   @ApiPropertyOptional({
+    description: 'Whether contrast is required for this study',
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  contrast?: boolean;
+
+  @ApiPropertyOptional({
     description:
       'Invoice UUID — use together with invoiceItemId and serviceId for paid-waiting flow',
   })
@@ -57,7 +66,7 @@ export class CreateRadiologyOrderItemDto {
 
   @ApiPropertyOptional({
     description:
-      'Service UUID to validate against the selected paid invoice line item.',
+      'Radiology & Imaging service UUID — with encounterId, a pending invoice line is created automatically; otherwise use together with invoiceId and invoiceItemId when billing was settled at the counter',
   })
   @IsUUID()
   @IsOptional()

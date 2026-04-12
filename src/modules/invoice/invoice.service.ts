@@ -1317,10 +1317,15 @@ export class InvoiceService {
     dto: RecordInvoicePaymentDto,
     createdByStaffId?: string,
   ) {
-    await this.recalculateInvoiceTotals(invoiceId);
-    return this.prisma.$transaction((tx) =>
-      this.recordPaymentWithTx(tx, invoiceId, dto, createdByStaffId),
-    );
+    try {
+      await this.recalculateInvoiceTotals(invoiceId);
+      return this.prisma.$transaction((tx) =>
+        this.recordPaymentWithTx(tx, invoiceId, dto, createdByStaffId),
+      );
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
   }
 
   /** Record a payment and allocate it across invoice line items. */

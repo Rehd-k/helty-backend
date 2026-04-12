@@ -14,19 +14,14 @@ import { LabRequestService } from './lab-request.service';
 import {
   CreateLabRequestDto,
   UpdateLabRequestDto,
+  ListLabRequestsQueryDto,
 } from './dto/create-lab-request.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
-
-class ListLabRequestQueryDto extends DateRangeSkipTakeDto {
-  encounterId?: string;
-  patientId?: string;
-}
 
 @ApiTags('Lab Request')
 @Controller('lab-requests')
 export class LabRequestController {
-  constructor(private readonly labRequestService: LabRequestService) {}
+  constructor(private readonly labRequestService: LabRequestService) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -37,7 +32,7 @@ export class LabRequestController {
 
   @Get()
   @ApiOperation({ summary: 'Get all lab requests with optional filters' })
-  findAll(@Query() query: ListLabRequestQueryDto) {
+  findAll(@Query() query: ListLabRequestsQueryDto) {
     return this.labRequestService.findAll(query);
   }
 

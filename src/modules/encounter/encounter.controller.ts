@@ -29,7 +29,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Encounter')
 @Controller('encounters')
 export class EncounterController {
-  constructor(private readonly encounterService: EncounterService) {}
+  constructor(private readonly encounterService: EncounterService) { }
 
   @Post()
   @ApiOperation({
@@ -129,8 +129,9 @@ export class EncounterController {
   @ApiOperation({ summary: 'Update encounter' })
   update(
     @Param('id') id: string,
-    @Body() updateEncounterDto: UpdateEncounterDto,
+    @Body() updateEncounterDto: any,
   ) {
+    console.log(updateEncounterDto);
     return this.encounterService.update(id, updateEncounterDto);
   }
 

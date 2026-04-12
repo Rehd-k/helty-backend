@@ -95,6 +95,18 @@ export class EncounterService {
             startTime: new Date(Date.now()),
             endTime: dto.endTime ? new Date(dto.endTime) : undefined,
             chiefComplaint: dto.chiefComplaint,
+            hpi: dto.hpi,
+            pmh: dto.pmh,
+            surgicalHistory: dto.surgicalHistory,
+            drugHistory: dto.drugHistory,
+            allergyHistory: dto.allergyHistory,
+            familyHistory: dto.familyHistory,
+            socialHistory: dto.socialHistory,
+            examinationNotes: dto.examinationNotes,
+            soapSubjective: dto.soapSubjective,
+            soapObjective: dto.soapObjective,
+            soapAssessment: dto.soapAssessment,
+            soapPlan: dto.soapPlan,
             triageNotes: dto.triageNotes,
             status: dto.status ?? EncounterStatus.ONGOING,
             createdById: req.user.sub,
@@ -133,6 +145,18 @@ export class EncounterService {
         startTime: new Date(Date.now()),
         endTime: dto.endTime ? new Date(dto.endTime) : undefined,
         chiefComplaint: dto.chiefComplaint,
+        hpi: dto.hpi,
+        pmh: dto.pmh,
+        surgicalHistory: dto.surgicalHistory,
+        drugHistory: dto.drugHistory,
+        allergyHistory: dto.allergyHistory,
+        familyHistory: dto.familyHistory,
+        socialHistory: dto.socialHistory,
+        examinationNotes: dto.examinationNotes,
+        soapSubjective: dto.soapSubjective,
+        soapObjective: dto.soapObjective,
+        soapAssessment: dto.soapAssessment,
+        soapPlan: dto.soapPlan,
         triageNotes: dto.triageNotes,
         status: dto.status ?? EncounterStatus.ONGOING,
         createdById: req.user.sub,
@@ -207,6 +231,18 @@ export class EncounterService {
           encounterType: EncounterType.OUTPATIENT,
           startTime: new Date(),
           chiefComplaint: dto.chiefComplaint,
+          hpi: dto.hpi,
+          pmh: dto.pmh,
+          surgicalHistory: dto.surgicalHistory,
+          drugHistory: dto.drugHistory,
+          allergyHistory: dto.allergyHistory,
+          familyHistory: dto.familyHistory,
+          socialHistory: dto.socialHistory,
+          examinationNotes: dto.examinationNotes,
+          soapSubjective: dto.soapSubjective,
+          soapObjective: dto.soapObjective,
+          soapAssessment: dto.soapAssessment,
+          soapPlan: dto.soapPlan,
           status: EncounterStatus.ONGOING,
           createdById,
         },
@@ -367,6 +403,7 @@ export class EncounterService {
       },
     });
     if (!encounter) throw new NotFoundException(`Encounter "${id}" not found.`);
+    console.log(encounter);
     return encounter;
   }
 
@@ -388,6 +425,18 @@ export class EncounterService {
     const data: {
       endTime?: Date;
       chiefComplaint?: string;
+      hpi?: string;
+      pmh?: string;
+      surgicalHistory?: string;
+      drugHistory?: string;
+      allergyHistory?: string;
+      familyHistory?: string;
+      socialHistory?: string;
+      examinationNotes?: string;
+      soapSubjective?: string;
+      soapObjective?: string;
+      soapAssessment?: string;
+      soapPlan?: string;
       triageNotes?: string;
       status?: EncounterStatus;
       updatedById?: string;
@@ -395,6 +444,24 @@ export class EncounterService {
     if (dto.endTime !== undefined) data.endTime = new Date(dto.endTime);
     if (dto.chiefComplaint !== undefined)
       data.chiefComplaint = dto.chiefComplaint;
+    if (dto.hpi !== undefined) data.hpi = dto.hpi;
+    if (dto.pmh !== undefined) data.pmh = dto.pmh;
+    if (dto.surgicalHistory !== undefined)
+      data.surgicalHistory = dto.surgicalHistory;
+    if (dto.drugHistory !== undefined) data.drugHistory = dto.drugHistory;
+    if (dto.allergyHistory !== undefined)
+      data.allergyHistory = dto.allergyHistory;
+    if (dto.familyHistory !== undefined) data.familyHistory = dto.familyHistory;
+    if (dto.socialHistory !== undefined) data.socialHistory = dto.socialHistory;
+    if (dto.examinationNotes !== undefined)
+      data.examinationNotes = dto.examinationNotes;
+    if (dto.soapSubjective !== undefined)
+      data.soapSubjective = dto.soapSubjective;
+    if (dto.soapObjective !== undefined)
+      data.soapObjective = dto.soapObjective;
+    if (dto.soapAssessment !== undefined)
+      data.soapAssessment = dto.soapAssessment;
+    if (dto.soapPlan !== undefined) data.soapPlan = dto.soapPlan;
     if (dto.triageNotes !== undefined) data.triageNotes = dto.triageNotes;
     dto.status === undefined
       ? (data.status = 'ONGOING')

@@ -10,6 +10,7 @@ import { invoiceLinkException } from '../../common/exceptions/invoice-link.excep
 import { CreateRadiologyRequestDto } from './dto/create-radiology-request.dto';
 import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
+import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class RadiologyRequestService {
@@ -83,27 +84,80 @@ export class RadiologyRequestService {
       },
     } as const;
 
-    return this.prisma.$transaction(async (tx) => {
-      for (const item of dto.items) {
-        const hasInvoiceLink = !!(
+    type PreparedItem = {
+      item: CreateRadiologyRequestDto['items'][number] & {
+        invoiceId?: string;
+        invoiceItemId?: string;
+      };
+      skipPaidInvoiceAssert: boolean;
+    };
+
+    const prepared: PreparedItem[] = [];
+    for (const item of dto.items) {
+      let resolved: PreparedItem['item'] = { ...item };
+      let skipPaidInvoiceAssert = false;
+
+      if (
+        dto.encounterId &&
+        item.serviceId &&
+        !item.invoiceId &&
+        !item.invoiceItemId
+      ) {
+        await this.invoiceService.assertServiceCategoryForEncounterBilling(
+          item.serviceId,
+          'radiology',
+        );
+        const { invoice, invoiceItemId } =
+          await this.invoiceService.createWithServiceItem({
+            patientId: dto.patientId,
+            encounterId: dto.encounterId,
+            staffId: dto.requestedById,
+            serviceId: item.serviceId,
+          });
+        resolved = {
+          ...resolved,
+          invoiceId: invoice.id,
+          invoiceItemId,
+        };
+        skipPaidInvoiceAssert = true;
+      } else {
+        const hasAll = !!(
+          item.invoiceId &&
+          item.invoiceItemId &&
+          item.serviceId
+        );
+        const hasAny = !!(
           item.invoiceId ||
           item.invoiceItemId ||
           item.serviceId
         );
-        if (!hasInvoiceLink) continue;
-        if (!item.invoiceId || !item.invoiceItemId || !item.serviceId) {
+        if (hasAny && !hasAll) {
           throw invoiceLinkException(
             'INVALID_INVOICE_LINK_PAYLOAD',
             'invoiceId, invoiceItemId, and serviceId must all be provided together.',
           );
         }
-        await this.invoiceService.assertPaidInvoiceItemConsumable(tx, {
-          invoiceId: item.invoiceId,
-          invoiceItemId: item.invoiceItemId,
-          serviceId: item.serviceId,
-          patientId: dto.patientId,
-          mode: 'radiology',
-        });
+      }
+
+      prepared.push({ item: resolved, skipPaidInvoiceAssert });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      for (const { item, skipPaidInvoiceAssert } of prepared) {
+        if (
+          item.invoiceId &&
+          item.invoiceItemId &&
+          item.serviceId &&
+          !skipPaidInvoiceAssert
+        ) {
+          await this.invoiceService.assertPaidInvoiceItemConsumable(tx, {
+            invoiceId: item.invoiceId,
+            invoiceItemId: item.invoiceItemId,
+            serviceId: item.serviceId,
+            patientId: dto.patientId,
+            mode: 'radiology',
+          });
+        }
       }
       return tx.radiologyOrder.create({
         data: {
@@ -112,12 +166,13 @@ export class RadiologyRequestService {
           requestedById: dto.requestedById,
           departmentId: dto.departmentId ?? undefined,
           items: {
-            create: dto.items.map((item) => ({
+            create: prepared.map(({ item }) => ({
               clinicalNotes: item.clinicalNotes ?? null,
               reasonForInvestigation: item.reasonForInvestigation ?? null,
               priority: item.priority ?? 'ROUTINE',
               scanType: item.scanType,
               bodyPart: item.bodyPart ?? null,
+              contrast: item.contrast ?? false,
               invoiceItemId: item.invoiceItemId ?? undefined,
             })),
           },
@@ -128,17 +183,22 @@ export class RadiologyRequestService {
   }
 
   async findAll(query: ListRadiologyRequestsQueryDto) {
-    const where: Prisma.RadiologyOrderWhereInput = {};
-    if (query.status) where.status = query.status;
-    if (query.patientId) where.patientId = query.patientId;
-    if (query.fromDate || query.toDate) {
-      where.createdAt = {};
-      if (query.fromDate) where.createdAt.gte = new Date(query.fromDate);
-      if (query.toDate) where.createdAt.lte = new Date(query.toDate);
-    }
+    const {
+      skip = 0,
+      take = 20,
+      encounterId,
+      patientId,
+      status,
+      fromDate,
+      toDate,
+    } = query;
+    const { from, to } = parseDateRange(fromDate, toDate);
 
-    const skip = query.skip ?? 0;
-    const take = query.take ?? 20;
+    const where: Prisma.RadiologyOrderWhereInput = {};
+    if (status) where.status = status;
+    if (patientId) where.patientId = patientId;
+    if (encounterId) where.encounterId = encounterId;
+    if (fromDate && toDate) where.createdAt = { gte: from, lte: to };
 
     const [requests, total] = await Promise.all([
       this.prisma.radiologyOrder.findMany({

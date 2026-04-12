@@ -8,8 +8,8 @@ import { InvoiceService } from '../invoice/invoice.service';
 import {
   CreateLabRequestDto,
   UpdateLabRequestDto,
+  ListLabRequestsQueryDto,
 } from './dto/create-lab-request.dto';
-import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { labRequestWithBillingInclude } from './lab-request-includes';
 
@@ -18,7 +18,7 @@ export class LabRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) {}
+  ) { }
 
   async create(dto: CreateLabRequestDto) {
     const encounter = await this.prisma.encounter.findUnique({
@@ -63,9 +63,7 @@ export class LabRequestService {
     });
   }
 
-  async findAll(
-    query: DateRangeSkipTakeDto & { encounterId?: string; patientId?: string },
-  ) {
+  async findAll(query: ListLabRequestsQueryDto) {
     const {
       skip = 0,
       take = 20,

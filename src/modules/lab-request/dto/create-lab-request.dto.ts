@@ -7,6 +7,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LabRequestStatus } from '@prisma/client';
+import { DateRangeSkipTakeDto } from '../../../common/dto/date-range.dto';
 
 export class CreateLabRequestDto {
   @ApiProperty({ description: 'Encounter UUID' })
@@ -41,6 +42,18 @@ export class CreateLabRequestDto {
   @IsUUID()
   @IsOptional()
   serviceId?: string;
+}
+
+export class ListLabRequestsQueryDto extends DateRangeSkipTakeDto {
+  @ApiPropertyOptional({ description: 'Filter by encounter UUID' })
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by patient UUID' })
+  @IsUUID()
+  @IsOptional()
+  patientId?: string;
 }
 
 export class UpdateLabRequestDto {

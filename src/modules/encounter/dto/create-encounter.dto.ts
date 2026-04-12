@@ -50,6 +50,66 @@ export class CreateEncounterDto {
   @IsOptional()
   chiefComplaint?: string;
 
+  @ApiPropertyOptional({ description: 'History of present illness' })
+  @IsString()
+  @IsOptional()
+  hpi?: string;
+
+  @ApiPropertyOptional({ description: 'Past medical history' })
+  @IsString()
+  @IsOptional()
+  pmh?: string;
+
+  @ApiPropertyOptional({ description: 'Surgical history' })
+  @IsString()
+  @IsOptional()
+  surgicalHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Drug / medication history' })
+  @IsString()
+  @IsOptional()
+  drugHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Allergy history' })
+  @IsString()
+  @IsOptional()
+  allergyHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Family history' })
+  @IsString()
+  @IsOptional()
+  familyHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Social history' })
+  @IsString()
+  @IsOptional()
+  socialHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Physical examination notes' })
+  @IsString()
+  @IsOptional()
+  examinationNotes?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — subjective' })
+  @IsString()
+  @IsOptional()
+  soapSubjective?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — objective' })
+  @IsString()
+  @IsOptional()
+  soapObjective?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — assessment' })
+  @IsString()
+  @IsOptional()
+  soapAssessment?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — plan' })
+  @IsString()
+  @IsOptional()
+  soapPlan?: string;
+
   @ApiPropertyOptional({ description: 'Triage notes' })
   @IsString()
   @IsOptional()
@@ -85,6 +145,66 @@ export class StartOutpatientEncounterDto {
   @IsOptional()
   chiefComplaint?: string;
 
+  @ApiPropertyOptional({ description: 'History of present illness' })
+  @IsString()
+  @IsOptional()
+  hpi?: string;
+
+  @ApiPropertyOptional({ description: 'Past medical history' })
+  @IsString()
+  @IsOptional()
+  pmh?: string;
+
+  @ApiPropertyOptional({ description: 'Surgical history' })
+  @IsString()
+  @IsOptional()
+  surgicalHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Drug / medication history' })
+  @IsString()
+  @IsOptional()
+  drugHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Allergy history' })
+  @IsString()
+  @IsOptional()
+  allergyHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Family history' })
+  @IsString()
+  @IsOptional()
+  familyHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Social history' })
+  @IsString()
+  @IsOptional()
+  socialHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Physical examination notes' })
+  @IsString()
+  @IsOptional()
+  examinationNotes?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — subjective' })
+  @IsString()
+  @IsOptional()
+  soapSubjective?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — objective' })
+  @IsString()
+  @IsOptional()
+  soapObjective?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — assessment' })
+  @IsString()
+  @IsOptional()
+  soapAssessment?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — plan' })
+  @IsString()
+  @IsOptional()
+  soapPlan?: string;
+
   @ApiPropertyOptional({
     description:
       'Waiting patient entry UUID; if provided, that entry will be marked as seen',
@@ -113,6 +233,66 @@ export class UpdateEncounterDto {
   @IsString()
   @IsOptional()
   chiefComplaint?: string;
+
+  @ApiPropertyOptional({ description: 'History of present illness' })
+  @IsString()
+  @IsOptional()
+  hpi?: string;
+
+  @ApiPropertyOptional({ description: 'Past medical history' })
+  @IsString()
+  @IsOptional()
+  pmh?: string;
+
+  @ApiPropertyOptional({ description: 'Surgical history' })
+  @IsString()
+  @IsOptional()
+  surgicalHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Drug / medication history' })
+  @IsString()
+  @IsOptional()
+  drugHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Allergy history' })
+  @IsString()
+  @IsOptional()
+  allergyHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Family history' })
+  @IsString()
+  @IsOptional()
+  familyHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Social history' })
+  @IsString()
+  @IsOptional()
+  socialHistory?: string;
+
+  @ApiPropertyOptional({ description: 'Physical examination notes' })
+  @IsString()
+  @IsOptional()
+  examinationNotes?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — subjective' })
+  @IsString()
+  @IsOptional()
+  soapSubjective?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — objective' })
+  @IsString()
+  @IsOptional()
+  soapObjective?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — assessment' })
+  @IsString()
+  @IsOptional()
+  soapAssessment?: string;
+
+  @ApiPropertyOptional({ description: 'SOAP — plan' })
+  @IsString()
+  @IsOptional()
+  soapPlan?: string;
 
   @ApiPropertyOptional({ description: 'Triage notes' })
   @IsString()

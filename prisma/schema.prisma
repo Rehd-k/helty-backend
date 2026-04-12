@@ -2397,6 +2397,7 @@ model RadiologyOrderItem {
   priority               RadiologyPriority      @default(ROUTINE)
   scanType               RadiologyModality
   bodyPart               String?
+  contrast               Boolean                @default(false)
   status                 RadiologyRequestStatus @default(PENDING)
   invoiceItem            InvoiceItem?           @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
   invoiceItemId          String?                @unique
