@@ -1,5 +1,5 @@
--- AlterEnum: WALLET on InvoicePaymentMethod (no-op if already present).
--- Broad exception handling: some PostgreSQL versions use SQLSTATE other than duplicate_object for enum labels.
+-- AlterEnum (idempotent): Prisma may re-emit ADD VALUE for WALLET; it is already present after
+-- 20260406123000_invoice_only_cutover + 20260410143842_big_update on a full replay.
 DO $migration$
 BEGIN
   ALTER TYPE "InvoicePaymentMethod" ADD VALUE 'WALLET';
