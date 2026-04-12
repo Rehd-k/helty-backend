@@ -1,16 +1,16 @@
--- AlterEnum (idempotent): Prisma may re-emit ADD VALUE for WALLET; it is already present after
--- 20260406123000_invoice_only_cutover + 20260410143842_big_update on a full replay.
+-- WALLET is already present after earlier migrations; guard for shadow DB replay (P3006).
 DO $migration$
 BEGIN
-  ALTER TYPE "InvoicePaymentMethod" ADD VALUE 'WALLET';
-EXCEPTION
-  WHEN duplicate_object THEN
-    NULL;
-  WHEN OTHERS THEN
-    IF SQLERRM ILIKE '%already exists%' THEN
-      NULL;
-    ELSE
-      RAISE;
-    END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_enum e
+    INNER JOIN pg_catalog.pg_type t ON t.oid = e.enumtypid
+    INNER JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = 'public'
+      AND t.typname = 'InvoicePaymentMethod'
+      AND e.enumlabel = 'WALLET'
+  ) THEN
+    ALTER TYPE "InvoicePaymentMethod" ADD VALUE 'WALLET';
+  END IF;
 END
 $migration$;
