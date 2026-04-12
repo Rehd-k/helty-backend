@@ -4,7 +4,7 @@
 -- and removes transaction-domain tables.
 
 -- 1) New enums
-CREATE TYPE "InvoicePaymentMethod" AS ENUM ('CASH', 'CARD', 'TRANSFER', 'INSURANCE', 'WAIVER');
+CREATE TYPE "InvoicePaymentMethod" AS ENUM ('CASH', 'CARD', 'TRANSFER', 'INSURANCE', 'WAIVER', 'WALLET');
 CREATE TYPE "InvoiceAuditAction" AS ENUM (
   'PAYMENT_RECEIVED',
   'REFUND_ISSUED',
