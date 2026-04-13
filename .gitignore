@@ -39,8 +39,8 @@ lerna-debug.log*
 !.vscode/extensions.json
 
 # Database logical backups (may contain PHI)
-backup.json
-*.backup.json
+# backup.json
+# *.backup.json
 
 # dotenv environment variable files
 .env

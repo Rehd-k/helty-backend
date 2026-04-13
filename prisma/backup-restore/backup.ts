@@ -3,7 +3,7 @@
  * Usage: `npx ts-node ./prisma/backup-restore/backup.ts` or `npm run db:backup`
  * Options: `--out=path` or env `BACKUP_FILE` (default: backup.json in cwd).
  * If you see P2022 (column does not exist): the database is behind `schema.prisma` — run
- * `npx prisma migrate deploy` on the server. Optional: `BACKUP_SKIP_SCHEMA_MISMATCH=1` skips
+ * `npx prisma migrate deploy` in that environment. Optional: `BACKUP_SKIP_SCHEMA_MISMATCH=1` skips
  * failing models (partial backup; not recommended for production DR).
  */
 import 'dotenv/config';
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
         if (isPrismaP2022(err)) {
           const hint =
             `Database schema is out of sync with prisma/schema.prisma (model "${m.name}"). ` +
-            `On the server run: npx prisma migrate deploy`;
+            `On this machine run: npx prisma migrate deploy (same DATABASE_URL you use for the app)`;
           if (skipMismatch) {
             console.warn(`${hint}\nSkipping this model because BACKUP_SKIP_SCHEMA_MISMATCH=1.`);
             skippedSchemaMismatch.push({
