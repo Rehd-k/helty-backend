@@ -1,7 +1,7 @@
 # compiled output
 /dist
 /node_modules
-/prisma/migrations-server-snapshot
+/prisma/migration_snapshot
 /build
 /uploads
 
@@ -36,6 +36,10 @@ lerna-debug.log*
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+
+# Database logical backups (may contain PHI)
+backup.json
+*.backup.json
 
 # dotenv environment variable files
 .env

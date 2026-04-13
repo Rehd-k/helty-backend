@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "PatientStatus" AS ENUM ('ADMITED', 'DECEASED', 'OUTPATIENT');
 
@@ -29,19 +32,25 @@ CREATE TYPE "DispensationStatus" AS ENUM ('DRAFT', 'COMPLETED', 'REVERSED');
 CREATE TYPE "PrescriptionItemType" AS ENUM ('DRUG', 'CONSUMABLE');
 
 -- CreateEnum
-CREATE TYPE "TransactionStatus" AS ENUM ('DRAFT', 'ACTIVE', 'PARTIALLY_PAID', 'PAID', 'CANCELLED', 'REFUNDED');
+CREATE TYPE "InvoiceStatus" AS ENUM ('PENDING', 'PARTIALLY_PAID', 'PAID');
 
 -- CreateEnum
-CREATE TYPE "TransactionPaymentMethod" AS ENUM ('CASH', 'CARD', 'TRANSFER', 'INSURANCE', 'WAIVER');
+CREATE TYPE "WalletTransactionType" AS ENUM ('CREDIT', 'DEBIT');
 
 -- CreateEnum
-CREATE TYPE "DiscountType" AS ENUM ('PERCENTAGE', 'FIXED');
+CREATE TYPE "InvoicePaymentSource" AS ENUM ('WALLET', 'CASH', 'TRANSFER', 'CARD', 'INSURANCE', 'WAIVER');
 
 -- CreateEnum
-CREATE TYPE "TransactionAuditAction" AS ENUM ('BILL_CREATED', 'ITEM_ADDED', 'ITEM_EDITED', 'DISCOUNT_APPLIED', 'PAYMENT_RECEIVED', 'BILL_CANCELLED', 'REFUND_ISSUED', 'INSURANCE_APPLIED', 'BILL_REOPENED');
+CREATE TYPE "InvoicePaymentMethod" AS ENUM ('CASH', 'CARD', 'TRANSFER', 'INSURANCE', 'WAIVER', 'WALLET');
 
 -- CreateEnum
-CREATE TYPE "AccountType" AS ENUM ('PHARMACY_STORE', 'PHARMACY_DISPENSARY', 'PHARMACY_HEAD', 'INPATIENT_NURSE', 'OUTPATIENT_NURSE', 'INPATIENT_DOCTOR', 'MEDICAL_RECORDS', 'OTHER', 'FRONTDESK', 'CONSULTANT', 'NURSE', 'LAB', 'RADIOLOGY', 'RADIOLOGIST', 'RADIOGRAPHER', 'RADIOLOGY_RECEPTIONIST', 'ACCOUNTS', 'BILLS', 'PHARMACY', 'THEATERE', 'ONG', 'DIALYSIS');
+CREATE TYPE "InvoiceAuditAction" AS ENUM ('PAYMENT_RECEIVED', 'REFUND_ISSUED', 'WALLET_DEPOSIT', 'ITEM_ADDED', 'ITEM_UPDATED', 'ITEM_REMOVED');
+
+-- CreateEnum
+CREATE TYPE "AccountType" AS ENUM ('BILLING', 'ACCOUNTING', 'PHARMACY', 'NURSE', 'PHYSICIAN', 'LABORATORY', 'RADIOLOGY', 'STORE', 'MEDICAL_RECORDS', 'FRONT_DESK', 'ICT', 'CMD', 'CMAC', 'SUPER_ADMIN');
+
+-- CreateEnum
+CREATE TYPE "StaffRole" AS ENUM ('BILLING_HEAD', 'BILLING_STAFF', 'ACCOUNT_HEAD', 'ACCOUNTING_STAFF', 'PHARMACY_STORE', 'PHARMACY_DISPENSARY', 'PHARMACY_HEAD', 'HEAD_NURSE', 'INPATIENT_NURSE', 'OUTPATIENT_NURSE', 'CONSULTANT', 'RESIDENT', 'INTERN', 'JUNIOR_RESIDENT', 'SENIOR_RESIDENT', 'CHIEF_RESIDENT', 'MEDICAL_STUDENT', 'LAB_HEAD', 'LAB_SCIENTIST', 'RADIOLOGY_HEAD', 'RADIOGRAPHER', 'RADIOLOGY_RECEPTIONIST', 'HEAD_OF_STORE', 'STOREKEEPER', 'MEDICAL_RECORDS', 'FRONT_DESK', 'ICT_STAFF', 'CMD', 'CMAC', 'SUPER_ADMIN');
 
 -- CreateEnum
 CREATE TYPE "PregnancyStatus" AS ENUM ('ONGOING', 'DELIVERED', 'LOST', 'TERMINATED');
@@ -81,9 +90,6 @@ CREATE TYPE "EncounterStatus" AS ENUM ('ONGOING', 'COMPLETED', 'CANCELLED');
 
 -- CreateEnum
 CREATE TYPE "LabRequestStatus" AS ENUM ('REQUESTED', 'COLLECTED', 'COMPLETED', 'CANCELLED');
-
--- CreateEnum
-CREATE TYPE "ImagingRequestStatus" AS ENUM ('REQUESTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED');
 
 -- CreateEnum
 CREATE TYPE "RadiologyPriority" AS ENUM ('ROUTINE', 'URGENT', 'EMERGENCY');
@@ -149,17 +155,6 @@ CREATE TYPE "PurchaseNoteStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'OR
 CREATE TYPE "PurchaseNotePriority" AS ENUM ('LOW', 'NORMAL', 'HIGH', 'CRITICAL');
 
 -- CreateTable
-CREATE TABLE "NoIdPatient" (
-    "id" TEXT NOT NULL,
-    "firstName" TEXT NOT NULL,
-    "surname" TEXT NOT NULL,
-    "age" TEXT NOT NULL,
-    "gender" TEXT NOT NULL,
-
-    CONSTRAINT "NoIdPatient_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "Patient" (
     "id" TEXT NOT NULL,
     "patientId" TEXT,
@@ -193,6 +188,7 @@ CREATE TABLE "Patient" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "createdById" TEXT NOT NULL,
     "updatedById" TEXT,
+    "wardId" TEXT,
 
     CONSTRAINT "Patient_pkey" PRIMARY KEY ("id")
 );
@@ -390,6 +386,18 @@ CREATE TABLE "Drug" (
     "updatedById" TEXT,
 
     CONSTRAINT "Drug_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "DrugPrice" (
+    "id" TEXT NOT NULL,
+    "drugId" TEXT NOT NULL,
+    "wardId" TEXT NOT NULL,
+    "price" DECIMAL(12,2) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "DrugPrice_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -663,7 +671,6 @@ CREATE TABLE "Service" (
     "updatedById" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "noIdPatientId" TEXT,
 
     CONSTRAINT "Service_pkey" PRIMARY KEY ("id")
 );
@@ -671,14 +678,19 @@ CREATE TABLE "Service" (
 -- CreateTable
 CREATE TABLE "Invoice" (
     "id" TEXT NOT NULL,
+    "invoiceID" TEXT NOT NULL,
     "patientId" TEXT NOT NULL,
-    "status" "TransactionStatus" NOT NULL,
+    "status" "InvoiceStatus" NOT NULL DEFAULT 'PENDING',
+    "totalAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "amountPaid" DECIMAL(12,2) NOT NULL DEFAULT 0,
     "createdById" TEXT NOT NULL,
     "updatedById" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "staffId" TEXT NOT NULL,
     "encounterId" TEXT,
+    "consultingRoomId" TEXT,
+    "vitalsId" TEXT,
 
     CONSTRAINT "Invoice_pkey" PRIMARY KEY ("id")
 );
@@ -688,11 +700,109 @@ CREATE TABLE "InvoiceItem" (
     "id" TEXT NOT NULL,
     "invoiceId" TEXT NOT NULL,
     "serviceId" TEXT,
+    "settled" BOOLEAN NOT NULL DEFAULT false,
     "drugId" TEXT,
+    "customDescription" TEXT,
+    "createdById" TEXT,
     "quantity" INTEGER NOT NULL DEFAULT 1,
-    "priceAtTime" DOUBLE PRECISION NOT NULL,
+    "unitPrice" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "amountPaid" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "isRecurringDaily" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "InvoiceItem_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "InvoiceItemPayment" (
+    "id" TEXT NOT NULL,
+    "invoiceItemId" TEXT NOT NULL,
+    "invoicePaymentId" TEXT,
+    "amount" DECIMAL(12,2) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "InvoiceItemPayment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "InvoiceItemUsageSegment" (
+    "id" TEXT NOT NULL,
+    "invoiceItemId" TEXT NOT NULL,
+    "startAt" TIMESTAMP(3) NOT NULL,
+    "endAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "InvoiceItemUsageSegment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "PatientWallet" (
+    "id" TEXT NOT NULL,
+    "patientId" TEXT NOT NULL,
+    "balance" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "PatientWallet_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "WalletTransaction" (
+    "id" TEXT NOT NULL,
+    "walletId" TEXT NOT NULL,
+    "type" "WalletTransactionType" NOT NULL,
+    "amount" DECIMAL(12,2) NOT NULL,
+    "reference" TEXT NOT NULL,
+    "invoiceId" TEXT,
+    "createdById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "WalletTransaction_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "InvoicePayment" (
+    "id" TEXT NOT NULL,
+    "invoiceId" TEXT NOT NULL,
+    "amount" DECIMAL(12,2) NOT NULL,
+    "source" "InvoicePaymentSource" NOT NULL,
+    "method" "InvoicePaymentMethod",
+    "reference" TEXT,
+    "notes" TEXT,
+    "receivedById" TEXT,
+    "bankId" TEXT,
+    "createdById" TEXT,
+    "paidAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "walletTransactionId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "InvoicePayment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "InvoiceRefund" (
+    "id" TEXT NOT NULL,
+    "invoiceId" TEXT NOT NULL,
+    "amount" DECIMAL(12,2) NOT NULL,
+    "reason" TEXT NOT NULL,
+    "processedById" TEXT NOT NULL,
+    "createdById" TEXT,
+    "refundedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "InvoiceRefund_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "InvoiceAuditLog" (
+    "id" TEXT NOT NULL,
+    "invoiceId" TEXT NOT NULL,
+    "action" "InvoiceAuditAction" NOT NULL,
+    "description" TEXT NOT NULL,
+    "metadata" JSONB,
+    "performedById" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "InvoiceAuditLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -715,9 +825,9 @@ CREATE TABLE "Staff" (
     "staffId" TEXT NOT NULL,
     "firstName" TEXT NOT NULL,
     "lastName" TEXT NOT NULL,
-    "role" TEXT NOT NULL,
     "departmentId" TEXT,
-    "accountType" "AccountType",
+    "accountType" "AccountType" NOT NULL,
+    "staffRole" "StaffRole" NOT NULL,
     "email" TEXT,
     "phone" TEXT,
     "password" TEXT,
@@ -807,6 +917,8 @@ CREATE TABLE "LabRequest" (
     "testType" TEXT,
     "notes" TEXT,
     "status" "LabRequestStatus" NOT NULL DEFAULT 'REQUESTED',
+    "invoiceId" TEXT,
+    "invoiceItemId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -814,104 +926,9 @@ CREATE TABLE "LabRequest" (
 );
 
 -- CreateTable
-CREATE TABLE "ImagingRequest" (
-    "id" TEXT NOT NULL,
-    "encounterId" TEXT NOT NULL,
-    "patientId" TEXT NOT NULL,
-    "requestedByDoctorId" TEXT NOT NULL,
-    "studyType" TEXT,
-    "modality" TEXT,
-    "notes" TEXT,
-    "status" "ImagingRequestStatus" NOT NULL DEFAULT 'REQUESTED',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "ImagingRequest_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "Transaction" (
-    "id" TEXT NOT NULL,
-    "transactionID" TEXT NOT NULL,
-    "patientId" TEXT NOT NULL,
-    "admissionId" TEXT,
-    "status" "TransactionStatus" NOT NULL DEFAULT 'DRAFT',
-    "totalAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
-    "discountAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
-    "insuranceCovered" DECIMAL(12,2) NOT NULL DEFAULT 0,
-    "amountPaid" DECIMAL(12,2) NOT NULL DEFAULT 0,
-    "notes" TEXT,
-    "createdById" TEXT NOT NULL,
-    "updatedById" TEXT,
-    "cancelledById" TEXT,
-    "cancelledAt" TIMESTAMP(3),
-    "cancellationReason" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    "noIdPatientid" TEXT,
-
-    CONSTRAINT "Transaction_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "TransactionItem" (
-    "id" TEXT NOT NULL,
-    "transactionId" TEXT NOT NULL,
-    "description" TEXT NOT NULL,
-    "source" TEXT NOT NULL,
-    "referenceId" TEXT,
-    "quantity" INTEGER NOT NULL DEFAULT 1,
-    "unitPrice" DECIMAL(12,2) NOT NULL,
-    "totalPrice" DECIMAL(12,2) NOT NULL,
-    "addedById" TEXT NOT NULL,
-    "priceEditedById" TEXT,
-    "priceEditedAt" TIMESTAMP(3),
-    "createdById" TEXT NOT NULL,
-    "updatedById" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "TransactionItem_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "TransactionPayment" (
-    "id" TEXT NOT NULL,
-    "transactionId" TEXT NOT NULL,
-    "amount" DECIMAL(12,2) NOT NULL,
-    "method" "TransactionPaymentMethod" NOT NULL,
-    "reference" TEXT,
-    "notes" TEXT,
-    "receivedById" TEXT NOT NULL,
-    "paidAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "bankId" TEXT,
-    "createdById" TEXT,
-    "updatedById" TEXT,
-
-    CONSTRAINT "TransactionPayment_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "TransactionDiscount" (
-    "id" TEXT NOT NULL,
-    "transactionId" TEXT NOT NULL,
-    "type" "DiscountType" NOT NULL,
-    "value" DECIMAL(12,2) NOT NULL,
-    "computedAmount" DECIMAL(12,2) NOT NULL,
-    "reason" TEXT NOT NULL,
-    "grantedById" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdById" TEXT,
-    "updatedById" TEXT,
-
-    CONSTRAINT "TransactionDiscount_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "InsuranceClaim" (
     "id" TEXT NOT NULL,
-    "transactionId" TEXT NOT NULL,
+    "invoiceId" TEXT NOT NULL,
     "provider" TEXT NOT NULL,
     "policyNumber" TEXT,
     "coveredAmount" DECIMAL(12,2) NOT NULL,
@@ -923,36 +940,6 @@ CREATE TABLE "InsuranceClaim" (
     "updatedById" TEXT,
 
     CONSTRAINT "InsuranceClaim_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "TransactionRefund" (
-    "id" TEXT NOT NULL,
-    "transactionId" TEXT NOT NULL,
-    "amount" DECIMAL(12,2) NOT NULL,
-    "reason" TEXT NOT NULL,
-    "processedById" TEXT NOT NULL,
-    "refundedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdById" TEXT,
-    "updatedById" TEXT,
-
-    CONSTRAINT "TransactionRefund_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "TransactionAuditLog" (
-    "id" TEXT NOT NULL,
-    "transactionId" TEXT NOT NULL,
-    "action" "TransactionAuditAction" NOT NULL,
-    "description" TEXT NOT NULL,
-    "performedById" TEXT NOT NULL,
-    "metadata" JSONB,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdById" TEXT,
-    "updatedById" TEXT,
-
-    CONSTRAINT "TransactionAuditLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -980,10 +967,17 @@ CREATE TABLE "PatientVitals" (
     "bmi" DOUBLE PRECISION,
     "pulseRate" INTEGER,
     "spo2" DOUBLE PRECISION,
+    "painScore" INTEGER,
+    "notes" TEXT,
+    "bloodGlucose" DOUBLE PRECISION,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "waitingPatientId" TEXT NOT NULL,
+    "waitingPatientId" TEXT,
+    "admissionId" TEXT,
     "patientId" TEXT,
+    "recordedByNurseId" TEXT,
+    "shiftType" "ShiftType",
+    "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "PatientVitals_pkey" PRIMARY KEY ("id")
 );
@@ -1198,6 +1192,7 @@ CREATE TABLE "LabOrder" (
     "patientId" TEXT NOT NULL,
     "doctorId" TEXT NOT NULL,
     "status" "LabOrderStatus" NOT NULL DEFAULT 'PENDING',
+    "invoiceItemId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "LabOrder_pkey" PRIMARY KEY ("id")
@@ -1240,36 +1235,6 @@ CREATE TABLE "LabResult" (
 );
 
 -- CreateTable
-CREATE TABLE "ImagingCatalog" (
-    "id" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "area" TEXT,
-    "contrastAvailable" BOOLEAN NOT NULL DEFAULT false,
-    "cost" DOUBLE PRECISION,
-    "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3),
-
-    CONSTRAINT "ImagingCatalog_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "ImagingOrder" (
-    "id" TEXT NOT NULL,
-    "encounterId" TEXT NOT NULL,
-    "catalogId" TEXT NOT NULL,
-    "studyName" TEXT NOT NULL,
-    "area" TEXT,
-    "contrast" BOOLEAN NOT NULL DEFAULT false,
-    "urgency" TEXT DEFAULT 'Routine',
-    "notesToRadiologist" TEXT,
-    "status" TEXT NOT NULL DEFAULT 'Ordered',
-    "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3),
-
-    CONSTRAINT "ImagingOrder_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "NurseAssignment" (
     "id" TEXT NOT NULL,
     "nurseId" TEXT NOT NULL,
@@ -1280,29 +1245,6 @@ CREATE TABLE "NurseAssignment" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "NurseAssignment_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "VitalSigns" (
-    "id" TEXT NOT NULL,
-    "admissionId" TEXT NOT NULL,
-    "recordedByNurseId" TEXT NOT NULL,
-    "shiftType" "ShiftType" NOT NULL,
-    "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "temperature" DOUBLE PRECISION,
-    "systolicBP" INTEGER,
-    "diastolicBP" INTEGER,
-    "pulse" INTEGER,
-    "respiratoryRate" INTEGER,
-    "oxygenSaturation" DOUBLE PRECISION,
-    "painScore" INTEGER,
-    "bloodGlucose" DOUBLE PRECISION,
-    "weight" DOUBLE PRECISION,
-    "height" DOUBLE PRECISION,
-    "notes" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "VitalSigns_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -1678,28 +1620,41 @@ CREATE TABLE "RadiologyMachine" (
 );
 
 -- CreateTable
-CREATE TABLE "RadiologyRequest" (
+CREATE TABLE "RadiologyOrder" (
     "id" TEXT NOT NULL,
     "patientId" TEXT NOT NULL,
     "encounterId" TEXT,
     "requestedById" TEXT NOT NULL,
     "departmentId" TEXT,
+    "status" "RadiologyRequestStatus" NOT NULL DEFAULT 'PENDING',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "RadiologyOrder_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "RadiologyOrderItem" (
+    "id" TEXT NOT NULL,
+    "orderId" TEXT NOT NULL,
     "clinicalNotes" TEXT,
     "reasonForInvestigation" TEXT,
     "priority" "RadiologyPriority" NOT NULL DEFAULT 'ROUTINE',
     "scanType" "RadiologyModality" NOT NULL,
     "bodyPart" TEXT,
+    "contrast" BOOLEAN NOT NULL DEFAULT false,
     "status" "RadiologyRequestStatus" NOT NULL DEFAULT 'PENDING',
+    "invoiceItemId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
-    CONSTRAINT "RadiologyRequest_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "RadiologyOrderItem_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "RadiologySchedule" (
     "id" TEXT NOT NULL,
-    "radiologyRequestId" TEXT NOT NULL,
+    "radiologyOrderItemId" TEXT NOT NULL,
     "scheduledAt" TIMESTAMP(3) NOT NULL,
     "radiographerId" TEXT,
     "machineId" TEXT,
@@ -1712,7 +1667,7 @@ CREATE TABLE "RadiologySchedule" (
 -- CreateTable
 CREATE TABLE "RadiologyProcedure" (
     "id" TEXT NOT NULL,
-    "radiologyRequestId" TEXT NOT NULL,
+    "radiologyOrderItemId" TEXT NOT NULL,
     "performedById" TEXT NOT NULL,
     "machineId" TEXT,
     "startTime" TIMESTAMP(3) NOT NULL,
@@ -1727,7 +1682,7 @@ CREATE TABLE "RadiologyProcedure" (
 -- CreateTable
 CREATE TABLE "RadiologyImage" (
     "id" TEXT NOT NULL,
-    "radiologyRequestId" TEXT NOT NULL,
+    "radiologyOrderItemId" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,
     "filePath" TEXT NOT NULL,
     "mimeType" TEXT,
@@ -1741,7 +1696,7 @@ CREATE TABLE "RadiologyImage" (
 -- CreateTable
 CREATE TABLE "RadiologyStudyReport" (
     "id" TEXT NOT NULL,
-    "radiologyRequestId" TEXT NOT NULL,
+    "radiologyOrderItemId" TEXT NOT NULL,
     "findings" TEXT,
     "impression" TEXT,
     "recommendations" TEXT,
@@ -1861,6 +1816,28 @@ CREATE TABLE "PurchaseNoteItem" (
     CONSTRAINT "PurchaseNoteItem_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "HeltyDesktopRelease" (
+    "id" TEXT NOT NULL,
+    "version" TEXT NOT NULL,
+    "fileName" TEXT NOT NULL,
+    "relativePath" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "HeltyDesktopRelease_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "HeltyDesktopExternalExecutable" (
+    "id" TEXT NOT NULL,
+    "fileName" TEXT NOT NULL,
+    "description" TEXT,
+    "relativePath" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "HeltyDesktopExternalExecutable_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Patient_patientId_key" ON "Patient"("patientId");
 
@@ -1895,6 +1872,9 @@ CREATE INDEX "Drug_manufacturerId_idx" ON "Drug"("manufacturerId");
 CREATE INDEX "Drug_isControlled_idx" ON "Drug"("isControlled");
 
 -- CreateIndex
+CREATE INDEX "DrugPrice_drugId_wardId_idx" ON "DrugPrice"("drugId", "wardId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "DrugInteraction_drugAId_drugBId_key" ON "DrugInteraction"("drugAId", "drugBId");
 
 -- CreateIndex
@@ -1925,7 +1905,16 @@ CREATE INDEX "ConsumableBatch_consumableId_locationType_idx" ON "ConsumableBatch
 CREATE UNIQUE INDEX "ServiceCategory_name_key" ON "ServiceCategory"("name");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Invoice_invoiceID_key" ON "Invoice"("invoiceID");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Invoice_vitalsId_key" ON "Invoice"("vitalsId");
+
+-- CreateIndex
 CREATE INDEX "Invoice_patientId_idx" ON "Invoice"("patientId");
+
+-- CreateIndex
+CREATE INDEX "Invoice_invoiceID_idx" ON "Invoice"("invoiceID");
 
 -- CreateIndex
 CREATE INDEX "Invoice_createdById_idx" ON "Invoice"("createdById");
@@ -1938,6 +1927,48 @@ CREATE INDEX "Invoice_staffId_idx" ON "Invoice"("staffId");
 
 -- CreateIndex
 CREATE INDEX "Invoice_encounterId_idx" ON "Invoice"("encounterId");
+
+-- CreateIndex
+CREATE INDEX "Invoice_consultingRoomId_idx" ON "Invoice"("consultingRoomId");
+
+-- CreateIndex
+CREATE INDEX "InvoiceItem_invoiceId_idx" ON "InvoiceItem"("invoiceId");
+
+-- CreateIndex
+CREATE INDEX "InvoiceItemPayment_invoiceItemId_idx" ON "InvoiceItemPayment"("invoiceItemId");
+
+-- CreateIndex
+CREATE INDEX "InvoiceItemPayment_invoicePaymentId_idx" ON "InvoiceItemPayment"("invoicePaymentId");
+
+-- CreateIndex
+CREATE INDEX "InvoiceItemUsageSegment_invoiceItemId_startAt_idx" ON "InvoiceItemUsageSegment"("invoiceItemId", "startAt");
+
+-- CreateIndex
+CREATE INDEX "InvoiceItemUsageSegment_invoiceItemId_endAt_idx" ON "InvoiceItemUsageSegment"("invoiceItemId", "endAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "PatientWallet_patientId_key" ON "PatientWallet"("patientId");
+
+-- CreateIndex
+CREATE INDEX "WalletTransaction_walletId_createdAt_idx" ON "WalletTransaction"("walletId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "WalletTransaction_invoiceId_idx" ON "WalletTransaction"("invoiceId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "InvoicePayment_walletTransactionId_key" ON "InvoicePayment"("walletTransactionId");
+
+-- CreateIndex
+CREATE INDEX "InvoicePayment_invoiceId_createdAt_idx" ON "InvoicePayment"("invoiceId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "InvoicePayment_paidAt_idx" ON "InvoicePayment"("paidAt");
+
+-- CreateIndex
+CREATE INDEX "InvoiceRefund_invoiceId_refundedAt_idx" ON "InvoiceRefund"("invoiceId", "refundedAt");
+
+-- CreateIndex
+CREATE INDEX "InvoiceAuditLog_invoiceId_createdAt_idx" ON "InvoiceAuditLog"("invoiceId", "createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Department_name_key" ON "Department"("name");
@@ -1955,7 +1986,13 @@ CREATE UNIQUE INDEX "Staff_email_key" ON "Staff"("email");
 CREATE UNIQUE INDEX "Encounter_admissionId_key" ON "Encounter"("admissionId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Transaction_transactionID_key" ON "Transaction"("transactionID");
+CREATE UNIQUE INDEX "LabRequest_invoiceItemId_key" ON "LabRequest"("invoiceItemId");
+
+-- CreateIndex
+CREATE INDEX "LabRequest_invoiceId_idx" ON "LabRequest"("invoiceId");
+
+-- CreateIndex
+CREATE INDEX "InsuranceClaim_invoiceId_idx" ON "InsuranceClaim"("invoiceId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Bank_accountNumber_key" ON "Bank"("accountNumber");
@@ -2003,6 +2040,9 @@ CREATE UNIQUE INDEX "LabTestVersion_testId_versionNumber_key" ON "LabTestVersion
 CREATE INDEX "LabTestField_testVersionId_idx" ON "LabTestField"("testVersionId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "LabOrder_invoiceItemId_key" ON "LabOrder"("invoiceItemId");
+
+-- CreateIndex
 CREATE INDEX "LabOrder_patientId_idx" ON "LabOrder"("patientId");
 
 -- CreateIndex
@@ -2010,6 +2050,9 @@ CREATE INDEX "LabOrder_doctorId_idx" ON "LabOrder"("doctorId");
 
 -- CreateIndex
 CREATE INDEX "LabOrder_status_idx" ON "LabOrder"("status");
+
+-- CreateIndex
+CREATE INDEX "LabOrder_invoiceItemId_idx" ON "LabOrder"("invoiceItemId");
 
 -- CreateIndex
 CREATE INDEX "LabOrderItem_orderId_idx" ON "LabOrderItem"("orderId");
@@ -2031,12 +2074,6 @@ CREATE INDEX "LabResult_fieldId_idx" ON "LabResult"("fieldId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "LabResult_orderItemId_fieldId_key" ON "LabResult"("orderItemId", "fieldId");
-
--- CreateIndex
-CREATE INDEX "ImagingCatalog_name_idx" ON "ImagingCatalog"("name");
-
--- CreateIndex
-CREATE INDEX "ImagingOrder_encounterId_idx" ON "ImagingOrder"("encounterId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "NurseAssignment_nurseId_admissionId_shiftDate_shiftType_key" ON "NurseAssignment"("nurseId", "admissionId", "shiftDate", "shiftType");
@@ -2105,22 +2142,34 @@ CREATE INDEX "RadiologyMachine_modality_idx" ON "RadiologyMachine"("modality");
 CREATE INDEX "RadiologyMachine_isActive_idx" ON "RadiologyMachine"("isActive");
 
 -- CreateIndex
-CREATE INDEX "RadiologyRequest_patientId_idx" ON "RadiologyRequest"("patientId");
+CREATE INDEX "RadiologyOrder_patientId_idx" ON "RadiologyOrder"("patientId");
 
 -- CreateIndex
-CREATE INDEX "RadiologyRequest_status_idx" ON "RadiologyRequest"("status");
+CREATE INDEX "RadiologyOrder_status_idx" ON "RadiologyOrder"("status");
 
 -- CreateIndex
-CREATE INDEX "RadiologyRequest_requestedById_idx" ON "RadiologyRequest"("requestedById");
+CREATE INDEX "RadiologyOrder_requestedById_idx" ON "RadiologyOrder"("requestedById");
 
 -- CreateIndex
-CREATE INDEX "RadiologyRequest_createdAt_idx" ON "RadiologyRequest"("createdAt");
+CREATE INDEX "RadiologyOrder_createdAt_idx" ON "RadiologyOrder"("createdAt");
 
 -- CreateIndex
-CREATE INDEX "RadiologyRequest_priority_idx" ON "RadiologyRequest"("priority");
+CREATE UNIQUE INDEX "RadiologyOrderItem_invoiceItemId_key" ON "RadiologyOrderItem"("invoiceItemId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "RadiologySchedule_radiologyRequestId_key" ON "RadiologySchedule"("radiologyRequestId");
+CREATE INDEX "RadiologyOrderItem_orderId_idx" ON "RadiologyOrderItem"("orderId");
+
+-- CreateIndex
+CREATE INDEX "RadiologyOrderItem_status_idx" ON "RadiologyOrderItem"("status");
+
+-- CreateIndex
+CREATE INDEX "RadiologyOrderItem_priority_idx" ON "RadiologyOrderItem"("priority");
+
+-- CreateIndex
+CREATE INDEX "RadiologyOrderItem_invoiceItemId_idx" ON "RadiologyOrderItem"("invoiceItemId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RadiologySchedule_radiologyOrderItemId_key" ON "RadiologySchedule"("radiologyOrderItemId");
 
 -- CreateIndex
 CREATE INDEX "RadiologySchedule_scheduledAt_idx" ON "RadiologySchedule"("scheduledAt");
@@ -2132,7 +2181,7 @@ CREATE INDEX "RadiologySchedule_radiographerId_idx" ON "RadiologySchedule"("radi
 CREATE INDEX "RadiologySchedule_machineId_idx" ON "RadiologySchedule"("machineId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "RadiologyProcedure_radiologyRequestId_key" ON "RadiologyProcedure"("radiologyRequestId");
+CREATE UNIQUE INDEX "RadiologyProcedure_radiologyOrderItemId_key" ON "RadiologyProcedure"("radiologyOrderItemId");
 
 -- CreateIndex
 CREATE INDEX "RadiologyProcedure_performedById_idx" ON "RadiologyProcedure"("performedById");
@@ -2141,10 +2190,10 @@ CREATE INDEX "RadiologyProcedure_performedById_idx" ON "RadiologyProcedure"("per
 CREATE INDEX "RadiologyProcedure_machineId_idx" ON "RadiologyProcedure"("machineId");
 
 -- CreateIndex
-CREATE INDEX "RadiologyImage_radiologyRequestId_idx" ON "RadiologyImage"("radiologyRequestId");
+CREATE INDEX "RadiologyImage_radiologyOrderItemId_idx" ON "RadiologyImage"("radiologyOrderItemId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "RadiologyStudyReport_radiologyRequestId_key" ON "RadiologyStudyReport"("radiologyRequestId");
+CREATE UNIQUE INDEX "RadiologyStudyReport_radiologyOrderItemId_key" ON "RadiologyStudyReport"("radiologyOrderItemId");
 
 -- CreateIndex
 CREATE INDEX "RadiologyStudyReport_signedById_idx" ON "RadiologyStudyReport"("signedById");
@@ -2206,11 +2255,26 @@ CREATE INDEX "PurchaseNoteItem_purchaseNoteId_idx" ON "PurchaseNoteItem"("purcha
 -- CreateIndex
 CREATE INDEX "PurchaseNoteItem_storeItemId_idx" ON "PurchaseNoteItem"("storeItemId");
 
+-- CreateIndex
+CREATE UNIQUE INDEX "HeltyDesktopRelease_version_key" ON "HeltyDesktopRelease"("version");
+
+-- CreateIndex
+CREATE INDEX "HeltyDesktopRelease_createdAt_idx" ON "HeltyDesktopRelease"("createdAt");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "HeltyDesktopExternalExecutable_fileName_key" ON "HeltyDesktopExternalExecutable"("fileName");
+
+-- CreateIndex
+CREATE INDEX "HeltyDesktopExternalExecutable_createdAt_idx" ON "HeltyDesktopExternalExecutable"("createdAt");
+
 -- AddForeignKey
 ALTER TABLE "Patient" ADD CONSTRAINT "Patient_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Patient" ADD CONSTRAINT "Patient_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Patient" ADD CONSTRAINT "Patient_wardId_fkey" FOREIGN KEY ("wardId") REFERENCES "Ward"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -2325,6 +2389,12 @@ ALTER TABLE "Drug" ADD CONSTRAINT "Drug_createdById_fkey" FOREIGN KEY ("createdB
 
 -- AddForeignKey
 ALTER TABLE "Drug" ADD CONSTRAINT "Drug_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DrugPrice" ADD CONSTRAINT "DrugPrice_drugId_fkey" FOREIGN KEY ("drugId") REFERENCES "Drug"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "DrugPrice" ADD CONSTRAINT "DrugPrice_wardId_fkey" FOREIGN KEY ("wardId") REFERENCES "Ward"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "DrugInteraction" ADD CONSTRAINT "DrugInteraction_drugAId_fkey" FOREIGN KEY ("drugAId") REFERENCES "Drug"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -2489,9 +2559,6 @@ ALTER TABLE "Service" ADD CONSTRAINT "Service_createdById_fkey" FOREIGN KEY ("cr
 ALTER TABLE "Service" ADD CONSTRAINT "Service_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Service" ADD CONSTRAINT "Service_noIdPatientId_fkey" FOREIGN KEY ("noIdPatientId") REFERENCES "NoIdPatient"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -2507,13 +2574,73 @@ ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_staffId_fkey" FOREIGN KEY ("staffI
 ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_encounterId_fkey" FOREIGN KEY ("encounterId") REFERENCES "Encounter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_consultingRoomId_fkey" FOREIGN KEY ("consultingRoomId") REFERENCES "ConsultingRoom"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_vitalsId_fkey" FOREIGN KEY ("vitalsId") REFERENCES "PatientVitals"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_serviceId_fkey" FOREIGN KEY ("serviceId") REFERENCES "Service"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_drugId_fkey" FOREIGN KEY ("drugId") REFERENCES "Drug"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceItemPayment" ADD CONSTRAINT "InvoiceItemPayment_invoiceItemId_fkey" FOREIGN KEY ("invoiceItemId") REFERENCES "InvoiceItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceItemPayment" ADD CONSTRAINT "InvoiceItemPayment_invoicePaymentId_fkey" FOREIGN KEY ("invoicePaymentId") REFERENCES "InvoicePayment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceItemUsageSegment" ADD CONSTRAINT "InvoiceItemUsageSegment_invoiceItemId_fkey" FOREIGN KEY ("invoiceItemId") REFERENCES "InvoiceItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PatientWallet" ADD CONSTRAINT "PatientWallet_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WalletTransaction" ADD CONSTRAINT "WalletTransaction_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "PatientWallet"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WalletTransaction" ADD CONSTRAINT "WalletTransaction_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WalletTransaction" ADD CONSTRAINT "WalletTransaction_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoicePayment" ADD CONSTRAINT "InvoicePayment_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoicePayment" ADD CONSTRAINT "InvoicePayment_receivedById_fkey" FOREIGN KEY ("receivedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoicePayment" ADD CONSTRAINT "InvoicePayment_bankId_fkey" FOREIGN KEY ("bankId") REFERENCES "Bank"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoicePayment" ADD CONSTRAINT "InvoicePayment_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoicePayment" ADD CONSTRAINT "InvoicePayment_walletTransactionId_fkey" FOREIGN KEY ("walletTransactionId") REFERENCES "WalletTransaction"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceRefund" ADD CONSTRAINT "InvoiceRefund_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceRefund" ADD CONSTRAINT "InvoiceRefund_processedById_fkey" FOREIGN KEY ("processedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceRefund" ADD CONSTRAINT "InvoiceRefund_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceAuditLog" ADD CONSTRAINT "InvoiceAuditLog_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceAuditLog" ADD CONSTRAINT "InvoiceAuditLog_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Department" ADD CONSTRAINT "Department_headId_fkey" FOREIGN KEY ("headId") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -2570,106 +2697,19 @@ ALTER TABLE "LabRequest" ADD CONSTRAINT "LabRequest_patientId_fkey" FOREIGN KEY 
 ALTER TABLE "LabRequest" ADD CONSTRAINT "LabRequest_requestedByDoctorId_fkey" FOREIGN KEY ("requestedByDoctorId") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ImagingRequest" ADD CONSTRAINT "ImagingRequest_encounterId_fkey" FOREIGN KEY ("encounterId") REFERENCES "Encounter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "LabRequest" ADD CONSTRAINT "LabRequest_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ImagingRequest" ADD CONSTRAINT "ImagingRequest_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LabRequest" ADD CONSTRAINT "LabRequest_invoiceItemId_fkey" FOREIGN KEY ("invoiceItemId") REFERENCES "InvoiceItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ImagingRequest" ADD CONSTRAINT "ImagingRequest_requestedByDoctorId_fkey" FOREIGN KEY ("requestedByDoctorId") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_admissionId_fkey" FOREIGN KEY ("admissionId") REFERENCES "Admission"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_cancelledById_fkey" FOREIGN KEY ("cancelledById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Transaction" ADD CONSTRAINT "Transaction_noIdPatientid_fkey" FOREIGN KEY ("noIdPatientid") REFERENCES "NoIdPatient"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_addedById_fkey" FOREIGN KEY ("addedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_priceEditedById_fkey" FOREIGN KEY ("priceEditedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionItem" ADD CONSTRAINT "TransactionItem_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionPayment" ADD CONSTRAINT "TransactionPayment_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionPayment" ADD CONSTRAINT "TransactionPayment_receivedById_fkey" FOREIGN KEY ("receivedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionPayment" ADD CONSTRAINT "TransactionPayment_bankId_fkey" FOREIGN KEY ("bankId") REFERENCES "Bank"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionPayment" ADD CONSTRAINT "TransactionPayment_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionPayment" ADD CONSTRAINT "TransactionPayment_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionDiscount" ADD CONSTRAINT "TransactionDiscount_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionDiscount" ADD CONSTRAINT "TransactionDiscount_grantedById_fkey" FOREIGN KEY ("grantedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionDiscount" ADD CONSTRAINT "TransactionDiscount_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionDiscount" ADD CONSTRAINT "TransactionDiscount_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "InsuranceClaim" ADD CONSTRAINT "InsuranceClaim_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "InsuranceClaim" ADD CONSTRAINT "InsuranceClaim_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "InsuranceClaim" ADD CONSTRAINT "InsuranceClaim_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "InsuranceClaim" ADD CONSTRAINT "InsuranceClaim_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionRefund" ADD CONSTRAINT "TransactionRefund_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionRefund" ADD CONSTRAINT "TransactionRefund_processedById_fkey" FOREIGN KEY ("processedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionRefund" ADD CONSTRAINT "TransactionRefund_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionRefund" ADD CONSTRAINT "TransactionRefund_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionAuditLog" ADD CONSTRAINT "TransactionAuditLog_transactionId_fkey" FOREIGN KEY ("transactionId") REFERENCES "Transaction"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionAuditLog" ADD CONSTRAINT "TransactionAuditLog_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionAuditLog" ADD CONSTRAINT "TransactionAuditLog_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TransactionAuditLog" ADD CONSTRAINT "TransactionAuditLog_updatedById_fkey" FOREIGN KEY ("updatedById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Bank" ADD CONSTRAINT "Bank_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -2681,10 +2721,16 @@ ALTER TABLE "Bank" ADD CONSTRAINT "Bank_updatedById_fkey" FOREIGN KEY ("updatedB
 ALTER TABLE "Bank" ADD CONSTRAINT "Bank_staffId_fkey" FOREIGN KEY ("staffId") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "PatientVitals" ADD CONSTRAINT "PatientVitals_waitingPatientId_fkey" FOREIGN KEY ("waitingPatientId") REFERENCES "WaitingPatient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "PatientVitals" ADD CONSTRAINT "PatientVitals_waitingPatientId_fkey" FOREIGN KEY ("waitingPatientId") REFERENCES "WaitingPatient"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PatientVitals" ADD CONSTRAINT "PatientVitals_admissionId_fkey" FOREIGN KEY ("admissionId") REFERENCES "Admission"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PatientVitals" ADD CONSTRAINT "PatientVitals_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PatientVitals" ADD CONSTRAINT "PatientVitals_recordedByNurseId_fkey" FOREIGN KEY ("recordedByNurseId") REFERENCES "Nurse"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ConsultingRoom" ADD CONSTRAINT "ConsultingRoom_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -2759,6 +2805,9 @@ ALTER TABLE "LabTestVersion" ADD CONSTRAINT "LabTestVersion_testId_fkey" FOREIGN
 ALTER TABLE "LabTestField" ADD CONSTRAINT "LabTestField_testVersionId_fkey" FOREIGN KEY ("testVersionId") REFERENCES "LabTestVersion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "LabOrder" ADD CONSTRAINT "LabOrder_invoiceItemId_fkey" FOREIGN KEY ("invoiceItemId") REFERENCES "InvoiceItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "LabOrder" ADD CONSTRAINT "LabOrder_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -2786,22 +2835,10 @@ ALTER TABLE "LabResult" ADD CONSTRAINT "LabResult_fieldId_fkey" FOREIGN KEY ("fi
 ALTER TABLE "LabResult" ADD CONSTRAINT "LabResult_enteredById_fkey" FOREIGN KEY ("enteredById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ImagingOrder" ADD CONSTRAINT "ImagingOrder_encounterId_fkey" FOREIGN KEY ("encounterId") REFERENCES "Encounter"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ImagingOrder" ADD CONSTRAINT "ImagingOrder_catalogId_fkey" FOREIGN KEY ("catalogId") REFERENCES "ImagingCatalog"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "NurseAssignment" ADD CONSTRAINT "NurseAssignment_nurseId_fkey" FOREIGN KEY ("nurseId") REFERENCES "Nurse"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "NurseAssignment" ADD CONSTRAINT "NurseAssignment_admissionId_fkey" FOREIGN KEY ("admissionId") REFERENCES "Admission"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "VitalSigns" ADD CONSTRAINT "VitalSigns_admissionId_fkey" FOREIGN KEY ("admissionId") REFERENCES "Admission"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "VitalSigns" ADD CONSTRAINT "VitalSigns_recordedByNurseId_fkey" FOREIGN KEY ("recordedByNurseId") REFERENCES "Nurse"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AdmissionMedicationOrder" ADD CONSTRAINT "AdmissionMedicationOrder_admissionId_fkey" FOREIGN KEY ("admissionId") REFERENCES "Admission"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -2969,19 +3006,25 @@ ALTER TABLE "GynaeProcedure" ADD CONSTRAINT "GynaeProcedure_surgeonId_fkey" FORE
 ALTER TABLE "GynaeProcedure" ADD CONSTRAINT "GynaeProcedure_assistantId_fkey" FOREIGN KEY ("assistantId") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologyRequest" ADD CONSTRAINT "RadiologyRequest_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "RadiologyOrder" ADD CONSTRAINT "RadiologyOrder_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologyRequest" ADD CONSTRAINT "RadiologyRequest_encounterId_fkey" FOREIGN KEY ("encounterId") REFERENCES "Encounter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "RadiologyOrder" ADD CONSTRAINT "RadiologyOrder_encounterId_fkey" FOREIGN KEY ("encounterId") REFERENCES "Encounter"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologyRequest" ADD CONSTRAINT "RadiologyRequest_requestedById_fkey" FOREIGN KEY ("requestedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "RadiologyOrder" ADD CONSTRAINT "RadiologyOrder_requestedById_fkey" FOREIGN KEY ("requestedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologyRequest" ADD CONSTRAINT "RadiologyRequest_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "RadiologyOrder" ADD CONSTRAINT "RadiologyOrder_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologySchedule" ADD CONSTRAINT "RadiologySchedule_radiologyRequestId_fkey" FOREIGN KEY ("radiologyRequestId") REFERENCES "RadiologyRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RadiologyOrderItem" ADD CONSTRAINT "RadiologyOrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "RadiologyOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RadiologyOrderItem" ADD CONSTRAINT "RadiologyOrderItem_invoiceItemId_fkey" FOREIGN KEY ("invoiceItemId") REFERENCES "InvoiceItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RadiologySchedule" ADD CONSTRAINT "RadiologySchedule_radiologyOrderItemId_fkey" FOREIGN KEY ("radiologyOrderItemId") REFERENCES "RadiologyOrderItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RadiologySchedule" ADD CONSTRAINT "RadiologySchedule_radiographerId_fkey" FOREIGN KEY ("radiographerId") REFERENCES "Staff"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -2990,7 +3033,7 @@ ALTER TABLE "RadiologySchedule" ADD CONSTRAINT "RadiologySchedule_radiographerId
 ALTER TABLE "RadiologySchedule" ADD CONSTRAINT "RadiologySchedule_machineId_fkey" FOREIGN KEY ("machineId") REFERENCES "RadiologyMachine"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologyProcedure" ADD CONSTRAINT "RadiologyProcedure_radiologyRequestId_fkey" FOREIGN KEY ("radiologyRequestId") REFERENCES "RadiologyRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RadiologyProcedure" ADD CONSTRAINT "RadiologyProcedure_radiologyOrderItemId_fkey" FOREIGN KEY ("radiologyOrderItemId") REFERENCES "RadiologyOrderItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RadiologyProcedure" ADD CONSTRAINT "RadiologyProcedure_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -2999,13 +3042,13 @@ ALTER TABLE "RadiologyProcedure" ADD CONSTRAINT "RadiologyProcedure_performedByI
 ALTER TABLE "RadiologyProcedure" ADD CONSTRAINT "RadiologyProcedure_machineId_fkey" FOREIGN KEY ("machineId") REFERENCES "RadiologyMachine"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologyImage" ADD CONSTRAINT "RadiologyImage_radiologyRequestId_fkey" FOREIGN KEY ("radiologyRequestId") REFERENCES "RadiologyRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RadiologyImage" ADD CONSTRAINT "RadiologyImage_radiologyOrderItemId_fkey" FOREIGN KEY ("radiologyOrderItemId") REFERENCES "RadiologyOrderItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RadiologyImage" ADD CONSTRAINT "RadiologyImage_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "RadiologyStudyReport" ADD CONSTRAINT "RadiologyStudyReport_radiologyRequestId_fkey" FOREIGN KEY ("radiologyRequestId") REFERENCES "RadiologyRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "RadiologyStudyReport" ADD CONSTRAINT "RadiologyStudyReport_radiologyOrderItemId_fkey" FOREIGN KEY ("radiologyOrderItemId") REFERENCES "RadiologyOrderItem"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RadiologyStudyReport" ADD CONSTRAINT "RadiologyStudyReport_signedById_fkey" FOREIGN KEY ("signedById") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
