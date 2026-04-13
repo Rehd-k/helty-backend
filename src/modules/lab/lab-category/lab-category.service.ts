@@ -1,6 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateLabCategoryDto } from './dto/create-lab-category.dto';
+import { UpdateLabCategoryDto } from './dto/update-lab-category.dto';
 
 @Injectable()
 export class LabCategoryService {
@@ -36,5 +42,37 @@ export class LabCategoryService {
       throw new NotFoundException(`Lab category "${id}" not found.`);
     }
     return category;
+  }
+
+  async update(id: string, dto: UpdateLabCategoryDto) {
+    const existing = await this.prisma.labCategory.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Lab category "${id}" not found.`);
+    }
+    return this.prisma.labCategory.update({ where: { id }, data: dto });
+  }
+
+  async remove(id: string) {
+    const existing = await this.prisma.labCategory.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Lab category "${id}" not found.`);
+    }
+    try {
+      await this.prisma.labCategory.delete({ where: { id } });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2003'
+      ) {
+        throw new ConflictException(
+          `Cannot delete lab category "${id}" while tests are assigned to it.`,
+        );
+      }
+      throw e;
+    }
   }
 }

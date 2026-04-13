@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -11,6 +13,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LabCategoryService } from './lab-category.service';
 import { CreateLabCategoryDto } from './dto/create-lab-category.dto';
+import { UpdateLabCategoryDto } from './dto/update-lab-category.dto';
 
 @ApiTags('Lab – Categories')
 @Controller('lab/categories')
@@ -37,5 +40,18 @@ export class LabCategoryController {
   @ApiOperation({ summary: 'Get lab category by ID' })
   findOne(@Param('id') id: string) {
     return this.labCategoryService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a lab category' })
+  update(@Param('id') id: string, @Body() dto: UpdateLabCategoryDto) {
+    return this.labCategoryService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a lab category' })
+  remove(@Param('id') id: string) {
+    return this.labCategoryService.remove(id);
   }
 }

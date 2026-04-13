@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateLabTestDto } from './dto/create-lab-test.dto';
 import { ListTestsQueryDto } from './dto/list-tests-query.dto';
+import { UpdateLabTestDto } from './dto/update-lab-test.dto';
 
 @Injectable()
 export class LabTestService {
@@ -70,5 +73,47 @@ export class LabTestService {
       throw new NotFoundException(`Lab test "${id}" not found.`);
     }
     return test;
+  }
+
+  async update(id: string, dto: UpdateLabTestDto) {
+    const existing = await this.prisma.labTest.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Lab test "${id}" not found.`);
+    }
+    if (dto.categoryId !== undefined && dto.categoryId !== existing.categoryId) {
+      const category = await this.prisma.labCategory.findUnique({
+        where: { id: dto.categoryId },
+      });
+      if (!category) {
+        throw new NotFoundException(
+          `Lab category "${dto.categoryId}" not found.`,
+        );
+      }
+    }
+    return this.prisma.labTest.update({
+      where: { id },
+      data: dto,
+      include: { category: { select: { id: true, name: true } } },
+    });
+  }
+
+  async remove(id: string) {
+    const existing = await this.prisma.labTest.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Lab test "${id}" not found.`);
+    }
+    try {
+      await this.prisma.labTest.delete({ where: { id } });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2003'
+      ) {
+        throw new ConflictException(
+          `Cannot delete lab test "${id}" while orders or related data reference its versions.`,
+        );
+      }
+      throw e;
+    }
   }
 }

@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -12,6 +14,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LabTestService } from './lab-test.service';
 import { CreateLabTestDto } from './dto/create-lab-test.dto';
 import { ListTestsQueryDto } from './dto/list-tests-query.dto';
+import { UpdateLabTestDto } from './dto/update-lab-test.dto';
 
 @ApiTags('Lab – Tests')
 @Controller('lab/tests')
@@ -35,5 +38,18 @@ export class LabTestController {
   @ApiOperation({ summary: 'Get lab test by ID' })
   findOne(@Param('id') id: string) {
     return this.labTestService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a lab test' })
+  update(@Param('id') id: string, @Body() dto: UpdateLabTestDto) {
+    return this.labTestService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a lab test' })
+  remove(@Param('id') id: string) {
+    return this.labTestService.remove(id);
   }
 }
