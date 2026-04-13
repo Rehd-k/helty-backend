@@ -4,6 +4,7 @@
 /prisma/migration_snapshot
 /build
 /uploads
+/prisma/error
 
 # Logs
 logs
