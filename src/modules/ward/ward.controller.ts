@@ -16,7 +16,7 @@ export class WardController {
   @ApiOperation({ summary: 'Create a new ward' })
   createWard(@Body() dto: CreateWardDto) {
     return this.wardService.createWard(dto);
-  }
+  } 
 
   @Get()
   @ApiOperation({ summary: 'List all wards with beds' })

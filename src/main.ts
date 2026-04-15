@@ -7,6 +7,8 @@ import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { HttpExceptionShapeFilter } from './common/filters/http-exception-shape.filter';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { RedisIoAdapter } from './redis/redis-io.adapter';
+import { isUseRedisEnabled } from './redis/redis.module';
 
 async function bootstrap() {
   // bufferLogs: true ensures early logs are captured and re-flushed via Pino
@@ -17,7 +19,14 @@ async function bootstrap() {
   app.setBaseViewsDir(join(process.cwd(), 'views'));
   app.setViewEngine('hbs');
 
-  app.useWebSocketAdapter(new IoAdapter(app));
+  const redisUrl = process.env.REDIS_URL?.trim();
+  if (isUseRedisEnabled() && redisUrl) {
+    const redisIoAdapter = new RedisIoAdapter(app, redisUrl);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
+  } else {
+    app.useWebSocketAdapter(new IoAdapter(app));
+  }
 
   app.enableCors({});
 

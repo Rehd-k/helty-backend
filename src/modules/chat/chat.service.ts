@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import type { OnlineUserInfo } from './chat.types';
+import { PresenceService } from './presence/presence.service';
 
 interface UserSocketEntry {
   socketIds: Set<string>;
@@ -20,8 +21,10 @@ export class ChatService {
   /** socketId -> userId, for disconnect lookup */
   private readonly socketToUser = new Map<string, string>();
 
-  /** messageId -> { senderId, recipientId } for routing delivered/read */
+  /** Legacy ephemeral message id routing (1:1 demo chat) */
   private readonly messageMeta = new Map<string, MessageMeta>();
+
+  constructor(private readonly presence: PresenceService) {}
 
   registerSocket(
     userId: string,
@@ -43,6 +46,7 @@ export class ChatService {
       firstName: staff.firstName,
       lastName: staff.lastName,
     };
+    const wasEmpty = !existing || existing.socketIds.size === 0;
     if (existing) {
       existing.socketIds.add(socketId);
     } else {
@@ -51,9 +55,11 @@ export class ChatService {
         staff: staffInfo,
       });
     }
+    if (wasEmpty) {
+      void this.presence.setOnline(userId);
+    }
   }
 
-  /** For test mode: connect with username only (no JWT). */
   registerGuestSocket(socketId: string, username: string): string {
     const userId = `guest-${nanoid()}`;
     this.registerSocket(
@@ -74,6 +80,9 @@ export class ChatService {
     entry.socketIds.delete(socketId);
     if (entry.socketIds.size === 0) {
       this.userSockets.delete(userId);
+      if (!userId.startsWith('guest-')) {
+        void this.presence.setAway(userId);
+      }
     }
     return userId;
   }
@@ -103,22 +112,15 @@ export class ChatService {
     return nanoid();
   }
 
-  /** No-op for now; when persisting, call prisma.chatMessage.create */
   async saveMessage(
     _senderId: string,
     _recipientId: string,
     _content: string,
   ): Promise<void> {
-    // Reserved for future DB persistence
+    // Legacy path; persisted chat uses StaffConversationMessage
   }
 
-  /** No-op for now; when persisting, update message status in DB */
-  async markDelivered(_messageId: string): Promise<void> {
-    // Reserved for future DB persistence
-  }
+  async markDelivered(_messageId: string): Promise<void> {}
 
-  /** No-op for now; when persisting, update message status in DB */
-  async markRead(_messageId: string): Promise<void> {
-    // Reserved for future DB persistence
-  }
+  async markRead(_messageId: string): Promise<void> {}
 }

@@ -16,6 +16,64 @@ import {
 export class PharmacyDrugPriceService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Upserts ward DrugPrice rows: price = costPrice × ward.drugPricePercentage (default 1).
+   */
+  async syncWardPricesFromCost(
+    tx: Prisma.TransactionClient,
+    drugId: string,
+    costPrice: Prisma.Decimal,
+  ): Promise<void> {
+    const cost =
+      costPrice instanceof Prisma.Decimal
+        ? costPrice
+        : new Prisma.Decimal(costPrice);
+    const wards = await tx.ward.findMany({
+      select: { id: true, drugPricePercentage: true },
+    });
+    for (const ward of wards) {
+      const pct = ward.drugPricePercentage ?? new Prisma.Decimal(1);
+      const price = cost.mul(pct);
+      const existing = await tx.drugPrice.findFirst({
+        where: { drugId, wardId: ward.id },
+      });
+      if (existing) {
+        await tx.drugPrice.update({
+          where: { id: existing.id },
+          data: { price },
+        });
+      } else {
+        await tx.drugPrice.create({
+          data: { drugId, wardId: ward.id, price },
+        });
+      }
+    }
+  }
+
+  async previewWardPricingFromCost(drugId: string, costPrice: string | number) {
+    const drug = await this.prisma.drug.findFirst({
+      where: { id: drugId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!drug) {
+      throw new NotFoundException(`Drug "${drugId}" not found.`);
+    }
+    const cost = new Prisma.Decimal(Number(costPrice));
+    const wards = await this.prisma.ward.findMany({
+      select: { id: true, name: true, drugPricePercentage: true },
+      orderBy: { name: 'asc' },
+    });
+    return wards.map((ward) => {
+      const pct = ward.drugPricePercentage ?? new Prisma.Decimal(1);
+      return {
+        wardId: ward.id,
+        wardName: ward.name,
+        drugPricePercentage: pct,
+        computedPrice: cost.mul(pct),
+      };
+    });
+  }
+
   async create(dto: CreateDrugPriceDto) {
     const { drugId, wardId, price } = dto;
     if (!drugId || !wardId || price === undefined || price === null) {

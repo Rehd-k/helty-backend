@@ -11,6 +11,10 @@ import {
   UpdatePharmacyLocationDto,
 } from './dto/pharmacy-location.dto';
 import { ListPharmacyLocationDto } from './dto/list-pharmacy-location.dto';
+import {
+  getExcludedStockLocationIds,
+  startOfToday,
+} from './pharmacy-sellable-stock.util';
 
 const ALLOWED_SORT = new Set(['name', 'locationType', 'createdAt']);
 
@@ -119,6 +123,12 @@ export class PharmacyLocationService {
       throw new NotFoundException(`Drug "${drugId}" not found.`);
     }
 
+    const [excludedLocationIds, startOfDay] = await Promise.all([
+      getExcludedStockLocationIds(this.prisma),
+      Promise.resolve(startOfToday()),
+    ]);
+    const excludedSet = new Set(excludedLocationIds);
+
     const locations = await this.prisma.pharmacyLocation.findMany({
       select: {
         id: true,
@@ -127,6 +137,7 @@ export class PharmacyLocationService {
           where: {
             drugId,
             quantityRemaining: { gt: 0 },
+            expiryDate: { gte: startOfDay },
           },
           select: { quantityRemaining: true },
         },
@@ -134,6 +145,7 @@ export class PharmacyLocationService {
     });
 
     return locations
+      .filter((location) => !excludedSet.has(location.id))
       .map((location) => {
         const quantity = location.drugBatchesTo.reduce(
           (sum, batch) => sum + (batch.quantityRemaining ?? 0),

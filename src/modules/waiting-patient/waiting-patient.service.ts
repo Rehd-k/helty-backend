@@ -21,7 +21,7 @@ export class WaitingPatientService {
 
   private queueBaseWhere(dateRange?: { from: Date; to: Date }): Prisma.InvoiceWhereInput {
     return {
-      ...(dateRange ? { createdAt: { gte: dateRange.from, lte: dateRange.to } } : {}),
+      ...(dateRange ? { updatedAt: { gte: dateRange.from, lte: dateRange.to } } : {}),
       status: 'PAID',
       patient: {
         patientId: { not: null },
@@ -122,6 +122,7 @@ export class WaitingPatientService {
     const dateRange =
       fromDate || toDate ? parseDateRange(fromDate, toDate) : undefined;
     const where: Prisma.InvoiceWhereInput = this.queueBaseWhere(dateRange);
+    console.log(where);
     if (consultingRoomId) {
       where.consultingRoomId = consultingRoomId;
     } else if (unassignedOnly) {

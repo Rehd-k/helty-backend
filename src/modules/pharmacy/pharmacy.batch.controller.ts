@@ -11,7 +11,11 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PharmacyBatchService } from './pharmacy.batch.service';
-import { CreateBatchDto, UpdateBatchDto } from './dto/batch.dto';
+import {
+  CreateBatchDto,
+  SyncWardPricingFromLatestBatchDto,
+  UpdateBatchDto,
+} from './dto/batch.dto';
 import { SearchBatchDto } from './dto/search-batch.dto';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 
@@ -19,11 +23,20 @@ import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 @Controller('pharmacy/batches')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PharmacyBatchController {
-  constructor(private readonly batchService: PharmacyBatchService) {}
+  constructor(private readonly batchService: PharmacyBatchService) { }
+
+  @Get('preview-ward-pricing/:id')
+  @ApiOperation({
+    summary:
+      'Sync ward drug prices from the latest batch cost for this drug (body: drugId only). No update if there are no batches.',
+  })
+  syncWardPricingFromLatestBatch(@Param('id') id: string) {
+    return this.batchService.syncWardPricingFromLatestBatch(id);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a drug batch' })
-  create(@Body() dto: any) {
+  create(@Body() dto: CreateBatchDto) {
     return this.batchService.create(dto);
   }
 

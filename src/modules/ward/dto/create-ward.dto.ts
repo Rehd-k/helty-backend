@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { isFloat16Array } from 'util/types';
 
 export class CreateWardDto {
   @ApiProperty({ description: 'Ward name (e.g. Male Medical, ICU)' })
@@ -13,6 +14,15 @@ export class CreateWardDto {
   @IsInt()
   @Min(0)
   capacity: number;
+
+  @ApiProperty({
+    description: 'Drug price percentage',
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  drugPricePercentage?: number;
 
   @ApiProperty({
     description: 'Ward type',
@@ -29,3 +39,4 @@ export class CreateWardDto {
   @IsString()
   departmentId?: string;
 }
+

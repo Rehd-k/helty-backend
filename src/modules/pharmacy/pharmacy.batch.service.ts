@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateBatchDto, UpdateBatchDto } from './dto/batch.dto';
 import { SearchBatchDto } from './dto/search-batch.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { PharmacyDrugPriceService } from './pharmacy.drug-price.service';
 
 const ALLOWED_SORT_FIELDS = new Set([
   'batchNumber',
@@ -21,7 +22,10 @@ const ALLOWED_SORT_FIELDS = new Set([
 
 @Injectable()
 export class PharmacyBatchService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly drugPriceService: PharmacyDrugPriceService,
+  ) {}
 
   async create(dto: CreateBatchDto) {
     const manufacturingDate = new Date(dto.manufacturingDate);
@@ -55,23 +59,83 @@ export class PharmacyBatchService {
         ? new Prisma.Decimal(Number(dto.sellingPrice))
         : costPrice;
 
-    return this.prisma.drugBatch.create({
-      data: {
-        drugId: dto.drugId,
-        fromLocationId,
-        toLocationId,
-        batchNumber: dto.batchNumber.trim(),
-        manufacturingDate,
-        expiryDate,
-        supplierId: dto.supplierId ?? null,
-        grnId: dto.grnId ?? null,
+    return this.prisma.$transaction(async (tx) => {
+      const batch = await tx.drugBatch.create({
+        data: {
+          drugId: dto.drugId,
+          fromLocationId,
+          toLocationId,
+          batchNumber: dto.batchNumber.trim(),
+          manufacturingDate,
+          expiryDate,
+          supplierId: dto.supplierId ?? null,
+          grnId: dto.grnId ?? null,
+          costPrice,
+          sellingPrice,
+          quantityReceived: dto.quantityReceived,
+          quantityRemaining,
+        },
+      });
+      await this.drugPriceService.syncWardPricesFromCost(
+        tx,
+        dto.drugId,
         costPrice,
-        sellingPrice,
-        quantityReceived: dto.quantityReceived,
-        quantityRemaining,
-      },
-      include: this.defaultBatchInclude(),
+      );
+      return tx.drugBatch.findUniqueOrThrow({
+        where: { id: batch.id },
+        include: this.defaultBatchInclude(),
+      });
     });
+  }
+
+  /**
+   * Uses the latest batch (by createdAt) cost for the drug to sync ward DrugPrice rows.
+   * If the drug has no batches, no DB updates and a clear message is returned.
+   */
+  async syncWardPricingFromLatestBatch(drugId: string) {
+    const drug = await this.prisma.drug.findFirst({
+      where: { id: drugId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!drug) {
+      throw new NotFoundException(`Drug "${drugId}" not found.`);
+    }
+
+    const latestBatch = await this.prisma.drugBatch.findFirst({
+      where: { drugId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, costPrice: true },
+    });
+
+    if (!latestBatch) {
+      return {
+        updated: false,
+        drugId,
+        message: 'No batches are available to update prices from.',
+      };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.drugPriceService.syncWardPricesFromCost(
+        tx,
+        drugId,
+        latestBatch.costPrice,
+      );
+    });
+
+    const wardPricing =
+      await this.drugPriceService.previewWardPricingFromCost(
+        drugId,
+        latestBatch.costPrice.toString(),
+      );
+
+    return {
+      updated: true,
+      drugId,
+      batchId: latestBatch.id,
+      costPrice: latestBatch.costPrice.toString(),
+      wardPricing,
+    };
   }
 
   async search(dto: SearchBatchDto) {
@@ -213,39 +277,68 @@ export class PharmacyBatchService {
       grnId: dto.grnId ?? undefined,
     });
 
-    return this.prisma.drugBatch.update({
-      where: { id },
-      data: {
-        ...(dto.drugId !== undefined && { drugId: dto.drugId }),
-        ...(dto.fromLocationId !== undefined && {
-          fromLocationId: dto.fromLocationId,
-        }),
-        ...(dto.toLocationId !== undefined && {
-          toLocationId: dto.toLocationId,
-        }),
-        ...(dto.batchNumber !== undefined && {
-          batchNumber: dto.batchNumber.trim(),
-        }),
-        ...(dto.manufacturingDate !== undefined && {
-          manufacturingDate: nextManufacturingDate,
-        }),
-        ...(dto.expiryDate !== undefined && { expiryDate: nextExpiryDate }),
-        ...(dto.supplierId !== undefined && { supplierId: dto.supplierId }),
-        ...(dto.grnId !== undefined && { grnId: dto.grnId }),
-        ...(dto.costPrice !== undefined && {
-          costPrice: new Prisma.Decimal(dto.costPrice),
-        }),
-        ...(dto.sellingPrice !== undefined && {
-          sellingPrice: new Prisma.Decimal(dto.sellingPrice),
-        }),
-        ...(dto.quantityReceived !== undefined && {
-          quantityReceived: dto.quantityReceived,
-        }),
-        ...(dto.quantityRemaining !== undefined && {
-          quantityRemaining: dto.quantityRemaining,
-        }),
-      },
-      include: this.defaultBatchInclude(),
+    const nextDrugId = dto.drugId ?? existing.drugId;
+    const nextCost =
+      dto.costPrice !== undefined
+        ? new Prisma.Decimal(Number(dto.costPrice))
+        : existing.costPrice;
+    const shouldSyncWardPrices =
+      dto.costPrice !== undefined ||
+      (dto.drugId !== undefined && dto.drugId !== existing.drugId);
+
+    const updateData = {
+      ...(dto.drugId !== undefined && { drugId: dto.drugId }),
+      ...(dto.fromLocationId !== undefined && {
+        fromLocationId: dto.fromLocationId,
+      }),
+      ...(dto.toLocationId !== undefined && {
+        toLocationId: dto.toLocationId,
+      }),
+      ...(dto.batchNumber !== undefined && {
+        batchNumber: dto.batchNumber.trim(),
+      }),
+      ...(dto.manufacturingDate !== undefined && {
+        manufacturingDate: nextManufacturingDate,
+      }),
+      ...(dto.expiryDate !== undefined && { expiryDate: nextExpiryDate }),
+      ...(dto.supplierId !== undefined && { supplierId: dto.supplierId }),
+      ...(dto.grnId !== undefined && { grnId: dto.grnId }),
+      ...(dto.costPrice !== undefined && {
+        costPrice: new Prisma.Decimal(Number(dto.costPrice)),
+      }),
+      ...(dto.sellingPrice !== undefined && {
+        sellingPrice: new Prisma.Decimal(dto.sellingPrice),
+      }),
+      ...(dto.quantityReceived !== undefined && {
+        quantityReceived: dto.quantityReceived,
+      }),
+      ...(dto.quantityRemaining !== undefined && {
+        quantityRemaining: dto.quantityRemaining,
+      }),
+    };
+
+    if (!shouldSyncWardPrices) {
+      return this.prisma.drugBatch.update({
+        where: { id },
+        data: updateData,
+        include: this.defaultBatchInclude(),
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.drugBatch.update({
+        where: { id },
+        data: updateData,
+      });
+      await this.drugPriceService.syncWardPricesFromCost(
+        tx,
+        nextDrugId,
+        nextCost,
+      );
+      return tx.drugBatch.findUniqueOrThrow({
+        where: { id },
+        include: this.defaultBatchInclude(),
+      });
     });
   }
 

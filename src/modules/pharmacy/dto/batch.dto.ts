@@ -146,3 +146,12 @@ export class UpdateBatchDto {
   @Min(0)
   quantityRemaining?: number;
 }
+
+export class SyncWardPricingFromLatestBatchDto {
+  @ApiProperty({
+    description:
+      'Drug id; ward prices are updated from the most recently created batch cost',
+  })
+  @IsUUID()
+  drugId: string;
+}

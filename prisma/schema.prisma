@@ -1377,6 +1377,15 @@ model Staff {
   invoiceRefundsCreated               InvoiceRefund[]            @relation("InvoiceRefundCreatedBy")
   walletTransactionsCreated           WalletTransaction[]        @relation("WalletTransactionCreatedBy")
   invoiceAuditLogsPerformed           InvoiceAuditLog[]          @relation("InvoiceAuditLogPerformedBy")
+
+  staffConversationMemberships       StaffConversationMember[]
+  staffConversationMessagesSent      StaffConversationMessage[]     @relation("StaffConversationMessageSender")
+  staffConversationMessageReads      StaffConversationMessageRead[]
+  supportTicketsCreated              SupportTicket[]                @relation("SupportTicketCreatedBy")
+  supportTicketMessagesSent          SupportTicketMessage[]
+  supportTicketAssignmentsAsAssignee SupportTicketAssignment[]      @relation("SupportTicketAssignmentAssignee")
+  supportTicketAssignmentsAsAssigner SupportTicketAssignment[]      @relation("SupportTicketAssignmentBy")
+  supportTicketAuditLogsAsActor      SupportTicketAuditLog[]
 }
 
 enum ChatMessageStatus {
@@ -1394,6 +1403,153 @@ model ChatMessage {
   content     String
   status      ChatMessageStatus @default(SENT)
   createdAt   DateTime          @default(now())
+}
+
+// --- Internal staff chat & support tickets (Slack-like; Staff.id is the user id) ---
+
+enum StaffConversationType {
+  DIRECT
+  GROUP
+}
+
+enum StaffConversationMemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum StaffConversationMessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  FILE
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum SupportTicketAuditAction {
+  CREATED
+  STATUS_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  MESSAGE_ADDED
+  TITLE_CHANGED
+}
+
+model StaffConversation {
+  id        String                @id @default(uuid())
+  type      StaffConversationType
+  name      String?
+  directKey String?               @unique
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  members  StaffConversationMember[]
+  messages StaffConversationMessage[]
+
+  @@index([type])
+}
+
+model StaffConversationMember {
+  id             String                      @id @default(uuid())
+  conversation   StaffConversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  staff          Staff                       @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  staffId        String
+  role           StaffConversationMemberRole @default(MEMBER)
+  createdAt      DateTime                    @default(now())
+
+  @@unique([conversationId, staffId])
+  @@index([staffId])
+}
+
+model StaffConversationMessage {
+  id             String                       @id @default(uuid())
+  conversation   StaffConversation            @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+  sender         Staff                        @relation("StaffConversationMessageSender", fields: [senderId], references: [id])
+  senderId       String
+  content        String?
+  type           StaffConversationMessageType @default(TEXT)
+  fileUrl        String?
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  reads StaffConversationMessageRead[]
+
+  @@index([conversationId, createdAt(sort: Desc), id])
+}
+
+model StaffConversationMessageRead {
+  id        String                   @id @default(uuid())
+  message   StaffConversationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+  staff     Staff                    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  staffId   String
+  readAt    DateTime                 @default(now())
+
+  @@unique([messageId, staffId])
+  @@index([staffId])
+}
+
+model SupportTicket {
+  id          String              @id @default(uuid())
+  title       String
+  createdBy   Staff               @relation("SupportTicketCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  status      SupportTicketStatus @default(OPEN)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  assignments SupportTicketAssignment[]
+  messages    SupportTicketMessage[]
+  auditLogs   SupportTicketAuditLog[]
+
+  @@index([status])
+  @@index([createdById])
+}
+
+model SupportTicketAssignment {
+  id           String        @id @default(uuid())
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId     String
+  staff        Staff         @relation("SupportTicketAssignmentAssignee", fields: [staffId], references: [id], onDelete: Cascade)
+  staffId      String
+  assignedBy   Staff         @relation("SupportTicketAssignmentBy", fields: [assignedById], references: [id])
+  assignedById String
+  assignedAt   DateTime      @default(now())
+
+  @@unique([ticketId, staffId])
+  @@index([staffId])
+}
+
+model SupportTicketMessage {
+  id        String        @id @default(uuid())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  sender    Staff         @relation(fields: [senderId], references: [id])
+  senderId  String
+  content   String?
+  fileUrl   String?
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+model SupportTicketAuditLog {
+  id        String                   @id @default(uuid())
+  ticket    SupportTicket            @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId  String
+  action    SupportTicketAuditAction
+  actor     Staff                    @relation(fields: [actorId], references: [id])
+  actorId   String
+  payload   Json?
+  createdAt DateTime                 @default(now())
+
+  @@index([ticketId, createdAt])
 }
 
 // Encounter: clinical anchor for every doctor interaction (outpatient, emergency, inpatient review, etc.)
@@ -1631,6 +1787,9 @@ model Ward {
   type         WardType
   department   Department? @relation(fields: [departmentId], references: [id])
   departmentId String?
+
+  drugPricePercentage    Decimal? @default(1.0) @db.Decimal(12, 2)
+  servicePricePercentage Decimal? @default(1.0) @db.Decimal(12, 2)
 
   beds       Bed[]
   admissions Admission[] @relation("WardAdmissions")

@@ -31,6 +31,7 @@ import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { WardRoundNotesModule } from './modules/ward-round-notes/ward-round-notes.module';
 import { ObstetricsModule } from './modules/obstetrics/obstetrics.module';
 import { LabModule } from './modules/lab/lab.module';
+import { RedisModule } from './redis/redis.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { RadiologyModule } from './modules/radiology/radiology.module';
 import { MedicationOrderModule } from './modules/medication-order/medication-order.module';
@@ -46,6 +47,7 @@ import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboa
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    RedisModule.register(),
     PrismaModule,
     PatientModule,
     AppointmentModule,

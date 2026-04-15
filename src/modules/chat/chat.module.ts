@@ -1,26 +1,33 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
+import { AuthModule } from '../auth/auth.module';
+import { StaffModule } from '../staff/staff.module';
+import { PrismaModule } from '../../prisma/prisma.module';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { ChatController } from './chat.controller';
-import { StaffModule } from '../staff/staff.module';
+import { PresenceService } from './presence/presence.service';
+import { StaffConversationService } from './conversation/staff-conversation.service';
+import { StaffConversationMessageService } from './message/staff-conversation-message.service';
+import { SupportTicketService } from './ticket/support-ticket.service';
+import { SupportTicketController } from './ticket/support-ticket.controller';
 
 @Module({
-  imports: [
-    ConfigModule,
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') || 'hard-to-guess-secret',
-        signOptions: { expiresIn: '1h' },
-      }),
-    }),
-    StaffModule,
+  imports: [ConfigModule, AuthModule, StaffModule, PrismaModule],
+  providers: [
+    ChatGateway,
+    ChatService,
+    PresenceService,
+    StaffConversationService,
+    StaffConversationMessageService,
+    SupportTicketService,
   ],
-  providers: [ChatGateway, ChatService],
-  controllers: [ChatController],
-  exports: [ChatService],
+  controllers: [ChatController, SupportTicketController],
+  exports: [
+    ChatService,
+    StaffConversationService,
+    PresenceService,
+    SupportTicketService,
+  ],
 })
 export class ChatModule {}

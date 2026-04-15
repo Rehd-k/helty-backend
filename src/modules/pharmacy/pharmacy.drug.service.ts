@@ -8,6 +8,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SearchDrugDto } from './dto/search-drug.dto';
 import { CreateDrugDto, UpdateDrugDto } from './dto/drug.dto';
+import {
+  getSellableDrugBatchWhere,
+  mergeDrugBatchWhere,
+} from './pharmacy-sellable-stock.util';
 
 @Injectable()
 export class PharmacyDrugService {
@@ -79,7 +83,8 @@ export class PharmacyDrugService {
   }
 
   async findOne(id: string) {
-    const [drug, batchSum] = await Promise.all([
+    const sellableWhere = await getSellableDrugBatchWhere(this.prisma);
+    const [drug, batchSum, latestCostBatch] = await Promise.all([
       this.prisma.drug.findFirst({
         where: { id, deletedAt: null },
         include: {
@@ -91,15 +96,21 @@ export class PharmacyDrugService {
         },
       }),
       this.prisma.drugBatch.aggregate({
-        where: { drugId: id },
+        where: mergeDrugBatchWhere(sellableWhere, { drugId: id }),
         _sum: { quantityRemaining: true },
+      }),
+      this.prisma.drugBatch.findFirst({
+        where: { drugId: id },
+        orderBy: { createdAt: 'desc' },
+        select: { costPrice: true },
       }),
     ]);
     if (!drug) {
       throw new NotFoundException(`Drug "${id}" not found.`);
     }
     const quantity = batchSum._sum.quantityRemaining ?? 0;
-    return { ...drug, quantity };
+    const cost = latestCostBatch?.costPrice ?? null;
+    return { ...drug, quantity, cost };
   }
 
   async update(id: string, dto: UpdateDrugDto, updatedById: string) {
@@ -227,6 +238,7 @@ export class PharmacyDrugService {
     } = dto;
 
     const take = Math.min(parseInt(limit, 10) || 20, 100);
+    const sellableWhere = await getSellableDrugBatchWhere(this.prisma);
 
     const where: Prisma.DrugWhereInput = {
       deletedAt: null,
@@ -328,6 +340,11 @@ export class PharmacyDrugService {
       };
     }
 
+    const batchesIncludeWhere =
+      Object.keys(batchFilters).length > 0
+        ? mergeDrugBatchWhere(sellableWhere, batchFilters)
+        : sellableWhere;
+
     const orderBy: Prisma.DrugOrderByWithRelationInput[] = [];
     if (sortBy) {
       orderBy.push({ [sortBy]: sortOrder });
@@ -341,7 +358,7 @@ export class PharmacyDrugService {
       take: take + 1,
       include: {
         manufacturer: true,
-        batches: true,
+        batches: { where: batchesIncludeWhere },
         drugPrices: {
           include: {
             ward: {

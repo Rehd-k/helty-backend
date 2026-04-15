@@ -6,10 +6,14 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateGoodsReceiptDto } from './dto/goods-receipt.dto';
+import { PharmacyDrugPriceService } from './pharmacy.drug-price.service';
 
 @Injectable()
 export class PharmacyGoodsReceiptService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly drugPriceService: PharmacyDrugPriceService,
+  ) {}
 
   async create(dto: CreateGoodsReceiptDto, receivedById: string) {
     const po = await this.prisma.purchaseOrder.findUnique({
@@ -68,6 +72,7 @@ export class PharmacyGoodsReceiptService {
       await tx.goodsReceiptItem.createMany({ data: grItems });
 
       for (const item of dto.items) {
+        const costPrice = new Prisma.Decimal(item.costPrice);
         await tx.drugBatch.create({
           data: {
             drugId: item.drugId,
@@ -77,13 +82,18 @@ export class PharmacyGoodsReceiptService {
             manufacturingDate: new Date(item.manufacturingDate),
             expiryDate: new Date(item.expiryDate),
             supplierId: po.supplierId,
-            costPrice: new Prisma.Decimal(item.costPrice),
+            costPrice,
             sellingPrice: new Prisma.Decimal(item.sellingPrice),
             quantityReceived: item.quantityReceived,
             quantityRemaining: item.quantityReceived,
             grnId: gr.id,
           },
         });
+        await this.drugPriceService.syncWardPricesFromCost(
+          tx,
+          item.drugId,
+          costPrice,
+        );
       }
 
       await tx.purchaseOrder.update({

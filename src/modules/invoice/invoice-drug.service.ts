@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma, InvoiceStatus } from '@prisma/client';
+import {
+  getSellableDrugBatchWhere,
+  mergeDrugBatchWhere,
+} from '../pharmacy/pharmacy-sellable-stock.util';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { UpdateInvoiceDto, UpdateInvoiceItemDto } from './dto/invoice.dto';
@@ -46,8 +50,12 @@ export class InvoiceDrugService {
     ) {
         if (quantityToDeduct <= 0) return;
 
+        const sellableWhere = await getSellableDrugBatchWhere(tx);
         const batches = await tx.drugBatch.findMany({
-            where: { drugId, quantityRemaining: { gt: 0 } },
+            where: mergeDrugBatchWhere(sellableWhere, {
+                drugId,
+                quantityRemaining: { gt: 0 },
+            }),
             orderBy: [{ manufacturingDate: 'asc' }, { createdAt: 'asc' }],
         });
 

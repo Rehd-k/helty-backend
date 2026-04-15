@@ -15,6 +15,12 @@ import {
   PharmacyDashboardQueryDto,
   PharmacyDrugUsageChartQueryDto,
 } from './dto/pharmacy-dashboard-query.dto';
+import {
+  getEligibleDrugBatchWhere,
+  getExcludedStockLocationIds,
+  getSellableDrugBatchWhere,
+  mergeDrugBatchWhere,
+} from './pharmacy-sellable-stock.util';
 
 type Bucket = { label: string; start: Date; end: Date };
 
@@ -38,6 +44,12 @@ export class PharmacyDashboardService {
 
   private getDateWindow(q: PharmacyDashboardQueryDto) {
     return parseDateRange(q.fromDate, q.toDate);
+  }
+
+  private storeDrugBatchWhere(
+    q: PharmacyDashboardQueryDto,
+  ): Prisma.DrugBatchWhereInput {
+    return q.storeId ? { toLocationId: q.storeId } : {};
   }
 
   private getBuckets(
@@ -128,12 +140,13 @@ export class PharmacyDashboardService {
         }),
       ]);
 
+    const eligible = await getEligibleDrugBatchWhere(this.prisma);
+    const sellable = await getSellableDrugBatchWhere(this.prisma);
+    const excludedIds = await getExcludedStockLocationIds(this.prisma);
+
     const drugStocks = await this.prisma.drugBatch.groupBy({
       by: ['drugId'],
-      where: {
-        quantityRemaining: { gte: 0 },
-        ...(q.storeId ? { toLocationId: q.storeId } : {}),
-      },
+      where: mergeDrugBatchWhere(eligible, this.storeDrugBatchWhere(q)),
       _sum: { quantityRemaining: true },
     });
     const reorderDrugs = await this.prisma.drug.findMany({
@@ -151,26 +164,34 @@ export class PharmacyDashboardService {
       if (qty > 0 && qty <= reorderLevel) lowStockCount += 1;
     }
 
+    const locationExclude: Prisma.DrugBatchWhereInput =
+      excludedIds.length > 0
+        ? { toLocationId: { notIn: excludedIds } }
+        : {};
+
     const [nearExpiryCount, expiredCount, inventoryBatches] = await Promise.all([
       this.prisma.drugBatch.count({
-        where: {
-          quantityRemaining: { gt: 0 },
-          expiryDate: { gte: now, lte: nearExpiryDate },
-          ...(q.storeId ? { toLocationId: q.storeId } : {}),
-        },
+        where: mergeDrugBatchWhere(
+          locationExclude,
+          {
+            quantityRemaining: { gt: 0 },
+            expiryDate: { gte: now, lte: nearExpiryDate },
+          },
+          this.storeDrugBatchWhere(q),
+        ),
       }),
       this.prisma.drugBatch.count({
-        where: {
-          quantityRemaining: { gt: 0 },
-          expiryDate: { lt: now },
-          ...(q.storeId ? { toLocationId: q.storeId } : {}),
-        },
+        where: mergeDrugBatchWhere(
+          locationExclude,
+          {
+            quantityRemaining: { gt: 0 },
+            expiryDate: { lt: now },
+          },
+          this.storeDrugBatchWhere(q),
+        ),
       }),
       this.prisma.drugBatch.findMany({
-        where: {
-          quantityRemaining: { gt: 0 },
-          ...(q.storeId ? { toLocationId: q.storeId } : {}),
-        },
+        where: mergeDrugBatchWhere(sellable, this.storeDrugBatchWhere(q)),
         select: { quantityRemaining: true, costPrice: true },
       }),
     ]);
@@ -248,11 +269,15 @@ export class PharmacyDashboardService {
     }
 
     const drugIds = [...qtyByDrug.keys()];
+    const sellableTop = await getSellableDrugBatchWhere(this.prisma);
     const [stockRows, revenueRows] = await Promise.all([
       drugIds.length
         ? this.prisma.drugBatch.groupBy({
             by: ['drugId'],
-            where: { drugId: { in: drugIds }, ...(q.storeId ? { toLocationId: q.storeId } : {}) },
+            where: mergeDrugBatchWhere(sellableTop, {
+              drugId: { in: drugIds },
+              ...(q.storeId ? { toLocationId: q.storeId } : {}),
+            }),
             _sum: { quantityRemaining: true },
           })
         : [],
@@ -370,11 +395,12 @@ export class PharmacyDashboardService {
 
   async getStockMovement(q: PharmacyDashboardQueryDto) {
     const { from, to } = this.getDateWindow(q);
+    const sellableMovement = await getSellableDrugBatchWhere(this.prisma);
     const current = await this.prisma.drugBatch.aggregate({
-      where: {
+      where: mergeDrugBatchWhere(sellableMovement, {
         ...(q.storeId ? { toLocationId: q.storeId } : {}),
         ...(q.drugId ? { drugId: q.drugId } : {}),
-      },
+      }),
       _sum: { quantityRemaining: true },
     });
 
@@ -777,6 +803,7 @@ export class PharmacyDashboardService {
   async getInventoryTrendChart(q: PharmacyDashboardChartQueryDto) {
     const { from, to } = this.getDateWindow(q);
     const buckets = this.getBuckets(from, to, q.bucketBy);
+    const excludedTrend = await getExcludedStockLocationIds(this.prisma);
     const points: Array<{
       label: string;
       start: string;
@@ -788,20 +815,27 @@ export class PharmacyDashboardService {
     }> = [];
 
     for (const b of buckets) {
+      const bucketDayStart = new Date(b.end);
+      bucketDayStart.setHours(0, 0, 0, 0);
+      const trendBase = mergeDrugBatchWhere(
+        {
+          createdAt: { lte: b.end },
+          quantityRemaining: { gt: 0 },
+          expiryDate: { gte: bucketDayStart },
+        },
+        excludedTrend.length > 0
+          ? { toLocationId: { notIn: excludedTrend } }
+          : {},
+        q.storeId ? { toLocationId: q.storeId } : {},
+      );
       const [batches, lowStockGrouped] = await Promise.all([
         this.prisma.drugBatch.findMany({
-          where: {
-            createdAt: { lte: b.end },
-            ...(q.storeId ? { toLocationId: q.storeId } : {}),
-          },
+          where: trendBase,
           select: { quantityRemaining: true, costPrice: true, expiryDate: true, drugId: true },
         }),
         this.prisma.drugBatch.groupBy({
           by: ['drugId'],
-          where: {
-            createdAt: { lte: b.end },
-            ...(q.storeId ? { toLocationId: q.storeId } : {}),
-          },
+          where: trendBase,
           _sum: { quantityRemaining: true },
         }),
       ]);
