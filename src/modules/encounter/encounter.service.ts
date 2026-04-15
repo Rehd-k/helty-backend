@@ -403,7 +403,6 @@ export class EncounterService {
       },
     });
     if (!encounter) throw new NotFoundException(`Encounter "${id}" not found.`);
-    console.log(encounter);
     return encounter;
   }
 
@@ -420,6 +419,7 @@ export class EncounterService {
   }
 
   async update(id: string, dto: UpdateEncounterDto) {
+    console.log(dto);
     await this.findOne(id);
 
     const data: {

@@ -16,7 +16,7 @@ export class PatientVitalsService {
   constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreatePatientVitalsDto) {
-    console.log(dto);
+
     try {
       const {
         patientId,
@@ -71,7 +71,6 @@ export class PatientVitalsService {
       }
       return this.createForAdmission(admissionId!, patientId, vitalsPayload);
     } catch (error) {
-      console.log(error);
       throw new BadRequestException(error.message);
     }
 

@@ -102,6 +102,7 @@ model Appointment {
   date      DateTime
   status    String
   notes     String?
+  referral  String?
   createdAt DateTime @default(now())
   staffId   String?
   staff     Staff?   @relation(fields: [staffId], references: [id])
@@ -2056,7 +2057,7 @@ model LabResult {
   id          String   @id @default(uuid())
   orderItemId String
   fieldId     String
-  value       String
+  value       String?
   enteredById String
   createdAt   DateTime @default(now())
 

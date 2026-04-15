@@ -92,7 +92,6 @@ async function main(): Promise<void> {
 
     writeFileSync(outPath, stringifyBackupPayload(payload), 'utf-8');
     const totalRows = Object.values(rowCounts).reduce((a, b) => a + b, 0);
-    console.log(`Backup complete: ${outPath} (${models.length} models, ${totalRows} rows).`);
   } finally {
     await prisma.$disconnect();
   }

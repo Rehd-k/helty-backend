@@ -122,7 +122,6 @@ export class WaitingPatientService {
     const dateRange =
       fromDate || toDate ? parseDateRange(fromDate, toDate) : undefined;
     const where: Prisma.InvoiceWhereInput = this.queueBaseWhere(dateRange);
-    console.log(where);
     if (consultingRoomId) {
       where.consultingRoomId = consultingRoomId;
     } else if (unassignedOnly) {

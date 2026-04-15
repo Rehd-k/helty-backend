@@ -1,7 +1,7 @@
 import { IsString, IsDateString, IsEnum, IsOptional } from 'class-validator';
 
 export enum AppointmentStatus {
-  SCHEDULED = 'scheduled',
+  SCHEDULED = 'SCHEDULED',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   NO_SHOW = 'no_show',
@@ -21,6 +21,15 @@ export class CreateAppointmentDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
+  referral?: string;
+
+  /** When set, the new appointment is linked to this encounter (`Encounter.appointmentId`). */
+  @IsString()
+  @IsOptional()
+  encounterId?: string;
 }
 
 export class UpdateAppointmentDto {
@@ -35,4 +44,8 @@ export class UpdateAppointmentDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
+  referral?: string;
 }

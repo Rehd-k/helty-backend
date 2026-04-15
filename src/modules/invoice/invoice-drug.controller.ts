@@ -121,7 +121,6 @@ export class InvoiceDrugController {
     @Param('itemId') itemId: string,
     @Body() dto: UpdateInvoiceItemDto,
   ) {
-    console.log(dto)
     return this.invoiceDrugService.updateDrugInvoiceItem(id, itemId, dto);
   }
 

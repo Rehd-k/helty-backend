@@ -99,7 +99,6 @@ export class PatientController {
   })
   update(@Param('id') id: string, @Body() updatePatientDto: any, @Req() req: any) {
     this.log.log('GET / called');
-    console.log(updatePatientDto);
     return this.patientService.update(id, updatePatientDto, req);
   }
 

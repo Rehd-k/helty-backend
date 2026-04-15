@@ -20,7 +20,6 @@ export class RadiologyRequestService {
   ) { }
 
   async create(dto: CreateRadiologyRequestDto) {
-    // console.log('dto', dto);
     const patient = await this.prisma.patient.findUnique({
       where: { id: dto.patientId },
     });

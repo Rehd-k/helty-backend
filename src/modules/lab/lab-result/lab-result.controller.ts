@@ -12,7 +12,7 @@ import { LabResultService } from './lab-result.service';
 import { CreateLabResultDto } from './dto/create-lab-result.dto';
 import { CreateLabResultBatchDto } from './dto/create-lab-result-batch.dto';
 
-@ApiTags('Lab – Results')
+@ApiTags('Lab - Results')
 @Controller('lab/results')
 export class LabResultController {
   constructor(private readonly labResultService: LabResultService) {}

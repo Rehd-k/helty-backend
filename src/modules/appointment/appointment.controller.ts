@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { AppointmentService } from './appointment.service';
 import {
@@ -26,8 +27,14 @@ export class AppointmentController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new appointment' })
-  create(@Body() createAppointmentDto: CreateAppointmentDto) {
-    return this.appointmentService.create(createAppointmentDto);
+  create(
+    @Body() createAppointmentDto: CreateAppointmentDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.appointmentService.create(
+      createAppointmentDto,
+      req.user.sub,
+    );
   }
 
   @Get()

@@ -407,7 +407,7 @@ export class PharmacyDrugService {
       const { batches: _batches, ...rest } = drug;
       return {
         ...rest,
-        batches: _batches,
+        // batches: _batches,
         quantity,
         sellingPrice,
         expiryDate: expiryDateClosest,

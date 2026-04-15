@@ -1,4 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateAppointmentDto,
@@ -11,15 +15,49 @@ import { parseDateRange } from '../../common/utils/date-range';
 export class AppointmentService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createAppointmentDto: CreateAppointmentDto) {
-    return this.prisma.appointment.create({
-      data: {
-        patientId: createAppointmentDto.patientId,
-        date: new Date(createAppointmentDto.date),
-        status: createAppointmentDto.status,
-        notes: createAppointmentDto.notes,
-        createdById: '',
-      },
+  async create(
+    createAppointmentDto: CreateAppointmentDto,
+    createdById: string,
+  ) {
+    const { encounterId, ...appointmentData } = createAppointmentDto;
+
+    return this.prisma.$transaction(async (tx) => {
+      const appointment = await tx.appointment.create({
+        data: {
+          patientId: appointmentData.patientId,
+          date: new Date(appointmentData.date),
+          status: appointmentData.status,
+          notes: appointmentData.notes,
+          referral: appointmentData.referral,
+          createdById,
+        },
+      });
+
+      if (encounterId) {
+        const encounter = await tx.encounter.findUnique({
+          where: { id: encounterId },
+        });
+        if (!encounter) {
+          throw new NotFoundException('Encounter not found');
+        }
+        if (encounter.patientId !== appointmentData.patientId) {
+          throw new BadRequestException(
+            'Encounter does not belong to the appointment patient',
+          );
+        }
+        await tx.encounter.update({
+          where: { id: encounterId },
+          data: { appointmentId: appointment.id },
+        });
+      }
+
+      return tx.appointment.findUniqueOrThrow({
+        where: { id: appointment.id },
+        include: {
+          patient: true,
+          encounters: true,
+        },
+      });
     });
   }
 
@@ -88,6 +126,7 @@ export class AppointmentService {
         }),
         status: updateAppointmentDto.status,
         notes: updateAppointmentDto.notes,
+        referral: updateAppointmentDto.referral,
       },
     });
   }

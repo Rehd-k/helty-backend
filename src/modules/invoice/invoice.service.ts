@@ -913,7 +913,6 @@ export class InvoiceService {
     // Invoice is authoritative for client-facing due amount.
     // Do not override with linked transaction financial fields.
     const netAmountDue = amountDue;
-    console.log(invoice);
     return {
       ...invoice,
       invoiceItems,
@@ -1863,12 +1862,6 @@ export class InvoiceService {
           };
         }),
       };
-    });
-    console.log({
-      total,
-      skip: Number(skip),
-      take: Number(take),
-      rows,
     });
     return {
       total,

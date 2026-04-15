@@ -131,7 +131,6 @@ export class EncounterController {
     @Param('id') id: string,
     @Body() updateEncounterDto: any,
   ) {
-    console.log(updateEncounterDto);
     return this.encounterService.update(id, updateEncounterDto);
   }
 

@@ -5,6 +5,7 @@ import {
   IsArray,
   ArrayMinSize,
   ValidateNested,
+  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -17,8 +18,8 @@ export class LabResultItemDto {
 
   @ApiProperty({ description: 'Result value' })
   @IsString()
-  @IsNotEmpty()
-  value: string;
+  @IsOptional()
+  value?: string;
 }
 
 export class CreateLabResultBatchDto {

@@ -28,6 +28,7 @@ import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-que
   'RADIOGRAPHER',
   'RADIOLOGY_RECEPTIONIST',
   'RADIOLOGY',
+  'MEDICAL_RECORDS'
 )
 export class RadiologyRequestController {
   constructor(
