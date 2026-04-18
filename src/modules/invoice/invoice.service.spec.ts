@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import {
+  InvoiceAuditAction,
   InvoicePaymentMethod,
   InvoicePaymentSource,
   InvoiceStatus,
@@ -449,5 +450,198 @@ describe('InvoiceService', () => {
         data: { settled: true },
       }),
     );
+  });
+
+  const lineForRecalc = {
+    unitPrice: new Prisma.Decimal(500),
+    quantity: 1,
+    isRecurringDaily: false,
+    usageSegments: [] as { startAt: Date; endAt: Date | null }[],
+  };
+
+  it('voids a cash invoice payment without line allocations', async () => {
+    const tx: any = {
+      invoicePayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'pay-1',
+          amount: new Prisma.Decimal(100),
+          source: InvoicePaymentSource.CASH,
+          invoiceId: 'inv-1',
+          itemAllocations: [],
+          invoice: {
+            id: 'inv-1',
+            amountPaid: new Prisma.Decimal(300),
+            patientId: 'pat-1',
+          },
+          walletTransactionId: null,
+          walletTransaction: null,
+        }),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+      invoiceItem: { update: jest.fn().mockResolvedValue({}) },
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          amountPaid: new Prisma.Decimal(200),
+          invoiceItems: [lineForRecalc],
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          status: InvoiceStatus.PARTIALLY_PAID,
+        }),
+      },
+      invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
+      patientWallet: { update: jest.fn() },
+      walletTransaction: { delete: jest.fn() },
+    };
+
+    const prisma: any = {
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
+    };
+
+    const service = createInvoiceService(prisma);
+    await service.voidInvoicePayment('pay-1', 'staff-1', 'duplicate entry');
+
+    expect(tx.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'inv-1' },
+        data: { amountPaid: new Prisma.Decimal(200) },
+      }),
+    );
+    expect(tx.invoicePayment.delete).toHaveBeenCalledWith({
+      where: { id: 'pay-1' },
+    });
+    expect(tx.invoiceAuditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: InvoiceAuditAction.PAYMENT_VOIDED,
+          invoiceId: 'inv-1',
+        }),
+      }),
+    );
+    expect(tx.patientWallet.update).not.toHaveBeenCalled();
+    expect(tx.walletTransaction.delete).not.toHaveBeenCalled();
+  });
+
+  it('voids an invoice payment with line allocations (decrements items)', async () => {
+    const tx: any = {
+      invoicePayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'pay-2',
+          amount: new Prisma.Decimal(80),
+          source: InvoicePaymentSource.CASH,
+          invoiceId: 'inv-1',
+          itemAllocations: [
+            {
+              invoiceItemId: 'line-1',
+              amount: new Prisma.Decimal(80),
+            },
+          ],
+          invoice: {
+            id: 'inv-1',
+            amountPaid: new Prisma.Decimal(80),
+            patientId: 'pat-1',
+          },
+          walletTransactionId: null,
+          walletTransaction: null,
+        }),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+      invoiceItem: { update: jest.fn().mockResolvedValue({}) },
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          amountPaid: new Prisma.Decimal(0),
+          invoiceItems: [lineForRecalc],
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          status: InvoiceStatus.PENDING,
+        }),
+      },
+      invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
+      patientWallet: { update: jest.fn() },
+      walletTransaction: { delete: jest.fn() },
+    };
+
+    const prisma: any = {
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
+    };
+
+    const service = createInvoiceService(prisma);
+    await service.voidInvoicePayment('pay-2');
+
+    expect(tx.invoiceItem.update).toHaveBeenCalledWith({
+      where: { id: 'line-1' },
+      data: { amountPaid: { decrement: new Prisma.Decimal(80) } },
+    });
+    expect(tx.invoicePayment.delete).toHaveBeenCalled();
+  });
+
+  it('voids a wallet invoice payment (credits wallet and deletes debit txn)', async () => {
+    const tx: any = {
+      invoicePayment: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'pay-3',
+          amount: new Prisma.Decimal(150),
+          source: InvoicePaymentSource.WALLET,
+          invoiceId: 'inv-1',
+          itemAllocations: [],
+          invoice: {
+            id: 'inv-1',
+            amountPaid: new Prisma.Decimal(150),
+            patientId: 'pat-1',
+          },
+          walletTransactionId: 'wtx-1',
+          walletTransaction: {
+            id: 'wtx-1',
+            walletId: 'wal-1',
+            type: WalletTransactionType.DEBIT,
+            amount: new Prisma.Decimal(150),
+            wallet: { id: 'wal-1', balance: new Prisma.Decimal(100) },
+          },
+        }),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+      invoiceItem: { update: jest.fn().mockResolvedValue({}) },
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          amountPaid: new Prisma.Decimal(0),
+          invoiceItems: [lineForRecalc],
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          status: InvoiceStatus.PENDING,
+        }),
+      },
+      invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
+      patientWallet: {
+        update: jest.fn().mockResolvedValue({}),
+      },
+      walletTransaction: {
+        delete: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    const prisma: any = {
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
+    };
+
+    const service = createInvoiceService(prisma);
+    await service.voidInvoicePayment('pay-3', 'staff-1');
+
+    expect(tx.patientWallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'wal-1' },
+        data: { balance: { increment: new Prisma.Decimal(150) } },
+      }),
+    );
+    expect(tx.walletTransaction.delete).toHaveBeenCalledWith({
+      where: { id: 'wtx-1' },
+    });
+    expect(tx.invoicePayment.delete).toHaveBeenCalledWith({
+      where: { id: 'pay-3' },
+    });
   });
 });

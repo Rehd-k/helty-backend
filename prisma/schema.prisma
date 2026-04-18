@@ -959,6 +959,7 @@ enum InvoicePaymentMethod {
 
 enum InvoiceAuditAction {
   PAYMENT_RECEIVED
+  PAYMENT_VOIDED
   REFUND_ISSUED
   WALLET_DEPOSIT
   ITEM_ADDED

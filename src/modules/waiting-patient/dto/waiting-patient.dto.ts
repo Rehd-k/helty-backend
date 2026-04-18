@@ -79,6 +79,17 @@ export class QueryWaitingPatientDto {
   unassignedOnly?: boolean;
 
   @ApiPropertyOptional({
+    description: 'If true, return only entries not yet registered to the system',
+  })
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  @IsOptional()
+  unregisteredOnly?: boolean;
+
+
+  @ApiPropertyOptional({
     description: 'If true, return only entries already linked to an encounter',
   })
   @Transform(({ value }) =>

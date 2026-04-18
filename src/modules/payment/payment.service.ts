@@ -1,12 +1,56 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto/create-payment.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { RecordInvoicePaymentDto } from '../invoice/dto/invoice.dto';
+import { UpdateInvoicePaymentDto } from './dto/invoice-payment.dto';
+
+const invoicePaymentDetailInclude = {
+  walletTransaction: true,
+  receivedBy: { select: { id: true, firstName: true, lastName: true } },
+  bank: { select: { id: true, name: true, accountNumber: true } },
+  createdBy: { select: { id: true, firstName: true, lastName: true } },
+  itemAllocations: {
+    include: {
+      invoiceItem: {
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          amountPaid: true,
+          customDescription: true,
+          service: { select: { id: true, name: true } },
+          drug: {
+            select: { id: true, genericName: true, brandName: true },
+          },
+        },
+      },
+    },
+  },
+  invoice: {
+    select: {
+      id: true,
+      invoiceID: true,
+      patientId: true,
+      status: true,
+      totalAmount: true,
+      amountPaid: true,
+    },
+  },
+} satisfies Prisma.InvoicePaymentInclude;
 
 @Injectable()
 export class PaymentService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   async create(createPaymentDto: CreatePaymentDto) {
     return this.prisma.payment.create({
@@ -83,5 +127,105 @@ export class PaymentService {
     return this.prisma.payment.delete({
       where: { id },
     });
+  }
+
+  // ─── InvoicePayment (billing) ─────────────────────────────────────────────
+
+  async findInvoicePaymentById(id: string) {
+    const row = await this.prisma.invoicePayment.findUnique({
+      where: { id },
+      include: invoicePaymentDetailInclude,
+    });
+    if (!row) {
+      throw new NotFoundException(`Invoice payment "${id}" not found`);
+    }
+    return row;
+  }
+
+  async recordInvoicePayment(
+    invoiceId: string,
+    dto: RecordInvoicePaymentDto,
+    createdByStaffId?: string,
+  ) {
+    return this.invoiceService.recordPayment(invoiceId, dto, createdByStaffId);
+  }
+
+  async updateInvoicePayment(id: string, dto: UpdateInvoicePaymentDto) {
+    await this.findInvoicePaymentById(id);
+
+    const data: Prisma.InvoicePaymentUpdateInput = {};
+
+    const hasPatch =
+      dto.reference !== undefined ||
+      dto.notes !== undefined ||
+      dto.paidAt !== undefined ||
+      dto.receivedById !== undefined ||
+      dto.bankId !== undefined;
+    if (!hasPatch) {
+      return this.prisma.invoicePayment.findUniqueOrThrow({
+        where: { id },
+        include: invoicePaymentDetailInclude,
+      });
+    }
+
+    if (dto.reference !== undefined) {
+      data.reference = dto.reference;
+    }
+    if (dto.notes !== undefined) {
+      data.notes = dto.notes;
+    }
+    if (dto.paidAt !== undefined) {
+      data.paidAt = new Date(dto.paidAt);
+    }
+
+    if (dto.receivedById !== undefined) {
+      if (dto.receivedById) {
+        const staff = await this.prisma.staff.findUnique({
+          where: { id: dto.receivedById },
+          select: { id: true },
+        });
+        if (!staff) {
+          throw new NotFoundException(
+            `Staff "${dto.receivedById}" not found.`,
+          );
+        }
+        data.receivedBy = { connect: { id: dto.receivedById } };
+      } else {
+        data.receivedBy = { disconnect: true };
+      }
+    }
+
+    if (dto.bankId !== undefined) {
+      if (dto.bankId) {
+        const bank = await this.prisma.bank.findUnique({
+          where: { id: dto.bankId },
+          select: { id: true },
+        });
+        if (!bank) {
+          throw new NotFoundException(`Bank "${dto.bankId}" not found.`);
+        }
+        data.bank = { connect: { id: dto.bankId } };
+      } else {
+        data.bank = { disconnect: true };
+      }
+    }
+
+    return this.prisma.invoicePayment.update({
+      where: { id },
+      data,
+      include: invoicePaymentDetailInclude,
+    });
+  }
+
+  async removeInvoicePayment(
+    id: string,
+    performedByStaffId?: string,
+    reason?: string,
+  ) {
+    return this.invoiceService.voidInvoicePayment(
+      id,
+      performedByStaffId,
+      reason,
+    );
   }
 }

@@ -41,7 +41,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 @ApiTags('Invoices')
 @Controller('invoices')
 export class InvoiceController {
-  constructor(private readonly invoiceService: InvoiceService) {}
+  constructor(private readonly invoiceService: InvoiceService) { }
 
   // ─── Invoice Endpoints ────────────────────────────────────────────────────────
 
@@ -84,6 +84,13 @@ export class InvoiceController {
     enum: ['PENDING', 'PARTIALLY_PAID', 'PAID'],
     description: 'Filter by invoice status',
   })
+  @ApiQuery({
+    name: 'patientId',
+    required: false,
+    type: String,
+    description:
+      'Patient primary key UUID (`Patient.id`). When set, only that patient’s invoices are returned (still scoped by date range, allowIP, and optional search).',
+  })
   @ApiOkResponse({ description: 'Paginated list of invoices' })
   findAll(
     @Query()
@@ -93,6 +100,8 @@ export class InvoiceController {
       query?: string;
       allowIP: boolean;
       status?: string;
+      /** Patient UUID (`Patient.id`); narrows the list to that patient’s invoices */
+      patientId?: string;
     },
   ) {
     return this.invoiceService.findAll(params);
@@ -141,7 +150,7 @@ export class InvoiceController {
     @Query()
     query: DateRangeSkipTakeDto & {
       source?: InvoicePaymentSource;
-      method?: InvoicePaymentMethod;
+      paymentMethod?: InvoicePaymentMethod;
       processedById?: string;
     },
   ) {
@@ -250,12 +259,12 @@ export class InvoiceController {
     summary: 'Add a service to an invoice as a line item',
     description:
       'Adds a service to the invoice. `unitPrice` captures the cost snapshot at the moment of invoicing, so future service price changes do not affect existing invoices.',
-  }) 
+  })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiCreatedResponse({ description: 'Line item added' })
   @ApiNotFoundResponse({ description: 'Invoice or Service not found' })
   addItem(@Param('id') id: string, @Body() dto: AddInvoiceItemDto) {
-    return this.invoiceService.addItem(id, dto); 
+    return this.invoiceService.addItem(id, dto);
   }
 
   @Patch(':id/items/:itemId')

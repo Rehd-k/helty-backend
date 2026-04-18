@@ -647,6 +647,8 @@ export class InvoiceService {
     rawQuery?: string,
     category?: string,
     invoiceStatus?: InvoiceStatus,
+    /** `Patient.id` / invoice FK — not the optional hospital `Patient.patientId` string */
+    filterPatientId?: string,
   ): Prisma.InvoiceWhereInput {
     const patientStatus = allowInpatient
       ? PatientStatus.ADMITED
@@ -655,9 +657,13 @@ export class InvoiceService {
     const statusWhere: Prisma.InvoiceWhereInput = invoiceStatus
       ? { status: invoiceStatus }
       : {};
+    const patientPkScope: Prisma.InvoiceWhereInput = filterPatientId?.trim()
+      ? { patientId: filterPatientId.trim() }
+      : {};
     const q = rawQuery?.trim();
     if (!q) {
       return {
+        ...patientPkScope,
         ...statusWhere,
         updatedAt,
         patient: { status: patientStatus },
@@ -668,6 +674,7 @@ export class InvoiceService {
 
     if (category === 'patientId') {
       return {
+        ...patientPkScope,
         ...statusWhere,
         updatedAt,
         patient: { status: patientStatus, patientId: needle },
@@ -675,6 +682,7 @@ export class InvoiceService {
     }
     if (category === 'fullName') {
       return {
+        ...patientPkScope,
         ...statusWhere,
         updatedAt,
         patient: {
@@ -685,6 +693,7 @@ export class InvoiceService {
     }
     if (category === 'service') {
       return {
+        ...patientPkScope,
         ...statusWhere,
         updatedAt,
         patient: { status: patientStatus },
@@ -695,6 +704,7 @@ export class InvoiceService {
     }
     if (category) {
       return {
+        ...patientPkScope,
         ...statusWhere,
         updatedAt,
         patient: { status: patientStatus },
@@ -702,6 +712,7 @@ export class InvoiceService {
     }
 
     return {
+      ...patientPkScope,
       ...statusWhere,
       updatedAt,
       AND: [
@@ -767,6 +778,7 @@ export class InvoiceService {
    * Inpatient vs outpatient is enforced via the related patient's `status`
    * (`ADMITED` when allowIP is true, otherwise `OUTPATIENT`).
    * Optional `status` filters by invoice payment status (PENDING, PARTIALLY_PAID, PAID).
+   * Optional `patientId` is the patient's primary-key UUID and matches `Invoice.patientId`.
    */
   async findAll(
     params: DateRangeSkipTakeDto & {
@@ -775,9 +787,19 @@ export class InvoiceService {
       query?: string;
       allowIP: boolean;
       status?: string;
+      /** Patient primary key UUID (`Patient.id`); filters `Invoice.patientId` */
+      patientId?: string;
     },
   ) {
-    const { skip = 0, take = 20, fromDate, toDate, query, category } = params;
+    const {
+      skip = 0,
+      take = 20,
+      fromDate,
+      toDate,
+      query,
+      category,
+      patientId,
+    } = params;
     const { from, to } = parseDateRange(fromDate, toDate);
     const allowInpatient = this.parseAllowInpatient(params.allowIP);
     const invoiceStatus = this.parseInvoiceListStatus(params.status);
@@ -788,8 +810,8 @@ export class InvoiceService {
       query,
       category,
       invoiceStatus,
+      patientId,
     );
-
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
@@ -1505,19 +1527,135 @@ export class InvoiceService {
     });
   }
 
+  /**
+   * Void an invoice payment: reverse line allocations, invoice amountPaid,
+   * wallet debit (if any), delete the payment row, then recalculate invoice totals.
+   */
+  async voidInvoicePayment(
+    paymentId: string,
+    performedByStaffId?: string,
+    reason?: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const payment = await tx.invoicePayment.findUnique({
+        where: { id: paymentId },
+        include: {
+          itemAllocations: true,
+          invoice: {
+            select: { id: true, amountPaid: true, patientId: true },
+          },
+          walletTransaction: {
+            include: { wallet: true },
+          },
+        },
+      });
+
+      if (!payment) {
+        throw new NotFoundException(`Invoice payment "${paymentId}" not found`);
+      }
+
+      const amount = this.asDecimal(payment.amount);
+      const invoiceId = payment.invoice.id;
+      const currentInvoicePaid = this.asDecimal(payment.invoice.amountPaid);
+
+      if (currentInvoicePaid.lt(amount)) {
+        throw new BadRequestException(
+          'Invoice paid amount is inconsistent with this payment; void aborted',
+        );
+      }
+
+      if (
+        payment.source === InvoicePaymentSource.WALLET &&
+        !payment.walletTransactionId
+      ) {
+        throw new BadRequestException(
+          'Wallet payment is missing a wallet transaction; void aborted',
+        );
+      }
+
+      for (const alloc of payment.itemAllocations) {
+        const allocAmt = this.asDecimal(alloc.amount);
+        await tx.invoiceItem.update({
+          where: { id: alloc.invoiceItemId },
+          data: { amountPaid: { decrement: allocAmt } },
+        });
+      }
+
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          amountPaid: currentInvoicePaid.sub(amount),
+        },
+      });
+
+      if (payment.walletTransactionId) {
+        const wt = payment.walletTransaction;
+        if (!wt) {
+          throw new BadRequestException(
+            'Wallet transaction row is missing; cannot void payment safely',
+          );
+        }
+        const wallet = wt.wallet;
+        if (!wallet) {
+          throw new BadRequestException(
+            'Wallet transaction has no wallet; cannot void payment safely',
+          );
+        }
+        const wtAmount = this.asDecimal(wt.amount);
+        if (wtAmount.comparedTo(amount) !== 0) {
+          throw new BadRequestException(
+            'Wallet transaction amount does not match payment; void aborted',
+          );
+        }
+        if (wt.type !== WalletTransactionType.DEBIT) {
+          throw new BadRequestException(
+            'Expected a debit wallet transaction for this payment; void aborted',
+          );
+        }
+
+        await tx.patientWallet.update({
+          where: { id: wallet.id },
+          data: { balance: { increment: amount } },
+        });
+        await tx.walletTransaction.delete({ where: { id: wt.id } });
+      }
+
+      await tx.invoicePayment.delete({ where: { id: paymentId } });
+
+      const updatedInvoice = await this.recalculateInvoiceTotals(invoiceId, tx);
+
+      await this.logInvoiceAudit(tx, {
+        invoiceId,
+        action: InvoiceAuditAction.PAYMENT_VOIDED,
+        description:
+          reason?.trim() ||
+          `Payment of ₦${amount.toFixed(2)} voided (invoice payment ${paymentId}).`,
+        performedById: performedByStaffId,
+        metadata: {
+          invoicePaymentId: paymentId,
+          amount: amount.toFixed(2),
+          source: payment.source,
+          reason: reason ?? null,
+        } as Prisma.InputJsonValue,
+      });
+
+      return { invoice: updatedInvoice };
+    });
+  }
+
   async listAllPayments(query: DateRangeSkipTakeDto & {
     source?: InvoicePaymentSource;
-    method?: InvoicePaymentMethod;
+    paymentMethod?: InvoicePaymentMethod;
     processedById?: string;
   }) {
-    const { skip = 0, take = 20, fromDate, toDate, source, method, processedById } =
+    const { skip = 0, take = 20, fromDate, toDate, source, paymentMethod, processedById } =
       query;
     const { from, to } = parseDateRange(fromDate, toDate);
 
     const where: Prisma.InvoicePaymentWhereInput = {
-      createdAt: { gte: from, lte: to },
+      paidAt: { gte: from, lte: to },
       ...(source ? { source } : {}),
-      ...(method ? { method } : {}),
+      ...(paymentMethod ? { method: paymentMethod } : {}),
       ...(processedById ? { receivedById: processedById } : {}),
     };
 

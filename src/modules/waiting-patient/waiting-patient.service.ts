@@ -19,14 +19,23 @@ import { CONSULTATION_BILLING_CATEGORY } from '../invoice/invoice-link.constants
 export class WaitingPatientService {
   constructor(private readonly prisma: PrismaService) { }
 
-  private queueBaseWhere(dateRange?: { from: Date; to: Date }): Prisma.InvoiceWhereInput {
+  private queueBaseWhere(
+    dateRange?: { from: Date; to: Date },
+    opts?: { unregisteredOnly?: boolean },
+  ): Prisma.InvoiceWhereInput {
+    const patientWhere: Prisma.PatientWhereInput = opts?.unregisteredOnly
+      ? {
+          OR: [{ patientId: null }, { patientId: '' }],
+        }
+      : {
+          patientId: { not: null },
+          NOT: { patientId: '' },
+        };
+
     return {
       ...(dateRange ? { updatedAt: { gte: dateRange.from, lte: dateRange.to } } : {}),
       status: 'PAID',
-      patient: {
-        patientId: { not: null },
-        NOT: { patientId: '' },
-      },
+      patient: patientWhere,
       invoiceItems: {
         some: {
           settled: false,
@@ -112,6 +121,7 @@ export class WaitingPatientService {
       consultingRoomId,
       patientId,
       unassignedOnly,
+      unregisteredOnly,
       seen,
       skip = 0,
       take = 20,
@@ -121,7 +131,9 @@ export class WaitingPatientService {
 
     const dateRange =
       fromDate || toDate ? parseDateRange(fromDate, toDate) : undefined;
-    const where: Prisma.InvoiceWhereInput = this.queueBaseWhere(dateRange);
+    const where: Prisma.InvoiceWhereInput = this.queueBaseWhere(dateRange, {
+      unregisteredOnly: unregisteredOnly === true,
+    });
     if (consultingRoomId) {
       where.consultingRoomId = consultingRoomId;
     } else if (unassignedOnly) {

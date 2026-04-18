@@ -13,6 +13,7 @@ export class PatientService {
 
   async create(createPatientDto: CreatePatientDto, req: any) {
     const patientId = `${this.nanoid()}`;
+
     const data: any = {
       patientId: createPatientDto.email ? patientId : null,
       title: createPatientDto.title,
@@ -329,10 +330,10 @@ export class PatientService {
       }
     }
 
-    if (!existing.patientId && updatePatientDto.patientId === undefined) {
+    if (!existing.patientId || updatePatientDto.patientId === undefined) {
       (data as Record<string, unknown>).patientId = this.nanoid();
     }
-
+    console.log(data);
     return this.prisma.patient.update({
       where: { id },
       data,
