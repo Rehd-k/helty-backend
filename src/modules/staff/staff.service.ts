@@ -48,6 +48,48 @@ export class StaffService {
     });
   }
 
+  private staffAuthInclude = {
+    department: true,
+    headedDepartment: true,
+  } as const;
+
+  /**
+   * Resolve staff for login: if the value contains `@`, match email (case-insensitive);
+   * otherwise treat as phone and match after stripping non-digits from both sides.
+   */
+  async findByEmailOrPhone(identifier: string) {
+    const trimmed = identifier?.trim() ?? '';
+    if (!trimmed) return null;
+
+    if (trimmed.includes('@')) {
+      return this.prisma.staff.findFirst({
+        where: {
+          email: { equals: trimmed, mode: 'insensitive' },
+        },
+        include: this.staffAuthInclude,
+      });
+    }
+
+    const digits = trimmed.replace(/\D/g, '');
+    if (!digits || digits.length < 5) return null;
+
+    const matches = await this.prisma.$queryRaw<{ id: string }[]>(
+      Prisma.sql`
+        SELECT "id" FROM "Staff"
+        WHERE "phone" IS NOT NULL
+          AND regexp_replace("phone", '[^0-9]', '', 'g') = ${digits}
+        LIMIT 2
+      `,
+    );
+
+    if (matches.length !== 1) return null;
+
+    return this.prisma.staff.findUnique({
+      where: { id: matches[0].id },
+      include: this.staffAuthInclude,
+    });
+  }
+
   async update(id: string, data: Partial<any>) {
     return this.prisma.staff.update({ where: { id }, data });
   }

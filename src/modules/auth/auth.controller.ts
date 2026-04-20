@@ -21,14 +21,17 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Staff login with email and password' })
+  @ApiOperation({ summary: 'Staff login with email or phone and password' })
   @ApiResponse({ status: 200, description: 'Returns JWT access token' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(@Body() dto: LoginDto) {
     try {
-      const user = await this.authService.validateUser(dto.email, dto.password);
+      const user = await this.authService.validateUser(
+        dto.emailOrPhone,
+        dto.password,
+      );
       if (!user) {
-        throw new BadRequestException('Invalid email or password');
+        throw new BadRequestException('Invalid email, phone number, or password');
       }
       return this.authService.login(user);
     } catch (err) {
