@@ -12,7 +12,11 @@ import {
 } from '../pharmacy/pharmacy-sellable-stock.util';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
-import { UpdateInvoiceDto, UpdateInvoiceItemDto } from './dto/invoice.dto';
+import {
+    UpdateInvoiceDto,
+    UpdateInvoiceItemDto,
+    SubstituteDrugInvoiceItemDto,
+} from './dto/invoice.dto';
 
 @Injectable()
 export class InvoiceDrugService {
@@ -500,6 +504,19 @@ export class InvoiceDrugService {
                         },
                     },
                 });
+
+                if (settlingNow && invoice.encounterId) {
+                    await tx.medicationOrder.updateMany({
+                        where: {
+                            encounterId: invoice.encounterId,
+                            drugId: existing.drugId!,
+                            patientId: invoice.patientId,
+                            status: { not: 'Cancelled' },
+                        },
+                        data: { status: 'Dispensed' },
+                    });
+                }
+
                 await this.recalculateInvoiceTotals(invoiceId, tx);
                 return updatedItem;
             });
@@ -535,5 +552,111 @@ export class InvoiceDrugService {
         });
         await this.recalculateInvoiceTotals(invoiceId);
         return deleted;
+    }
+
+    /**
+     * Atomically replace the drug on a line by updating the same `InvoiceItem` row
+     * (avoids delete-then-create failures and preserves line id, payments, usage segments).
+     */
+    async substituteDrugInvoiceItem(
+        invoiceId: string,
+        itemId: string,
+        dto: SubstituteDrugInvoiceItemDto,
+    ) {
+        try {
+            const hasDrugs = await this.hasDrugItems(invoiceId);
+            if (!hasDrugs) {
+                throw new NotFoundException(
+                    `Invoice ${invoiceId} does not contain drug items`,
+                );
+            }
+
+            return await this.prisma.$transaction(async (tx) => {
+                const invoice = await tx.invoice.findUnique({
+                    where: { id: invoiceId },
+                });
+                if (!invoice) {
+                    throw new NotFoundException(`Invoice ${invoiceId} not found`);
+                }
+                this.assertInvoiceNotPaid(invoice.status);
+
+                const existing = await tx.invoiceItem.findFirst({
+                    where: { id: itemId, invoiceId, drugId: { not: null } },
+                });
+                if (!existing) {
+                    throw new NotFoundException(
+                        `Drug invoice item ${itemId} not found on invoice ${invoiceId}`,
+                    );
+                }
+                if (existing.settled) {
+                    throw new BadRequestException(
+                        'Cannot substitute a settled drug line.',
+                    );
+                }
+                if (existing.drugId === dto.drugId) {
+                    throw new BadRequestException(
+                        'Replacement drug must differ from the current drug.',
+                    );
+                }
+
+                const drug = await tx.drug.findUnique({
+                    where: { id: dto.drugId },
+                });
+                if (!drug) {
+                    throw new NotFoundException(`Drug ${dto.drugId} not found`);
+                }
+
+                const quantity = dto.quantity ?? existing.quantity;
+                const unitPrice =
+                    dto.unitPrice !== undefined
+                        ? this.asDecimal(dto.unitPrice)
+                        : existing.unitPrice;
+
+                const updatedItem = await tx.invoiceItem.update({
+                    where: { id: itemId },
+                    data: {
+                        drugId: dto.drugId,
+                        serviceId: null,
+                        quantity,
+                        unitPrice,
+                    },
+                    include: {
+                        service: { select: { id: true, name: true, cost: true } },
+                        drug: {
+                            select: {
+                                id: true,
+                                genericName: true,
+                                brandName: true,
+                                strength: true,
+                                dosageForm: true,
+                            },
+                        },
+                    },
+                });
+
+                const encounterId = invoice.encounterId;
+                const previousDrugId = existing.drugId;
+                if (encounterId && previousDrugId) {
+                    await tx.medicationOrder.updateMany({
+                        where: {
+                            encounterId,
+                            drugId: previousDrugId,
+                        },
+                        data: {
+                            drugId: dto.drugId,
+                            drugName: drug.genericName,
+                        },
+                    });
+                }
+
+                await this.recalculateInvoiceTotals(invoiceId, tx);
+                return updatedItem;
+            });
+        } catch (error) {
+            if (error instanceof HttpException) throw error;
+            const message =
+                error instanceof Error ? error.message : 'Substitute failed';
+            throw new BadRequestException(message);
+        }
     }
 }

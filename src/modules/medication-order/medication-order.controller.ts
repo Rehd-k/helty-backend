@@ -72,7 +72,11 @@ export class MedicationOrderController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update medication order' })
+  @ApiOperation({
+    summary: 'Update medication order',
+    description:
+      'Update status, dosing fields, or replace the drug (`drugId` updates `drugName` from the catalog).',
+  })
   @ApiResponse({ status: 200, description: 'Medication order updated.' })
   @ApiResponse({ status: 404, description: 'Medication order not found.' })
   update(

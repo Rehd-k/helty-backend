@@ -15,7 +15,7 @@ export class MedicationOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) {}
+  ) { }
 
   async create(dto: CreateMedicationOrderDto) {
     await this.validateEncounter(dto.encounterId);
@@ -45,7 +45,7 @@ export class MedicationOrderService {
     await this.invoiceService.addDrugItem({
       invoiceId: invoice.id,
       drugId: dto.drugId,
-      quantity: 1,
+      quantity: Number(dto.quantity) ?? 1,
     });
     return order;
   }
@@ -100,11 +100,22 @@ export class MedicationOrderService {
   }
 
   async update(id: string, dto: UpdateMedicationOrderDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+
+    let drugName: string | undefined;
+    if (dto.drugId !== undefined && dto.drugId !== existing.drugId) {
+      const drug = await this.validateDrug(dto.drugId);
+      drugName = drug.genericName;
+    }
 
     return this.prisma.medicationOrder.update({
       where: { id },
       data: {
+        ...(dto.drugId !== undefined &&
+          drugName !== undefined && {
+          drugId: dto.drugId,
+          drugName,
+        }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.dose !== undefined && { dose: dto.dose }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),

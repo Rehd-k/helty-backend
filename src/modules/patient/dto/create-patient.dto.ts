@@ -7,9 +7,11 @@ import {
   IsPhoneNumber,
   MinLength,
   MaxLength,
+  IsUUID,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PatientStatus } from '@prisma/client';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum Title {
   MR = 'Mr',
@@ -136,6 +138,13 @@ export class CreatePatientDto {
   @IsOptional()
   hmo?: string;
 
+  @ApiPropertyOptional({
+    description: 'Preferred: link patient to an HMO record (GET /hmos). Syncs legacy `hmo` text to the HMO name.',
+  })
+  @IsOptional()
+  @IsUUID()
+  hmoId?: string;
+
   @IsString()
   @IsOptional()
   fingerprintData?: string;
@@ -183,6 +192,13 @@ export class UpdatePatientDto {
   @IsOptional()
   hmo?: string;
 
+  @ApiPropertyOptional({
+    description: 'Link patient to an HMO (GET /hmos). When set, updates legacy `hmo` text to match HMO name; use null to clear.',
+  })
+  @IsOptional()
+  @IsUUID()
+  hmoId?: string | null;
+
   @IsString()
   @IsOptional()
   nextOfKinName?: string;
@@ -223,6 +239,7 @@ export class PatientResponseDto {
   email?: string;
   phoneNumber?: string;
   hmo?: string;
+  hmoId?: string | null;
   createdAt: Date;
   updatedAt: Date;
   status: string;

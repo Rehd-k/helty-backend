@@ -211,6 +211,36 @@ export class AddInvoiceItemDto {
   recurringSegmentStartAt?: string;
 }
 
+/** Replace one drug on an invoice line with another (atomic; same line item id). */
+export class SubstituteDrugInvoiceItemDto {
+  @ApiProperty({
+    description: 'UUID of the replacement drug',
+    example: 'uuid-here',
+  })
+  @IsUUID()
+  drugId!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Quantity for the replacement line. Defaults to the current line quantity.',
+    example: 2,
+  })
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  quantity?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Unit price snapshot for the replacement. Defaults to the current line unit price.',
+    example: 3200,
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  unitPrice?: number;
+}
+
 export class UpdateInvoiceItemDto {
   @ApiPropertyOptional({ description: 'Updated quantity', example: 2 })
   @IsInt()

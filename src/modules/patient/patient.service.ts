@@ -50,7 +50,20 @@ export class PatientService {
       data.nextOfKinAddress = createPatientDto.nextOfKinAddress;
     if (createPatientDto.nextOfKinRelationship)
       data.nextOfKinRelationship = createPatientDto.nextOfKinRelationship;
-    if (createPatientDto.hmo) data.hmo = createPatientDto.hmo;
+    if (createPatientDto.hmoId) {
+      const hmo = await this.prisma.hmo.findUnique({
+        where: { id: createPatientDto.hmoId },
+      });
+      if (!hmo) {
+        throw new NotFoundException(
+          `HMO "${createPatientDto.hmoId}" not found.`,
+        );
+      }
+      data.hmoId = createPatientDto.hmoId;
+      data.hmo = hmo.name;
+    } else if (createPatientDto.hmo) {
+      data.hmo = createPatientDto.hmo;
+    }
     if (createPatientDto.fingerprintData)
       data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
@@ -245,6 +258,9 @@ export class PatientService {
             },
           },
           ward: true,
+          hmoProvider: {
+            select: { id: true, name: true, code: true },
+          },
         },
       }),
 
@@ -292,6 +308,9 @@ export class PatientService {
         invoice: {
           orderBy: { createdAt: 'desc' },
         },
+        hmoProvider: {
+          select: { id: true, name: true, code: true },
+        },
       },
     });
   }
@@ -309,6 +328,9 @@ export class PatientService {
         radiologyReports: true,
         prescriptions: true,
         invoice: true,
+        hmoProvider: {
+          select: { id: true, name: true, code: true },
+        },
       },
     });
   }
@@ -327,6 +349,24 @@ export class PatientService {
       const value = updatePatientDto[key];
       if (value !== undefined) {
         (data as Record<string, unknown>)[key] = value;
+      }
+    }
+
+    if (updatePatientDto.hmoId !== undefined) {
+      if (updatePatientDto.hmoId === null) {
+        data.hmoProvider = { disconnect: true };
+        data.hmo = null;
+      } else {
+        const hmo = await this.prisma.hmo.findUnique({
+          where: { id: updatePatientDto.hmoId },
+        });
+        if (!hmo) {
+          throw new NotFoundException(
+            `HMO "${updatePatientDto.hmoId}" not found.`,
+          );
+        }
+        data.hmoProvider = { connect: { id: updatePatientDto.hmoId } };
+        data.hmo = hmo.name;
       }
     }
 

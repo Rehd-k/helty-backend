@@ -856,6 +856,7 @@ export class InvoiceService {
             firstName: true,
             surname: true,
             phoneNumber: true,
+
           },
         },
         createdBy: {

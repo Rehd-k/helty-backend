@@ -18,7 +18,7 @@ import {
 
 @Injectable()
 export class AdmissionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
@@ -133,6 +133,7 @@ export class AdmissionService {
       where: { id: createAdmissionDto.patientId },
       data: {
         status: PatientStatus.ADMITED,
+        wardId: createAdmissionDto.wardId ?? null,
       },
     });
 
@@ -188,13 +189,70 @@ export class AdmissionService {
     const admission = await this.prisma.admission.findUnique({
       where: { id },
       include: {
-        patient: true,
-        wardEntity: true,
+        patient: {
+          select: {
+            id: true,
+            firstName: true,
+            surname: true,
+            patientId: true,
+            dob: true
+          },
+        },
+        wardEntity: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         bed: true,
-        encounter: true,
+        encounter: {
+          select: {
+            id: true,
+            medicationOrders: true,
+          }
+        },
         patientVitals: true,
-        medicationOrders: true,
-        medicationAdministrations: true,
+        medicationOrders: {
+          include: {
+            prescribedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+        },
+        nurseAssignments: {
+          include: {
+            nurse: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                staffRole: true,
+              },
+            },
+          },
+        },
+        medicationAdministrations: {
+          include: {
+            medicationOrder: {
+              select: {
+                id: true,
+                drugName: true,
+                dose: true,
+                route: true,
+                frequency: true,
+                status: true,
+              },
+            },
+            nurse: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                staffRole: true,
+              },
+            },
+          },
+        },
         ivFluidOrders: true,
         ivMonitorings: true,
         intakeOutputRecords: true,
@@ -204,12 +262,20 @@ export class AdmissionService {
         carePlans: true,
         monitoringCharts: true,
         handoverReports: true,
+        admittedByDoctor: true,
         alerts: true,
         auditTrails: true,
         wardRoundNotes: true,
         labourDeliveries: true,
         gynaeProcedures: true,
-        attendingDoctor: true,
+        attendingDoctor: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffId: true,
+          },
+        },
       },
     });
 
@@ -307,6 +373,14 @@ export class AdmissionService {
           },
         },
         data: { endAt: now },
+      });
+
+      await tx.patient.update({
+        where: { id: admission.patientId },
+        data: {
+          wardId: null,
+          status: PatientStatus.OUTPATIENT,
+        },
       });
 
       return tx.admission.update({

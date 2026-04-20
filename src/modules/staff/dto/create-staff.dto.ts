@@ -21,17 +21,22 @@ export class CreateStaffDto {
   @IsString()
   lastName: string;
 
-  @ApiProperty({ enum: AccountType, example: AccountType.NURSE })
+  @ApiProperty({ enum: AccountType, example: AccountType.HMO })
   @IsEnum(AccountType)
   accountType: AccountType;
 
-  @ApiProperty({ enum: StaffRole, example: StaffRole.INPATIENT_NURSE })
+  @ApiProperty({ enum: StaffRole, example: StaffRole.HMO_STAFF })
   @IsEnum(StaffRole)
   staffRole: StaffRole;
 
-  @ApiProperty({ example: 'PHYSICIAN' })
+  @ApiPropertyOptional({
+    example: 'HMO_STAFF',
+    description:
+      'Legacy alias for staffRole when clients still send role instead of staffRole.',
+  })
+  @IsOptional()
   @IsString()
-  role: string;
+  role?: string;
 
   @ApiPropertyOptional({ example: 'department-uuid' })
   @IsOptional()

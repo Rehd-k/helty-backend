@@ -8,6 +8,9 @@ describe('AdmissionService', () => {
 
   it('blocks discharge when linked invoices are not fully paid', async () => {
     const tx: any = {
+      patient: {
+        update: jest.fn().mockResolvedValue({}),
+      },
       admission: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'adm-1',
@@ -42,6 +45,9 @@ describe('AdmissionService', () => {
 
   it('discharges successfully after paid checks and closes open segments', async () => {
     const tx: any = {
+      patient: {
+        update: jest.fn().mockResolvedValue({}),
+      },
       admission: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'adm-1',

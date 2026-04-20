@@ -2,7 +2,7 @@ import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { ReportSeverity } from '@prisma/client';
 
-export class CreateRadiologyReportDto {
+export class CreateRadiologyStudyReportDto {
   @ApiPropertyOptional({ description: 'Findings' })
   @IsString()
   @IsOptional()
@@ -24,7 +24,7 @@ export class CreateRadiologyReportDto {
   severity?: ReportSeverity;
 }
 
-export class UpdateRadiologyReportDto {
+export class UpdateRadiologyStudyReportDto {
   @ApiPropertyOptional({ description: 'Findings' })
   @IsString()
   @IsOptional()

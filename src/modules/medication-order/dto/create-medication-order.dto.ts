@@ -5,6 +5,7 @@ import {
   IsUUID,
   IsIn,
   MaxLength,
+  IsNumber,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -48,6 +49,11 @@ export class CreateMedicationOrderDto {
   @MaxLength(200)
   frequency?: string;
 
+  @ApiPropertyOptional({ description: 'Quantity (e.g 1 ,2,3)' })
+  @IsNumber()
+  @IsOptional()
+  quantity?: number;
+
   @ApiPropertyOptional({ description: 'Duration (e.g. 7 days, 2 weeks)' })
   @IsString()
   @IsOptional()
@@ -68,6 +74,14 @@ export class CreateMedicationOrderDto {
 }
 
 export class UpdateMedicationOrderDto {
+  @ApiPropertyOptional({
+    description:
+      'Replace the ordered drug; `drugName` is refreshed from the drug catalog (generic name).',
+  })
+  @IsUUID()
+  @IsOptional()
+  drugId?: string;
+
   @ApiPropertyOptional({
     enum: MEDICATION_ORDER_STATUSES,
     description: 'Order status',

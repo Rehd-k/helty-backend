@@ -520,22 +520,18 @@ export class NursesDashboardService {
         firstName: true,
         lastName: true,
         staffRole: true,
-        nurse: {
-          select: {
-            patientVitals: {
-              where: { recordedAt: { gte: since } },
-              orderBy: { recordedAt: 'desc' },
-              take: 1,
-              select: { recordedAt: true },
-            },
-          },
+        patientVitalsRecorded: {
+          where: { recordedAt: { gte: since } },
+          orderBy: { recordedAt: 'desc' },
+          take: 1,
+          select: { recordedAt: true },
         },
       },
     });
 
     return nurses.map((s) => {
       const name = `${s.firstName} ${s.lastName}`.trim();
-      const recent = s.nurse?.patientVitals[0]?.recordedAt;
+      const recent = s.patientVitalsRecorded[0]?.recordedAt;
       let status = 'On duty';
       let statusTone: 'success' | 'warning' | 'danger' | 'neutral' | 'busy' | 'break' =
         'neutral';

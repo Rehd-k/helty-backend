@@ -37,7 +37,7 @@ export class StaffController {
     if (req && req.user && req.user.sub) {
       data.createdById = req.user.sub;
     }
-    data.staffRole = dto.role;
+    data.staffRole = dto.staffRole ?? dto.role;
 
     return this.staffService.create(data);
   }

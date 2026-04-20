@@ -41,6 +41,8 @@ import { BillingAnalyticsModule } from './modules/billing-analytics/billing-anal
 import { FrontdeskModule } from './modules/frontdesk/frontdesk.module';
 import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module';
 import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboard.module';
+import { HmoModule } from './modules/hmo/hmo.module';
+import { InpatientNursingModule } from './modules/inpatient-nursing/inpatient-nursing.module';
 
 @Module({
   imports: [
@@ -98,6 +100,8 @@ import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboa
     FrontdeskModule,
     HeltyDesktopModule,
     NursesDashboardModule,
+    HmoModule,
+    InpatientNursingModule,
   ],
   controllers: [AppController],
   providers: [

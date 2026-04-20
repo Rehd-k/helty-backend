@@ -5,8 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
-import { CreateRadiologyReportDto } from './dto/radiology-report.dto';
-import { UpdateRadiologyReportDto } from './dto/radiology-report.dto';
+import {
+  CreateRadiologyStudyReportDto,
+  UpdateRadiologyStudyReportDto,
+} from './dto/radiology-report.dto';
 import { RadiologyRequestStatus } from '@prisma/client';
 
 @Injectable()
@@ -18,7 +20,7 @@ export class RadiologyReportService {
 
   async create(
     orderItemId: string,
-    dto: CreateRadiologyReportDto,
+    dto: CreateRadiologyStudyReportDto,
     signedById: string,
   ) {
     const orderItem = await this.prisma.radiologyOrderItem.findUnique({
@@ -71,7 +73,7 @@ export class RadiologyReportService {
     });
   }
 
-  async update(orderItemId: string, dto: UpdateRadiologyReportDto) {
+  async update(orderItemId: string, dto: UpdateRadiologyStudyReportDto) {
     const orderItem = await this.prisma.radiologyOrderItem.findUnique({
       where: { id: orderItemId },
       include: { report: true },

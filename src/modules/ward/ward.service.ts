@@ -25,6 +25,7 @@ export class WardService {
       orderBy: { name: 'asc' },
       include: {
         beds: true,
+
       },
     });
   }
@@ -36,6 +37,7 @@ export class WardService {
         beds: true,
         admissions: {
           where: { status: 'ACTIVE' },
+
 
           include: {
             encounter: {
@@ -75,6 +77,7 @@ export class WardService {
     if (!ward) {
       throw new NotFoundException('Ward not found');
     }
+    console.log(ward);
     return ward;
   }
 

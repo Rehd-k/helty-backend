@@ -15,8 +15,8 @@ import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { RadiologyReportService } from './radiology-report.service';
 import {
-  CreateRadiologyReportDto,
-  UpdateRadiologyReportDto,
+  CreateRadiologyStudyReportDto,
+  UpdateRadiologyStudyReportDto,
 } from './dto/radiology-report.dto';
 
 @ApiTags('Radiology – Reporting')
@@ -35,7 +35,7 @@ export class RadiologyReportController {
   })
   create(
     @Param('orderItemId') orderItemId: string,
-    @Body() dto: CreateRadiologyReportDto,
+    @Body() dto: CreateRadiologyStudyReportDto,
     @Req() req: { user?: { sub?: string } },
   ) {
     const signedById = req.user?.sub;
@@ -49,7 +49,7 @@ export class RadiologyReportController {
   @ApiOperation({ summary: 'Update radiology report' })
   update(
     @Param('orderItemId') orderItemId: string,
-    @Body() dto: UpdateRadiologyReportDto,
+    @Body() dto: UpdateRadiologyStudyReportDto,
   ) {
     return this.radiologyReportService.update(orderItemId, dto);
   }

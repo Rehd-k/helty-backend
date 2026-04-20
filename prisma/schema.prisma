@@ -42,8 +42,11 @@ model Patient {
   nextOfKinAddress      String?
   nextOfKinRelationship String?
   hmo                   String?
+  hmoId                 String?
   fingerprintData       String?
   status                PatientStatus @default(OUTPATIENT)
+
+  hmoProvider Hmo? @relation(fields: [hmoId], references: [id])
 
   appointments     Appointment[]
   admissions       Admission[]
@@ -80,6 +83,8 @@ model Patient {
   labOrders                 LabOrder[]
   radiologyOrders           RadiologyOrder[]
   medicationOrders          MedicationOrder[]
+
+  @@index([hmoId])
 }
 
 // ─── ICD-10 (optional: for diagnosis tab search; or use external API) ───────────
@@ -744,7 +749,47 @@ model Service {
 
   invoiceItems InvoiceItem[]
 
-  waitingPatients WaitingPatient[]
+  waitingPatients  WaitingPatient[]
+  hmoServicePrices HmoServicePrice[]
+}
+
+// ─── HMO (Health Maintenance Organization) ───────────────────────────────────
+
+model Hmo {
+  id    String  @id @default(uuid())
+  name  String  @unique
+  code  String?
+  notes String?
+
+  patients      Patient[]
+  servicePrices HmoServicePrice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   Staff   @relation("HmoCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("HmoUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+}
+
+model HmoServicePrice {
+  id        String  @id @default(uuid())
+  hmo       Hmo     @relation(fields: [hmoId], references: [id], onDelete: Cascade)
+  hmoId     String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  serviceId String
+
+  fullCost    Decimal @db.Decimal(12, 2)
+  hmoPays     Decimal @db.Decimal(12, 2)
+  patientPays Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([hmoId, serviceId])
+  @@index([hmoId])
+  @@index([serviceId])
 }
 
 model Invoice {
@@ -982,6 +1027,7 @@ enum AccountType {
   ICT
   CMD
   CMAC
+  HMO
   SUPER_ADMIN
 }
 
@@ -1026,6 +1072,8 @@ enum StaffRole {
   ICT_STAFF
   CMD
   CMAC
+  // HMO (insurance liaison / portal users)
+  HMO_STAFF
   SUPER_ADMIN
 }
 
@@ -1247,7 +1295,6 @@ model Department {
   updatedById         String?
   services            Service[]
   wards               Ward[]
-  nurses              Nurse[]
   radiologyOrders     RadiologyOrder[]
   purchaseNotes       PurchaseNote[]
   storeStockMovements StoreStockMovement[]
@@ -1314,6 +1361,8 @@ model Staff {
   banksCreated           Bank[]           @relation("BankCreatedBy")
   banksUpdated           Bank[]           @relation("BankUpdatedBy")
   banks                  Bank[]
+  hmosCreated            Hmo[]            @relation("HmoCreatedBy")
+  hmosUpdated            Hmo[]            @relation("HmoUpdatedBy")
   consultingRooms        ConsultingRoom[]
   waitingPatients        WaitingPatient[]
   consultingRoomsCreated ConsultingRoom[] @relation("ConsultingRoomCreatedBy")
@@ -1325,8 +1374,18 @@ model Staff {
   admissionMedicationOrdersPrescribed AdmissionMedicationOrder[] @relation("AdmissionMedicationOrderPrescribedBy")
   ivFluidOrdersOrdered                IVFluidOrder[]
   auditTrailsPerformed                AuditTrail[]
-  nurse                               Nurse?
   alertLogs                           AlertLog[]
+  nurseAssignments                    NurseAssignment[]          @relation("NurseAssignmentNurse")
+  medicationAdministrations           MedicationAdministration[] @relation("MedicationAdministrationNurse")
+  ivMonitorings                       IVMonitoring[]             @relation("IVMonitoringNurse")
+  intakeOutputRecords                 IntakeOutputRecord[]       @relation("IntakeOutputRecordNurse")
+  nursingNotes                        NursingNote[]              @relation("NursingNoteNurse")
+  procedureRecords                    ProcedureRecord[]          @relation("ProcedureRecordNurse")
+  woundAssessments                    WoundAssessment[]          @relation("WoundAssessmentNurse")
+  carePlans                           CarePlan[]                 @relation("CarePlanNurse")
+  monitoringCharts                    MonitoringChart[]          @relation("MonitoringChartNurse")
+  handoverReports                     HandoverReport[]           @relation("HandoverReportNurse")
+  patientVitalsRecorded               PatientVitals[]            @relation("PatientVitalsRecordedByNurse")
   encountersAsDoctor                  Encounter[]                @relation("EncounterDoctor")
   encountersCreated                   Encounter[]                @relation("EncounterCreatedBy")
   encountersUpdated                   Encounter[]                @relation("EncounterUpdatedBy")
@@ -1720,7 +1779,7 @@ model PatientVitals {
   admissionId       String?
   patient           Patient?        @relation(fields: [patientId], references: [id])
   patientId         String?
-  nurse             Nurse?          @relation(fields: [recordedByNurseId], references: [id])
+  nurse             Staff?          @relation("PatientVitalsRecordedByNurse", fields: [recordedByNurseId], references: [id])
   recordedByNurseId String?
   invoice           Invoice?        @relation("InvoiceVitals")
 
@@ -1813,33 +1872,6 @@ model Bed {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-model Nurse {
-  id      String @id @default(uuid())
-  staff   Staff  @relation(fields: [staffId], references: [id])
-  staffId String @unique
-
-  licenseNumber String?
-  role          String?
-  department    Department? @relation(fields: [departmentId], references: [id])
-  departmentId  String?
-  active        Boolean     @default(true)
-
-  assignments               NurseAssignment[]
-  medicationAdministrations MedicationAdministration[]
-  ivMonitorings             IVMonitoring[]
-  intakeOutputRecords       IntakeOutputRecord[]
-  nursingNotes              NursingNote[]
-  procedureRecords          ProcedureRecord[]
-  woundAssessments          WoundAssessment[]
-  carePlans                 CarePlan[]
-  monitoringCharts          MonitoringChart[]
-  handoverReports           HandoverReport[]
-
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  patientVitals PatientVitals[]
 }
 
 // ─── Orders (from encounter tabs) ──────────────────────────────────────────────
@@ -2073,7 +2105,7 @@ model LabResult {
 
 model NurseAssignment {
   id          String    @id @default(uuid())
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("NurseAssignmentNurse", fields: [nurseId], references: [id])
   nurseId     String
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
@@ -2116,7 +2148,7 @@ model MedicationAdministration {
   medicationOrderId     String
   admission             Admission                @relation(fields: [admissionId], references: [id])
   admissionId           String
-  nurse                 Nurse                    @relation(fields: [administeredByNurseId], references: [id])
+  nurse                 Staff                    @relation("MedicationAdministrationNurse", fields: [administeredByNurseId], references: [id])
   administeredByNurseId String
 
   scheduledTime    DateTime
@@ -2155,7 +2187,7 @@ model IVMonitoring {
   ivOrderId   String
   admission   Admission    @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse        @relation(fields: [nurseId], references: [id])
+  nurse       Staff        @relation("IVMonitoringNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   currentRate            Int
@@ -2172,7 +2204,7 @@ model IntakeOutputRecord {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("IntakeOutputRecordNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   type       IntakeOutputType
@@ -2188,7 +2220,7 @@ model NursingNote {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("NursingNoteNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   noteType  NursingNoteType
@@ -2220,7 +2252,7 @@ model ProcedureRecord {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("ProcedureRecordNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   procedureType String
@@ -2236,7 +2268,7 @@ model WoundAssessment {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("WoundAssessmentNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   woundLocation  String
@@ -2254,7 +2286,7 @@ model CarePlan {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("CarePlanNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   problem          String
@@ -2269,7 +2301,7 @@ model MonitoringChart {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("MonitoringChartNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   type       MonitoringChartType
@@ -2281,7 +2313,7 @@ model HandoverReport {
   id          String    @id @default(uuid())
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
-  nurse       Nurse     @relation(fields: [nurseId], references: [id])
+  nurse       Staff     @relation("HandoverReportNurse", fields: [nurseId], references: [id])
   nurseId     String
 
   shiftType ShiftType

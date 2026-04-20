@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Patch,
   Delete,
   Param,
@@ -21,7 +22,11 @@ import {
   ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { InvoiceDrugService } from './invoice-drug.service';
-import { UpdateInvoiceDto, UpdateInvoiceItemDto } from './dto/invoice.dto';
+import {
+  UpdateInvoiceDto,
+  UpdateInvoiceItemDto,
+  SubstituteDrugInvoiceItemDto,
+} from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
 @ApiTags('Invoice Drugs')
@@ -122,6 +127,29 @@ export class InvoiceDrugController {
     @Body() dto: UpdateInvoiceItemDto,
   ) {
     return this.invoiceDrugService.updateDrugInvoiceItem(id, itemId, dto);
+  }
+
+  @Post(':id/items/:itemId/substitute')
+  @ApiOperation({
+    summary: 'Substitute the drug on an invoice line (atomic)',
+    description:
+      'Replaces the drug on an existing drug line in a single transaction by updating the same line item (same id), then recalculating invoice totals. If the invoice has an `encounterId`, matching medication orders for that encounter and the previous drug are updated to the new drug. Does not delete the line, so partial line payments and usage segments stay attached. Blocked for settled lines and paid invoices.',
+  })
+  @ApiParam({ name: 'id', description: 'Invoice UUID' })
+  @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID (must be a drug line)' })
+  @ApiOkResponse({ description: 'Line item updated with the new drug' })
+  @ApiNotFoundResponse({
+    description: 'Invoice or drug line not found, or invoice has no drug items',
+  })
+  @ApiBadRequestResponse({
+    description: 'Paid invoice, settled line, same drug, or validation error',
+  })
+  substituteItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: SubstituteDrugInvoiceItemDto,
+  ) {
+    return this.invoiceDrugService.substituteDrugInvoiceItem(id, itemId, dto);
   }
 
   @Delete(':id/items/:itemId')
