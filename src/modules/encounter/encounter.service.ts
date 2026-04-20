@@ -419,7 +419,6 @@ export class EncounterService {
   }
 
   async update(id: string, dto: UpdateEncounterDto) {
-    console.log(dto);
     await this.findOne(id);
 
     const data: {

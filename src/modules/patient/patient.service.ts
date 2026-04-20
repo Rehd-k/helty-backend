@@ -370,10 +370,25 @@ export class PatientService {
       }
     }
 
+    if (updatePatientDto.wardId !== undefined) {
+      if (updatePatientDto.wardId === null) {
+        data.ward = { disconnect: true };
+      } else {
+        const ward = await this.prisma.ward.findUnique({
+          where: { id: updatePatientDto.wardId },
+        });
+        if (!ward) {
+          throw new NotFoundException(
+            `Ward "${updatePatientDto.wardId}" not found.`,
+          );
+        }
+        data.ward = { connect: { id: updatePatientDto.wardId } };
+      }
+    }
+
     if (!existing.patientId || updatePatientDto.patientId === undefined) {
       (data as Record<string, unknown>).patientId = this.nanoid();
     }
-    console.log(data);
     return this.prisma.patient.update({
       where: { id },
       data,

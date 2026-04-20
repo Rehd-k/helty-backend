@@ -8,6 +8,7 @@ import {
   MinLength,
   MaxLength,
   IsUUID,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PatientStatus } from '@prisma/client';
@@ -219,7 +220,14 @@ export class UpdatePatientDto {
   @IsOptional()
   status?: PatientStatus;
 
-  
+  @ApiPropertyOptional({
+    description:
+      'Assign patient to a ward (GET /wards). Send null to clear ward on the patient record.',
+  })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
+  @IsUUID()
+  wardId?: string | null;
 }
 
 export class PatientResponseDto {

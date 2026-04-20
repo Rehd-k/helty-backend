@@ -2,8 +2,19 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { AccountType, AdmissionStatus } from '@prisma/client';
+import { AccountType, AdmissionStatus, StaffRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+
+/** Matches AccessGuard: either field may mark the platform super-admin. */
+export function isSuperAdminStaff(staff: {
+  accountType: AccountType;
+  staffRole: StaffRole;
+}): boolean {
+  return (
+    staff.accountType === AccountType.SUPER_ADMIN ||
+    staff.staffRole === StaffRole.SUPER_ADMIN
+  );
+}
 
 export async function assertAdmissionExists(
   prisma: PrismaService,
@@ -52,6 +63,9 @@ export async function assertStaffIsNurseOrThrow(
   }
   if (!staff.isActive) {
     throw new ForbiddenException('Staff account is inactive.');
+  }
+  if (isSuperAdminStaff(staff)) {
+    return staff;
   }
   if (staff.accountType !== AccountType.NURSE) {
     throw new ForbiddenException(

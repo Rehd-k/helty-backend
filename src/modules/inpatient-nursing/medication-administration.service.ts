@@ -8,6 +8,7 @@ import {
   assertAdmissionExists,
   assertAdmissionWritable,
   assertStaffIsNurseOrThrow,
+  isSuperAdminStaff,
 } from './inpatient-nursing.utils';
 import {
   CreateMedicationAdministrationDto,
@@ -88,7 +89,7 @@ export class MedicationAdministrationService {
     dto: UpdateMedicationAdministrationDto,
     staffId: string,
   ) {
-    await assertStaffIsNurseOrThrow(this.prisma, staffId);
+    const actor = await assertStaffIsNurseOrThrow(this.prisma, staffId);
 
     const row = await this.prisma.medicationAdministration.findFirst({
       where: { id: administrationId, admissionId },
@@ -96,7 +97,10 @@ export class MedicationAdministrationService {
     if (!row) {
       throw new NotFoundException('Medication administration not found.');
     }
-    if (row.administeredByNurseId !== staffId) {
+    if (
+      row.administeredByNurseId !== staffId &&
+      !isSuperAdminStaff(actor)
+    ) {
       throw new BadRequestException(
         'Only the recording nurse can update this administration.',
       );

@@ -77,7 +77,6 @@ export class WardService {
     if (!ward) {
       throw new NotFoundException('Ward not found');
     }
-    console.log(ward);
     return ward;
   }
 
