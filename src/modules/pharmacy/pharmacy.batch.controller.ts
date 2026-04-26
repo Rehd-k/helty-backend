@@ -12,6 +12,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PharmacyBatchService } from './pharmacy.batch.service';
 import {
+  CorrectBatchQuantityDto,
   CreateBatchDto,
   SyncWardPricingFromLatestBatchDto,
   UpdateBatchDto,
@@ -53,6 +54,16 @@ export class PharmacyBatchController {
   @ApiOperation({ summary: 'Get drug batch by ID' })
   findOne(@Param('id') id: string) {
     return this.batchService.findOne(id);
+  }
+
+  @Patch(':id/quantity-correction')
+  @ApiOperation({
+    summary: 'Correct wrong quantity (data entry)',
+    description:
+      'Sets quantityReceived and quantityRemaining. Allowed only if the batch was created at least 24 hours ago. The generic PATCH on this resource also updates quantity but has no time restriction.',
+  })
+  correctQuantity(@Param('id') id: string, @Body() dto: CorrectBatchQuantityDto) {
+    return this.batchService.correctQuantity(id, dto);
   }
 
   @Patch(':id')

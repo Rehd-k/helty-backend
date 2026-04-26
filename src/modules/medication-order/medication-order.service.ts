@@ -46,6 +46,7 @@ export class MedicationOrderService {
       invoiceId: invoice.id,
       drugId: dto.drugId,
       quantity: Number(dto.quantity) ?? 1,
+      createdByStaffId: dto.doctorId,
     });
     return order;
   }

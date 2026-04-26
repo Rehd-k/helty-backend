@@ -859,6 +859,7 @@ model InvoiceItem {
   labRequest         LabRequest?
 
   @@index([invoiceId])
+  @@index([createdById])
 }
 
 model InvoiceItemPayment {

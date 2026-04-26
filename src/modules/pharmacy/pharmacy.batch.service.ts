@@ -5,7 +5,11 @@ import {
 } from '@nestjs/common';
 import { Prisma, PharmacyLocationType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateBatchDto, UpdateBatchDto } from './dto/batch.dto';
+import {
+  CorrectBatchQuantityDto,
+  CreateBatchDto,
+  UpdateBatchDto,
+} from './dto/batch.dto';
 import { SearchBatchDto } from './dto/search-batch.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { PharmacyDrugPriceService } from './pharmacy.drug-price.service';
@@ -19,6 +23,8 @@ const ALLOWED_SORT_FIELDS = new Set([
   'quantityRemaining',
   'createdAt',
 ]);
+
+const BATCH_QUANTITY_CORRECTION_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class PharmacyBatchService {
@@ -339,6 +345,37 @@ export class PharmacyBatchService {
         where: { id },
         include: this.defaultBatchInclude(),
       });
+    });
+  }
+
+  async correctQuantity(id: string, dto: CorrectBatchQuantityDto) {
+    const existing = await this.prisma.drugBatch.findUnique({
+      where: { id },
+      select: { id: true, createdAt: true },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Drug batch "${id}" not found.`);
+    }
+    if (
+      Date.now() - existing.createdAt.getTime() <
+      BATCH_QUANTITY_CORRECTION_MIN_AGE_MS
+    ) {
+      throw new BadRequestException(
+        'Quantity correction is allowed only at least 24 hours after the batch was created.',
+      );
+    }
+    if (dto.quantityRemaining > dto.quantityReceived) {
+      throw new BadRequestException(
+        'quantityRemaining cannot be greater than quantityReceived.',
+      );
+    }
+    return this.prisma.drugBatch.update({
+      where: { id },
+      data: {
+        quantityReceived: dto.quantityReceived,
+        quantityRemaining: dto.quantityRemaining,
+      },
+      include: this.defaultBatchInclude(),
     });
   }
 

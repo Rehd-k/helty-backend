@@ -22,6 +22,12 @@ import {
 export class InvoiceDrugService {
     constructor(private readonly prisma: PrismaService) { }
 
+    private static readonly invoiceItemCreatedBySelect = {
+        id: true,
+        firstName: true,
+        lastName: true,
+    } as const;
+
     private readonly dayMs = 24 * 60 * 60 * 1000;
 
     private asDecimal(value: number | string | Prisma.Decimal) {
@@ -179,6 +185,7 @@ export class InvoiceDrugService {
                         dosageForm: true,
                     },
                 },
+                createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
             },
         },
         patient: {
@@ -353,6 +360,7 @@ export class InvoiceDrugService {
                             },
                         },
                         usageSegments: true,
+                        createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
                     },
                 },
                 payments: {
@@ -419,6 +427,7 @@ export class InvoiceDrugService {
                                 dosageForm: true,
                             },
                         },
+                        createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
                     },
                 },
             },
@@ -502,6 +511,7 @@ export class InvoiceDrugService {
                                 dosageForm: true,
                             },
                         },
+                        createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
                     },
                 });
 
@@ -631,6 +641,7 @@ export class InvoiceDrugService {
                                 dosageForm: true,
                             },
                         },
+                        createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
                     },
                 });
 

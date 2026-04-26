@@ -263,8 +263,12 @@ export class InvoiceController {
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiCreatedResponse({ description: 'Line item added' })
   @ApiNotFoundResponse({ description: 'Invoice or Service not found' })
-  addItem(@Param('id') id: string, @Body() dto: AddInvoiceItemDto) {
-    return this.invoiceService.addItem(id, dto);
+  addItem(
+    @Param('id') id: string,
+    @Body() dto: AddInvoiceItemDto,
+    @Req() req: any,
+  ) {
+    return this.invoiceService.addItem(id, dto, req.user?.sub);
   }
 
   @Patch(':id/items/:itemId')

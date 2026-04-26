@@ -155,3 +155,17 @@ export class SyncWardPricingFromLatestBatchDto {
   @IsUUID()
   drugId: string;
 }
+
+export class CorrectBatchQuantityDto {
+  @ApiProperty({ example: 100, description: 'Corrected total quantity received' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantityReceived: number;
+
+  @ApiProperty({ example: 100, description: 'Corrected quantity on hand' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  quantityRemaining: number;
+}

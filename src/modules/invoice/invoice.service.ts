@@ -120,6 +120,21 @@ export class InvoiceService {
     return value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
   }
 
+  /**
+   * When set, `InvoiceItem.createdById` must reference a real `Staff` row.
+   * When omitted, the line is stored without a creator (legacy or internal call).
+   */
+  private async resolveOptionalInvoiceItemCreator(
+    staffId: string | undefined,
+  ): Promise<{ createdById?: string }> {
+    if (!staffId) return {};
+    const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+    if (!staff) {
+      throw new NotFoundException(`Staff "${staffId}" not found.`);
+    }
+    return { createdById: staffId };
+  }
+
   private static readonly uuidRe =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -545,6 +560,13 @@ export class InvoiceService {
 
   // ─── Invoice CRUD ─────────────────────────────────────────────────────────────
 
+  /** Shown on each line item when the creator is known */
+  private static readonly invoiceItemCreatedBySelect = {
+    id: true,
+    firstName: true,
+    lastName: true,
+  } as const;
+
   private static readonly invoiceCreateInclude = {
     patient: {
       select: { id: true, patientId: true, firstName: true, surname: true },
@@ -553,6 +575,7 @@ export class InvoiceService {
     invoiceItems: {
       include: {
         service: { select: { id: true, name: true, cost: true } },
+        createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
       },
     },
     consultingRoom: { select: { id: true, name: true } },
@@ -757,6 +780,7 @@ export class InvoiceService {
             dosageForm: true,
           },
         },
+        createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
       },
     },
     patient: {
@@ -834,6 +858,7 @@ export class InvoiceService {
         invoiceItems: {
           include: {
             service: { select: { id: true, name: true, cost: true } },
+            createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
           },
         },
       },
@@ -900,6 +925,7 @@ export class InvoiceService {
             },
             drug: { select: { id: true, genericName: true } },
             usageSegments: true,
+            createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
           },
         },
         payments: {
@@ -979,7 +1005,8 @@ export class InvoiceService {
         vitals: true,
         invoiceItems: {
           include: {
-            service: { select: { id: true, name: true, cost: true } }
+            service: { select: { id: true, name: true, cost: true } },
+            createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
           },
         },
       },
@@ -1007,8 +1034,13 @@ export class InvoiceService {
   /**
    * Add a service as a line item to an invoice.
    * Both invoice and service are validated to exist.
+   * When `createdByStaffId` is set (e.g. authenticated user), it is stored on the line.
    */
-  async addItem(invoiceId: string, dto: AddInvoiceItemDto) {
+  async addItem(
+    invoiceId: string,
+    dto: AddInvoiceItemDto,
+    createdByStaffId?: string,
+  ) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
     });
@@ -1030,6 +1062,8 @@ export class InvoiceService {
         throw new NotFoundException(`Drug ${dto.drugId} not found`);
     }
 
+    const creator = await this.resolveOptionalInvoiceItemCreator(createdByStaffId);
+
     const item = await this.prisma.invoiceItem.create({
       data: {
         invoiceId,
@@ -1038,12 +1072,14 @@ export class InvoiceService {
         quantity: dto.quantity ?? 1,
         unitPrice: this.asDecimal(dto.unitPrice ?? 0),
         isRecurringDaily: dto.isRecurringDaily ?? false,
+        ...creator,
       },
       include: {
         service: {
           select: { id: true, name: true, description: true, cost: true },
         },
         invoice: { select: { id: true, status: true, patientId: true } },
+        createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
       },
     });
     if (item.isRecurringDaily) {
@@ -1098,6 +1134,7 @@ export class InvoiceService {
       },
       include: {
         service: { select: { id: true, name: true, cost: true } },
+        createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
       },
     });
     await this.recalculateInvoiceTotals(invoiceId);
@@ -1692,6 +1729,7 @@ export class InvoiceService {
                   drug: {
                     select: { id: true, genericName: true, brandName: true },
                   },
+                  createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
                 },
               },
             },
@@ -1859,6 +1897,7 @@ export class InvoiceService {
                   category: { select: { id: true, name: true } },
                 },
               },
+              createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
             },
           },
         },
@@ -1901,6 +1940,13 @@ export class InvoiceService {
             unitPrice: it.unitPrice.toFixed(2),
             amountPaid: it.amountPaid.toFixed(2),
             customDescription: it.customDescription,
+            createdBy: it.createdBy
+              ? {
+                id: it.createdBy.id,
+                firstName: it.createdBy.firstName,
+                lastName: it.createdBy.lastName,
+              }
+              : null,
           })),
         },
       };
@@ -1964,6 +2010,7 @@ export class InvoiceService {
               drug: {
                 select: { id: true, genericName: true, brandName: true },
               },
+              createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
             },
           },
         },
@@ -1998,6 +2045,13 @@ export class InvoiceService {
             quantity: it.quantity,
             unitPrice: it.unitPrice.toFixed(2),
             amountPaid: it.amountPaid.toFixed(2),
+            createdBy: it.createdBy
+              ? {
+                id: it.createdBy.id,
+                firstName: it.createdBy.firstName,
+                lastName: it.createdBy.lastName,
+              }
+              : null,
           };
         }),
       };
@@ -2172,7 +2226,11 @@ export class InvoiceService {
       patient: {
         select: { id: true, patientId: true, firstName: true, surname: true },
       },
-      invoiceItems: true,
+      invoiceItems: {
+        include: {
+          createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+        },
+      },
     } satisfies Prisma.InvoiceInclude;
 
     const forEncounterOpen = await this.prisma.invoice.findFirst({
@@ -2240,6 +2298,7 @@ export class InvoiceService {
       invoiceItems: {
         include: {
           service: { select: { id: true, name: true, cost: true } },
+          createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
         },
       },
     } satisfies Prisma.InvoiceInclude;
@@ -2253,12 +2312,16 @@ export class InvoiceService {
           staffId: params.staffId,
         },
       });
-      const addedItem = await this.addItem(open.id, {
-        serviceId: params.serviceId,
-        drugId: params.drugId,
-        quantity,
-        unitPrice: service.cost,
-      });
+      const addedItem = await this.addItem(
+        open.id,
+        {
+          serviceId: params.serviceId,
+          drugId: params.drugId,
+          quantity,
+          unitPrice: service.cost,
+        },
+        params.staffId,
+      );
       const invoice = await this.prisma.invoice.findUniqueOrThrow({
         where: { id: open.id },
         include,
@@ -2266,6 +2329,9 @@ export class InvoiceService {
       return { invoice, invoiceItemId: addedItem.id };
     }
 
+    const lineCreator = await this.resolveOptionalInvoiceItemCreator(
+      params.staffId,
+    );
     const invoice = await this.prisma.invoice.create({
       data: {
         invoiceID: generateInvoiceHumanId(),
@@ -2279,6 +2345,7 @@ export class InvoiceService {
             serviceId: params.serviceId,
             quantity,
             unitPrice: this.asDecimal(service.cost),
+            ...lineCreator,
           },
         },
       },
@@ -2298,6 +2365,7 @@ export class InvoiceService {
     invoiceId: string;
     drugId: string;
     quantity?: number;
+    createdByStaffId?: string;
   }) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: params.invoiceId },
@@ -2323,16 +2391,21 @@ export class InvoiceService {
       ? new Prisma.Decimal(batch.sellingPrice)
       : new Prisma.Decimal(0);
     const quantity = params.quantity ?? 1;
+    const creator = await this.resolveOptionalInvoiceItemCreator(
+      params.createdByStaffId,
+    );
     const item = await this.prisma.invoiceItem.create({
       data: {
         invoiceId: params.invoiceId,
         drugId: params.drugId,
         quantity,
         unitPrice,
+        ...creator,
       },
       include: {
         drug: { select: { id: true, genericName: true } },
         invoice: { select: { id: true, status: true, patientId: true } },
+        createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
       },
     });
     await this.recalculateInvoiceTotals(params.invoiceId);
