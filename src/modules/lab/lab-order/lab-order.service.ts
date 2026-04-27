@@ -3,8 +3,9 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { LabOrderStatus, LabRequestStatus } from '@prisma/client';
+import { LabOrderStatus, LabRequestStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { parseDateRange } from '../../../common/utils/date-range';
 import { InvoiceService } from '../../invoice/invoice.service';
 import { invoiceLinkException } from '../../../common/exceptions/invoice-link.exception';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
@@ -124,9 +125,13 @@ export class LabOrderService {
   }
 
   async findAll(query: ListOrdersQueryDto) {
-    const where: { patientId?: string; status?: LabOrderStatus } = {};
+    const where: Prisma.LabOrderWhereInput = {};
     if (query.patientId) where.patientId = query.patientId;
     if (query.status) where.status = query.status;
+    if (query.fromDate || query.toDate) {
+      const { from, to } = parseDateRange(query.fromDate, query.toDate);
+      where.createdAt = { gte: from, lte: to };
+    }
 
     const skip = query.skip ?? 0;
     const take = query.take ?? 20;

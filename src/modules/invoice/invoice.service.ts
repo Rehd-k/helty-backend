@@ -1811,7 +1811,7 @@ export class InvoiceService {
       fromDate || toDate
         ? (() => {
           const { from, to } = parseDateRange(fromDate, toDate);
-          return { createdAt: { gte: from, lte: to } as const };
+          return { updatedAt: { gte: from, lte: to } as const };
         })()
         : {};
 
@@ -1869,7 +1869,6 @@ export class InvoiceService {
       invoiceItems: { some: itemMatchWhere },
       ...(andExtra.length ? { AND: andExtra } : {}),
     };
-
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
@@ -1897,7 +1896,12 @@ export class InvoiceService {
                   category: { select: { id: true, name: true } },
                 },
               },
-              createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+              createdBy: {
+                select: {
+                  ...InvoiceService.invoiceItemCreatedBySelect,
+                  accountType: true,
+                },
+              },
             },
           },
         },
@@ -1921,33 +1925,42 @@ export class InvoiceService {
           status: inv.status,
           patientId: inv.patientId,
           patient: { id: p.id, patientId: p.patientId ?? null },
-          invoiceItems: inv.invoiceItems.map((it) => ({
-            id: it.id,
-            serviceId: it.serviceId,
-            service: it.service
-              ? {
-                id: it.service.id,
-                name: it.service.name,
-                category: it.service.category
-                  ? {
-                    id: it.service.category.id,
-                    name: it.service.category.name,
-                  }
-                  : null,
-              }
-              : null,
-            quantity: it.quantity,
-            unitPrice: it.unitPrice.toFixed(2),
-            amountPaid: it.amountPaid.toFixed(2),
-            customDescription: it.customDescription,
-            createdBy: it.createdBy
-              ? {
-                id: it.createdBy.id,
-                firstName: it.createdBy.firstName,
-                lastName: it.createdBy.lastName,
-              }
-              : null,
-          })),
+          invoiceItems: inv.invoiceItems.map((it) => {
+            const cb = it.createdBy;
+            const requestingDoctor =
+              cb?.accountType === 'PHYSICIAN'
+                ? [cb.firstName, cb.lastName].filter(Boolean).join(' ').trim() ||
+                  null
+                : null;
+            return {
+              id: it.id,
+              serviceId: it.serviceId,
+              service: it.service
+                ? {
+                  id: it.service.id,
+                  name: it.service.name,
+                  category: it.service.category
+                    ? {
+                      id: it.service.category.id,
+                      name: it.service.category.name,
+                    }
+                    : null,
+                }
+                : null,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice.toFixed(2),
+              amountPaid: it.amountPaid.toFixed(2),
+              customDescription: it.customDescription,
+              requestingDoctor,
+              createdBy: cb
+                ? {
+                  id: cb.id,
+                  firstName: cb.firstName,
+                  lastName: cb.lastName,
+                }
+                : null,
+            };
+          }),
         },
       };
     });

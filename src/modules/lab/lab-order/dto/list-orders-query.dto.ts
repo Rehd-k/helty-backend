@@ -1,4 +1,12 @@
-import { IsOptional, IsUUID, IsEnum, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsUUID,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  IsDateString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { LabOrderStatus } from '@prisma/client';
@@ -13,6 +21,22 @@ export class ListOrdersQueryDto {
   @IsOptional()
   @IsEnum(LabOrderStatus)
   status?: LabOrderStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter orders with createdAt on/after this date (ISO 8601). Start-of-day when used with toDate.',
+  })
+  @IsOptional()
+  @IsDateString()
+  fromDate?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter orders with createdAt on/before this date (ISO 8601). End-of-day when used with fromDate.',
+  })
+  @IsOptional()
+  @IsDateString()
+  toDate?: string;
 
   @ApiPropertyOptional({ description: 'Skip', default: 0 })
   @IsOptional()
