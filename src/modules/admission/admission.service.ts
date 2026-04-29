@@ -214,7 +214,7 @@ export class AdmissionService {
         patientVitals: true,
         medicationOrders: {
           include: {
-            prescribedBy: {
+            doctor: {
               select: { id: true, firstName: true, lastName: true },
             },
           },

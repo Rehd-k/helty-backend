@@ -149,7 +149,7 @@ model Admission {
   outcome            String?
 
   nurseAssignments          NurseAssignment[]
-  medicationOrders          AdmissionMedicationOrder[]
+  medicationOrders          MedicationOrder[]
   medicationAdministrations MedicationAdministration[]
   ivFluidOrders             IVFluidOrder[]
   ivMonitorings             IVMonitoring[]
@@ -672,6 +672,8 @@ model ConsumableBatch {
   locationId        String
   batchNumber       String?
   expiryDate        DateTime?
+  costPrice         Decimal              @default(0) @db.Decimal(12, 2)
+  sellingPrice      Decimal              @default(0) @db.Decimal(12, 2)
   quantityReceived  Int
   quantityRemaining Int
   createdAt         DateTime             @default(now())
@@ -1207,23 +1209,16 @@ enum ShiftType {
   NIGHT
 }
 
-enum MedicationRoute {
-  IV
-  ORAL
-  IM
-  SC
-}
-
-enum MedicationOrderStatus {
-  ACTIVE
-  STOPPED
-}
-
 enum MedicationAdminStatus {
   GIVEN
   MISSED
   REFUSED
   DELAYED
+}
+
+enum MedicationAdministrationLifecycleStatus {
+  ACTIVE
+  STOPPED
 }
 
 enum IVOrderStatus {
@@ -1372,7 +1367,6 @@ model Staff {
   waitingPatientsUpdated WaitingPatient[] @relation("WaitingPatientUpdatedBy")
 
   admissionsAdmitted                  Admission[]                @relation("AdmissionAdmittedByDoctor")
-  admissionMedicationOrdersPrescribed AdmissionMedicationOrder[] @relation("AdmissionMedicationOrderPrescribedBy")
   ivFluidOrdersOrdered                IVFluidOrder[]
   auditTrailsPerformed                AuditTrail[]
   alertLogs                           AlertLog[]
@@ -1897,13 +1891,18 @@ model DrugCatalog {
 model MedicationOrder {
   id                  String    @id @default(uuid())
   encounterId         String
-  drugId              String
+  admissionId         String?
+  drugId              String?
   drugName            String // denormalized for display
   dose                String?
   frequency           String?
   duration            String?
   route               String?
   specialInstructions String?
+  startDateTime       DateTime?
+  endDateTime         DateTime?
+  notes               String?
+  administrationStatus MedicationAdministrationLifecycleStatus @default(ACTIVE)
   patientId           String
   patient             Patient   @relation(fields: [patientId], references: [id])
   doctorId            String
@@ -1913,11 +1912,14 @@ model MedicationOrder {
   updatedAt           DateTime? @updatedAt
 
   encounter     Encounter    @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  drug          Drug         @relation(fields: [drugId], references: [id], onDelete: Restrict)
+  admission     Admission?   @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  drug          Drug?        @relation(fields: [drugId], references: [id], onDelete: Restrict)
   drugCatalog   DrugCatalog? @relation(fields: [drugCatalogId], references: [id])
   drugCatalogId String?
+  administrations MedicationAdministration[]
 
   @@index([encounterId])
+  @@index([admissionId])
   @@index([patientId])
 }
 
@@ -2120,32 +2122,9 @@ model NurseAssignment {
   @@unique([nurseId, admissionId, shiftDate, shiftType])
 }
 
-model AdmissionMedicationOrder {
-  id          String    @id @default(uuid())
-  admission   Admission @relation(fields: [admissionId], references: [id])
-  admissionId String
-
-  prescribedBy         Staff  @relation("AdmissionMedicationOrderPrescribedBy", fields: [prescribedByDoctorId], references: [id])
-  prescribedByDoctorId String
-
-  drugName      String
-  dose          String
-  route         MedicationRoute
-  frequency     String
-  startDateTime DateTime
-  endDateTime   DateTime?
-  status        MedicationOrderStatus @default(ACTIVE)
-  notes         String?
-
-  administrations MedicationAdministration[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 model MedicationAdministration {
   id                    String                   @id @default(uuid())
-  medicationOrder       AdmissionMedicationOrder @relation(fields: [medicationOrderId], references: [id])
+  medicationOrder       MedicationOrder          @relation(fields: [medicationOrderId], references: [id])
   medicationOrderId     String
   admission             Admission                @relation(fields: [admissionId], references: [id])
   admissionId           String

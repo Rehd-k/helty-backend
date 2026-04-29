@@ -40,7 +40,7 @@ function parseDrugIds(input?: string): string[] {
 
 @Injectable()
 export class PharmacyDashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private getDateWindow(q: PharmacyDashboardQueryDto) {
     return parseDateRange(q.fromDate, q.toDate);
@@ -253,9 +253,9 @@ export class PharmacyDashboardService {
     const prescriptionItemIds = rows.map((r) => r.prescriptionItemId);
     const items = prescriptionItemIds.length
       ? await this.prisma.prescriptionItem.findMany({
-          where: { id: { in: prescriptionItemIds }, drugId: { not: null } },
-          select: { id: true, drugId: true, drug: { select: { brandName: true, genericName: true } } },
-        })
+        where: { id: { in: prescriptionItemIds }, drugId: { not: null } },
+        select: { id: true, drugId: true, drug: { select: { brandName: true, genericName: true } } },
+      })
       : [];
     const itemMap = new Map(items.map((i) => [i.id, i]));
     const qtyByDrug = new Map<string, number>();
@@ -273,23 +273,23 @@ export class PharmacyDashboardService {
     const [stockRows, revenueRows] = await Promise.all([
       drugIds.length
         ? this.prisma.drugBatch.groupBy({
-            by: ['drugId'],
-            where: mergeDrugBatchWhere(sellableTop, {
-              drugId: { in: drugIds },
-              ...(q.storeId ? { toLocationId: q.storeId } : {}),
-            }),
-            _sum: { quantityRemaining: true },
-          })
+          by: ['drugId'],
+          where: mergeDrugBatchWhere(sellableTop, {
+            drugId: { in: drugIds },
+            ...(q.storeId ? { toLocationId: q.storeId } : {}),
+          }),
+          _sum: { quantityRemaining: true },
+        })
         : [],
       drugIds.length
         ? this.prisma.invoiceItem.groupBy({
-            by: ['drugId'],
-            where: {
-              drugId: { in: drugIds },
-              invoice: { createdAt: { gte: from, lte: to } },
-            },
-            _sum: { amountPaid: true, quantity: true },
-          })
+          by: ['drugId'],
+          where: {
+            drugId: { in: drugIds },
+            invoice: { createdAt: { gte: from, lte: to } },
+          },
+          _sum: { amountPaid: true, quantity: true },
+        })
         : [],
     ]);
     const stockMap = new Map<string, number>(
@@ -349,19 +349,19 @@ export class PharmacyDashboardService {
     const ids = top.map((t) => t.drugId!).filter(Boolean);
     const drugs = ids.length
       ? await this.prisma.drug.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, brandName: true, genericName: true },
-        })
+        where: { id: { in: ids } },
+        select: { id: true, brandName: true, genericName: true },
+      })
       : [];
     const drugMap = new Map(drugs.map((d) => [d.id, d]));
 
     const prescriptions = ids.length
       ? await this.prisma.prescription.findMany({
-          where: {
-            items: { some: { drugId: { in: ids }, prescription: { patientId: { not: '' } } } },
-          },
-          include: { items: { select: { drugId: true } } },
-        })
+        where: {
+          items: { some: { drugId: { in: ids }, prescription: { patientId: { not: '' } } } },
+        },
+        include: { items: { select: { drugId: true } } },
+      })
       : [];
     const prescriberMap = new Map<string, Set<string>>();
     for (const p of prescriptions) {
@@ -541,9 +541,9 @@ export class PharmacyDashboardService {
     const pharmacistIds = [...new Set(rows.map((r) => r.pharmacistId))];
     const pharmacists = pharmacistIds.length
       ? await this.prisma.staff.findMany({
-          where: { id: { in: pharmacistIds } },
-          select: { id: true, firstName: true, lastName: true },
-        })
+        where: { id: { in: pharmacistIds } },
+        select: { id: true, firstName: true, lastName: true },
+      })
       : [];
     const names = new Map(
       pharmacists.map((p) => [p.id, `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim()]),
@@ -757,9 +757,9 @@ export class PharmacyDashboardService {
 
     const drugs = drugIds.length
       ? await this.prisma.drug.findMany({
-          where: { id: { in: drugIds } },
-          select: { id: true, brandName: true, genericName: true },
-        })
+        where: { id: { in: drugIds } },
+        select: { id: true, brandName: true, genericName: true },
+      })
       : [];
     const drugNameMap = new Map(
       drugs.map((d) => [d.id, d.brandName || d.genericName || 'Unknown']),
@@ -842,9 +842,9 @@ export class PharmacyDashboardService {
       const drugIds = lowStockGrouped.map((g) => g.drugId);
       const reorder = drugIds.length
         ? await this.prisma.drug.findMany({
-            where: { id: { in: drugIds }, deletedAt: null },
-            select: { id: true, reorderLevel: true },
-          })
+          where: { id: { in: drugIds }, deletedAt: null },
+          select: { id: true, reorderLevel: true },
+        })
         : [];
       const reorderMap = new Map(reorder.map((d) => [d.id, d.reorderLevel]));
 
@@ -878,5 +878,86 @@ export class PharmacyDashboardService {
     }
 
     return { points };
+  }
+
+  async getDispenseHistory(q: PharmacyDashboardQueryDto) {
+    const { from, to } = this.getDateWindow(q);
+    const skip = Math.max(0, q.skip ?? 0);
+    const take = Math.min(Math.max(1, q.take ?? 20), 100);
+    const patientQuery = q.patientQuery?.trim();
+
+    const where: Prisma.InvoiceItemWhereInput = {
+      settled: true,
+      drugId: { not: null },
+      invoice: { updatedAt: { gte: from, lte: to } },
+      ...(q.drugId ? { drugId: q.drugId } : {}),
+      ...(patientQuery
+        ? {
+          invoice: {
+            updatedAt: { gte: from, lte: to },
+            patient: {
+              OR: [
+                { patientId: { contains: patientQuery, mode: 'insensitive' } },
+                { firstName: { contains: patientQuery, mode: 'insensitive' } },
+                { surname: { contains: patientQuery, mode: 'insensitive' } },
+              ],
+            },
+          },
+        }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.invoiceItem.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { invoice: { updatedAt: 'desc' } },
+        include: {
+          drug: { select: { id: true, genericName: true, brandName: true } },
+          invoice: {
+            select: {
+              invoiceID: true,
+              updatedAt: true,
+              encounterId: true,
+              patient: {
+                select: {
+                  id: true,
+                  patientId: true,
+                  firstName: true,
+                  surname: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.invoiceItem.count({ where }),
+    ]);
+    console.log(rows);
+    return {
+      data: rows.map((row) => ({
+        invoiceItemId: row.id,
+        invoiceId: row.invoice.invoiceID,
+        dispensedAt: row.invoice.updatedAt,
+        encounterId: row.invoice.encounterId,
+        quantity: row.quantity,
+        unitPrice: toNumber(row.unitPrice),
+        amountPaid: toNumber(row.amountPaid),
+        drug: {
+          id: row.drugId,
+          name: row.drug?.brandName || row.drug?.genericName || 'Unknown',
+        },
+        patient: {
+          id: row.invoice.patient.id,
+          patientId: row.invoice.patient.patientId,
+          name: `${row.invoice.patient.firstName ?? ''} ${row.invoice.patient.surname ?? ''}`.trim(),
+        },
+      })),
+      total,
+      skip,
+      take,
+      window: { from: from.toISOString(), to: to.toISOString() },
+    };
   }
 }

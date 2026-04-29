@@ -4,19 +4,18 @@ import {
   IsOptional,
   IsUUID,
   IsNotEmpty,
-  IsEnum,
+  IsIn,
   IsDateString,
 } from 'class-validator';
-import {
-  MedicationRoute,
-  MedicationOrderStatus,
-  MedicationAdminStatus,
-} from '@prisma/client';
+import { MedicationAdminStatus } from '@prisma/client';
+
+const MEDICATION_ROUTES = ['IV', 'ORAL', 'IM', 'SC'] as const;
+const ADMINISTRATION_LIFECYCLE_STATUSES = ['ACTIVE', 'STOPPED'] as const;
 
 export class CreateAdmissionMedicationOrderDto {
-  @ApiProperty({ enum: MedicationRoute })
-  @IsEnum(MedicationRoute)
-  route: MedicationRoute;
+  @ApiProperty({ enum: MEDICATION_ROUTES })
+  @IsIn(MEDICATION_ROUTES)
+  route: (typeof MEDICATION_ROUTES)[number];
 
   @ApiProperty()
   @IsString()
@@ -49,10 +48,10 @@ export class CreateAdmissionMedicationOrderDto {
 }
 
 export class UpdateAdmissionMedicationOrderDto {
-  @ApiPropertyOptional({ enum: MedicationOrderStatus })
+  @ApiPropertyOptional({ enum: ADMINISTRATION_LIFECYCLE_STATUSES })
   @IsOptional()
-  @IsEnum(MedicationOrderStatus)
-  status?: MedicationOrderStatus;
+  @IsIn(ADMINISTRATION_LIFECYCLE_STATUSES)
+  administrationStatus?: (typeof ADMINISTRATION_LIFECYCLE_STATUSES)[number];
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -90,7 +89,7 @@ export class CreateMedicationAdministrationDto {
   actualTime?: string;
 
   @ApiProperty({ enum: MedicationAdminStatus })
-  @IsEnum(MedicationAdminStatus)
+  @IsIn(Object.values(MedicationAdminStatus))
   status: MedicationAdminStatus;
 
   @ApiPropertyOptional()
@@ -112,7 +111,7 @@ export class UpdateMedicationAdministrationDto {
 
   @ApiPropertyOptional({ enum: MedicationAdminStatus })
   @IsOptional()
-  @IsEnum(MedicationAdminStatus)
+  @IsIn(Object.values(MedicationAdminStatus))
   status?: MedicationAdminStatus;
 
   @ApiPropertyOptional()

@@ -19,12 +19,16 @@ export class MedicationOrderService {
 
   async create(dto: CreateMedicationOrderDto) {
     await this.validateEncounter(dto.encounterId);
+    if (dto.admissionId) {
+      await this.validateAdmission(dto.admissionId, dto.encounterId, dto.patientId);
+    }
     const drug = await this.validateDrug(dto.drugId);
     const patient = await this.validatePatient(dto.patientId);
     const doctor = await this.validateDoctor(dto.doctorId);
     const order = await this.prisma.medicationOrder.create({
       data: {
         encounterId: dto.encounterId,
+        admissionId: dto.admissionId,
         drugId: dto.drugId,
         drugName: drug.genericName,
         dose: dto.dose ?? undefined,
@@ -32,6 +36,10 @@ export class MedicationOrderService {
         duration: dto.duration ?? undefined,
         route: dto.route ?? undefined,
         specialInstructions: dto.specialInstructions ?? undefined,
+        startDateTime: dto.startDateTime ? new Date(dto.startDateTime) : undefined,
+        endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : undefined,
+        notes: dto.notes ?? undefined,
+        administrationStatus: dto.administrationStatus ?? undefined,
         patientId: patient.id,
         doctorId: doctor.id,
       },
@@ -125,6 +133,13 @@ export class MedicationOrderService {
         ...(dto.specialInstructions !== undefined && {
           specialInstructions: dto.specialInstructions,
         }),
+        ...(dto.administrationStatus !== undefined && {
+          administrationStatus: dto.administrationStatus,
+        }),
+        ...(dto.endDateTime !== undefined && {
+          endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : null,
+        }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
       },
       include: this.defaultInclude(),
     });
@@ -156,6 +171,30 @@ export class MedicationOrderService {
     return drug;
   }
 
+  private async validateAdmission(
+    admissionId: string,
+    encounterId: string,
+    patientId: string,
+  ) {
+    const admission = await this.prisma.admission.findUnique({
+      where: { id: admissionId },
+      select: { id: true, patientId: true, encounter: { select: { id: true } } },
+    });
+    if (!admission) {
+      throw new NotFoundException(`Admission with id "${admissionId}" not found.`);
+    }
+    if (admission.patientId !== patientId) {
+      throw new BadRequestException(
+        'Admission does not belong to the given patient.',
+      );
+    }
+    if (admission.encounter?.id !== encounterId) {
+      throw new BadRequestException(
+        'Admission does not belong to the given encounter.',
+      );
+    }
+  }
+
   private async validatePatient(patientId: string) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: patientId },
@@ -184,6 +223,20 @@ export class MedicationOrderService {
           encounterType: true,
           status: true,
           patientId: true,
+        },
+      },
+      admission: {
+        select: {
+          id: true,
+          status: true,
+          admissionDate: true,
+        },
+      },
+      doctor: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
         },
       },
       drug: {

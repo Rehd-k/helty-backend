@@ -17,17 +17,23 @@ import {
 export class AdmissionMedicationOrderService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private withPrescriber(order: any) {
+    const { doctor, ...rest } = order;
+    return { ...rest, prescribedBy: doctor ?? null };
+  }
+
   async list(admissionId: string) {
     await assertAdmissionExists(this.prisma, admissionId);
-    return this.prisma.admissionMedicationOrder.findMany({
+    const rows = await this.prisma.medicationOrder.findMany({
       where: { admissionId },
       orderBy: { startDateTime: 'desc' },
       include: {
-        prescribedBy: {
+        doctor: {
           select: { id: true, firstName: true, lastName: true },
         },
       },
     });
+    return rows.map((row) => this.withPrescriber(row));
   }
 
   async create(
@@ -35,8 +41,19 @@ export class AdmissionMedicationOrderService {
     dto: CreateAdmissionMedicationOrderDto,
     prescribedByDoctorId: string,
   ) {
-    const admission = await assertAdmissionExists(this.prisma, admissionId);
+    const admission = await this.prisma.admission.findUnique({
+      where: { id: admissionId },
+      select: { id: true, status: true, patientId: true, encounter: { select: { id: true } } },
+    });
+    if (!admission) {
+      throw new NotFoundException(`Admission "${admissionId}" not found.`);
+    }
     assertAdmissionWritable(admission);
+    if (!admission.encounter?.id) {
+      throw new BadRequestException(
+        'Admission is not linked to an encounter; medication order cannot be created.',
+      );
+    }
 
     const doctor = await this.prisma.staff.findUnique({
       where: { id: prescribedByDoctorId },
@@ -47,10 +64,13 @@ export class AdmissionMedicationOrderService {
       );
     }
 
-    return this.prisma.admissionMedicationOrder.create({
+    const row = await this.prisma.medicationOrder.create({
       data: {
+        encounterId: admission.encounter.id,
         admissionId,
-        prescribedByDoctorId,
+        patientId: admission.patientId,
+        doctorId: prescribedByDoctorId,
+        administrationStatus: 'ACTIVE',
         drugName: dto.drugName.trim(),
         dose: dto.dose.trim(),
         route: dto.route,
@@ -60,11 +80,12 @@ export class AdmissionMedicationOrderService {
         notes: dto.notes?.trim() || null,
       },
       include: {
-        prescribedBy: {
+        doctor: {
           select: { id: true, firstName: true, lastName: true },
         },
       },
     });
+    return this.withPrescriber(row);
   }
 
   async update(
@@ -72,7 +93,7 @@ export class AdmissionMedicationOrderService {
     orderId: string,
     dto: UpdateAdmissionMedicationOrderDto,
   ) {
-    const order = await this.prisma.admissionMedicationOrder.findFirst({
+    const order = await this.prisma.medicationOrder.findFirst({
       where: { id: orderId, admissionId },
     });
     if (!order) {
@@ -80,10 +101,12 @@ export class AdmissionMedicationOrderService {
         `Medication order "${orderId}" not found for this admission.`,
       );
     }
-    return this.prisma.admissionMedicationOrder.update({
+    const row = await this.prisma.medicationOrder.update({
       where: { id: orderId },
       data: {
-        ...(dto.status !== undefined && { status: dto.status }),
+        ...(dto.administrationStatus !== undefined && {
+          administrationStatus: dto.administrationStatus,
+        }),
         ...(dto.dose !== undefined && { dose: dto.dose }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),
         ...(dto.endDateTime !== undefined && {
@@ -92,15 +115,16 @@ export class AdmissionMedicationOrderService {
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
       include: {
-        prescribedBy: {
+        doctor: {
           select: { id: true, firstName: true, lastName: true },
         },
       },
     });
+    return this.withPrescriber(row);
   }
 
   async remove(admissionId: string, orderId: string) {
-    const order = await this.prisma.admissionMedicationOrder.findFirst({
+    const order = await this.prisma.medicationOrder.findFirst({
       where: { id: orderId, admissionId },
       include: { _count: { select: { administrations: true } } },
     });
@@ -114,6 +138,6 @@ export class AdmissionMedicationOrderService {
         'Cannot delete an order that already has administration records.',
       );
     }
-    await this.prisma.admissionMedicationOrder.delete({ where: { id: orderId } });
+    await this.prisma.medicationOrder.delete({ where: { id: orderId } });
   }
 }

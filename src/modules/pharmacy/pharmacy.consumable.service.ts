@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateConsumableDto, UpdateConsumableDto } from './dto/consumable.dto';
+import {
+  CreateConsumableBatchDto,
+  CreateConsumableDto,
+  UpdateConsumableDto,
+} from './dto/consumable.dto';
 import { ListConsumableDto } from './dto/list-consumable.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 
@@ -86,6 +90,9 @@ export class PharmacyConsumableService {
     const consumable = await this.prisma.consumable.findUnique({
       where: { id },
       include: {
+        batches: {
+          orderBy: { createdAt: 'desc' },
+        },
         _count: { select: { batches: true, prescriptionItems: true } },
       },
     });
@@ -140,5 +147,33 @@ export class PharmacyConsumableService {
       );
     }
     return this.prisma.consumable.delete({ where: { id } });
+  }
+
+  async createBatch(consumableId: string, dto: CreateConsumableBatchDto) {
+    await this.findOne(consumableId);
+    return this.prisma.consumableBatch.create({
+      data: {
+        consumableId,
+        locationType: dto.locationType,
+        locationId: dto.locationId,
+        batchNumber: dto.batchNumber?.trim() || null,
+        expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
+        quantityReceived: dto.quantityReceived,
+        quantityRemaining: dto.quantityRemaining,
+        costPrice: new Prisma.Decimal(dto.costPrice),
+        sellingPrice: new Prisma.Decimal(dto.sellingPrice),
+      },
+    });
+  }
+
+  async listBatches(consumableId: string) {
+    await this.findOne(consumableId);
+    return this.prisma.consumableBatch.findMany({
+      where: { consumableId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        location: { select: { id: true, name: true, locationType: true } },
+      },
+    });
   }
 }

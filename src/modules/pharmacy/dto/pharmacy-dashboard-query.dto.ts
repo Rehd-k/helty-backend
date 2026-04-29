@@ -48,6 +48,13 @@ export class PharmacyDashboardQueryDto {
   @IsUUID()
   drugId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Patient search text (name or patientId) for dispense history',
+  })
+  @IsOptional()
+  @IsString()
+  patientQuery?: string;
+
   @ApiPropertyOptional({ enum: ['Cash', 'Insurance', 'Corporate', 'HMO'] })
   @IsOptional()
   @IsIn(['Cash', 'Insurance', 'Corporate', 'HMO'])

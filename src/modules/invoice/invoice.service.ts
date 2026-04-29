@@ -366,7 +366,7 @@ export class InvoiceService {
           take: 1,
         },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { updatedAt: 'asc' },
     });
     const invoiceItemId = invoice?.invoiceItems?.[0]?.id;
     if (!invoice || !invoiceItemId) return null;
@@ -836,6 +836,7 @@ export class InvoiceService {
       invoiceStatus,
       patientId,
     );
+    console.log(where);
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
@@ -852,7 +853,7 @@ export class InvoiceService {
   async findByPatient(patientId: string) {
     const invoices = await this.prisma.invoice.findMany({
       where: { patientId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       include: {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
         invoiceItems: {
@@ -1917,7 +1918,7 @@ export class InvoiceService {
         patientName: patientDisplayName,
         phone: p.phoneNumber ?? null,
         age: this.patientAgeYears(p.dob),
-        date: inv.createdAt.toISOString(),
+        date: inv.updatedAt.toISOString(),
         invoice: {
           id: inv.id,
           invoiceID: inv.invoiceID,
@@ -1930,7 +1931,7 @@ export class InvoiceService {
             const requestingDoctor =
               cb?.accountType === 'PHYSICIAN'
                 ? [cb.firstName, cb.lastName].filter(Boolean).join(' ').trim() ||
-                  null
+                null
                 : null;
             return {
               id: it.id,
@@ -1984,7 +1985,7 @@ export class InvoiceService {
       fromDate || toDate
         ? (() => {
           const { from, to } = parseDateRange(fromDate, toDate);
-          return { createdAt: { gte: from, lte: to } as const };
+          return { updatedAt: { gte: from, lte: to } as const };
         })()
         : {};
 
@@ -2000,7 +2001,7 @@ export class InvoiceService {
         where,
         skip: Number(skip),
         take: Number(take),
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         include: {
           patient: {
             select: {
@@ -2041,7 +2042,7 @@ export class InvoiceService {
         invoiceId: inv.invoiceID,
         phone: p.phoneNumber ?? null,
         age: this.patientAgeYears(p.dob),
-        date: inv.createdAt.toISOString(),
+        date: inv.updatedAt.toISOString(),
         services: inv.invoiceItems.map((it) => {
           const drugLabel =
             it.drug?.genericName ??
@@ -2081,7 +2082,7 @@ export class InvoiceService {
     await this.findOne(invoiceId);
     return this.prisma.insuranceClaim.findMany({
       where: { invoiceId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       include: {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
         updatedBy: { select: { id: true, firstName: true, lastName: true } },
@@ -2211,7 +2212,7 @@ export class InvoiceService {
   async findByEncounterId(encounterId: string) {
     return this.prisma.invoice.findFirst({
       where: { encounterId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       include: {
         patient: {
           select: { id: true, patientId: true, firstName: true, surname: true },
@@ -2253,7 +2254,7 @@ export class InvoiceService {
           in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID],
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       include: encounterInclude,
     });
     if (forEncounterOpen) return forEncounterOpen;

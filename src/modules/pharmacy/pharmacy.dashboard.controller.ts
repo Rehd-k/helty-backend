@@ -91,4 +91,13 @@ export class PharmacyDashboardController {
   inventoryChart(@Query() query: PharmacyDashboardChartQueryDto) {
     return this.service.getInventoryTrendChart(query);
   }
+
+  @Get('dispense-history')
+  @ApiOperation({
+    summary:
+      'Dispense history from settled invoice drug items with date and drug filters',
+  })
+  dispenseHistory(@Query() query: PharmacyDashboardQueryDto) {
+    return this.service.getDispenseHistory(query);
+  }
 }

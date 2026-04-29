@@ -44,12 +44,14 @@ export class MedicationAdministrationController {
   @ApiOperation({
     summary: 'Record a medication administration (nurse; nurse resolved from JWT)',
   })
-  create(
+  async create(
     @Param('admissionId') admissionId: string,
     @Body() dto: CreateMedicationAdministrationDto,
     @Req() req: { user: { sub: string } },
   ) {
-    return this.service.create(admissionId, dto, req.user.sub);
+    const addmi = await this.service.create(admissionId, dto, req.user.sub);
+    console.log('addmi', addmi);
+    return addmi;
   }
 
   @Patch(':administrationId')

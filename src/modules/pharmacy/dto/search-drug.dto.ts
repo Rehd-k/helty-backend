@@ -1,12 +1,25 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBooleanString,
+  IsDateString,
   IsEnum,
+  IsIn,
   IsNumberString,
   IsOptional,
   IsString,
 } from 'class-validator';
 import { PharmacyLocationType } from '@prisma/client';
+
+export const DRUG_SEARCH_SORT_FIELDS = [
+  'genericName',
+  'brandName',
+  'createdAt',
+  'quantity',
+  'sellingPrice',
+  'expiryDate',
+] as const;
+
+export type DrugSearchSortField = (typeof DRUG_SEARCH_SORT_FIELDS)[number];
 
 export class SearchDrugDto {
   @ApiPropertyOptional()
@@ -30,22 +43,22 @@ export class SearchDrugDto {
   supplierId?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   manufacturingDateFrom?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   manufacturingDateTo?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   expiryDateFrom?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   expiryDateTo?: string;
 
@@ -102,17 +115,17 @@ export class SearchDrugDto {
   cursorId?: string;
 
   @ApiPropertyOptional()
-  @IsString()
+  @IsDateString()
   @IsOptional()
   cursorCreatedAt?: string;
 
-  @ApiPropertyOptional()
-  @IsString()
+  @ApiPropertyOptional({ enum: DRUG_SEARCH_SORT_FIELDS, default: 'createdAt' })
+  @IsIn(DRUG_SEARCH_SORT_FIELDS)
   @IsOptional()
-  sortBy?: string;
+  sortBy?: DrugSearchSortField;
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
-  @IsString()
+  @IsIn(['asc', 'desc'])
   @IsOptional()
   sortOrder?: 'asc' | 'desc';
 }

@@ -6,6 +6,7 @@ import {
   IsIn,
   MaxLength,
   IsNumber,
+  IsDateString,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -14,6 +15,7 @@ export const MEDICATION_ORDER_STATUSES = [
   'Dispensed',
   'Cancelled',
 ] as const;
+export const MEDICATION_ADMINISTRATION_STATUSES = ['ACTIVE', 'STOPPED'] as const;
 export type MedicationOrderStatus = (typeof MEDICATION_ORDER_STATUSES)[number];
 
 export class CreateMedicationOrderDto {
@@ -31,6 +33,11 @@ export class CreateMedicationOrderDto {
   @IsUUID()
   @IsNotEmpty({ message: 'encounterId is required' })
   encounterId: string;
+
+  @ApiPropertyOptional({ description: 'Admission UUID for inpatient orders' })
+  @IsUUID()
+  @IsOptional()
+  admissionId?: string;
 
   @ApiProperty({ description: 'Drug catalog UUID' })
   @IsUUID()
@@ -71,6 +78,27 @@ export class CreateMedicationOrderDto {
   @IsOptional()
   @MaxLength(2000)
   specialInstructions?: string;
+
+  @ApiPropertyOptional({ description: 'Order start datetime (ISO)' })
+  @IsDateString()
+  @IsOptional()
+  startDateTime?: string;
+
+  @ApiPropertyOptional({ description: 'Order end datetime (ISO)' })
+  @IsDateString()
+  @IsOptional()
+  endDateTime?: string;
+
+  @ApiPropertyOptional({ description: 'Clinical notes' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(2000)
+  notes?: string;
+
+  @ApiPropertyOptional({ enum: MEDICATION_ADMINISTRATION_STATUSES })
+  @IsIn(MEDICATION_ADMINISTRATION_STATUSES)
+  @IsOptional()
+  administrationStatus?: (typeof MEDICATION_ADMINISTRATION_STATUSES)[number];
 }
 
 export class UpdateMedicationOrderDto {
@@ -121,4 +149,20 @@ export class UpdateMedicationOrderDto {
   @IsOptional()
   @MaxLength(2000)
   specialInstructions?: string;
+
+  @ApiPropertyOptional({ enum: MEDICATION_ADMINISTRATION_STATUSES })
+  @IsIn(MEDICATION_ADMINISTRATION_STATUSES)
+  @IsOptional()
+  administrationStatus?: (typeof MEDICATION_ADMINISTRATION_STATUSES)[number];
+
+  @ApiPropertyOptional({ description: 'Order end datetime (ISO)' })
+  @IsDateString()
+  @IsOptional()
+  endDateTime?: string;
+
+  @ApiPropertyOptional({ description: 'Clinical notes' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(2000)
+  notes?: string;
 }
