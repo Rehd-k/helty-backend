@@ -35,6 +35,7 @@ import {
   UpdateInvoiceItemDto,
   WalletDepositDto,
   ListInvoicesByCategoryQueryDto,
+  SplitInvoiceDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
@@ -234,6 +235,27 @@ export class InvoiceController {
     @Req() req: any,
   ) {
     return this.invoiceService.update(id, dto, req);
+  }
+
+  @Post(':id/split')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Split an invoice by moving line items to a new invoice',
+    description:
+      'Creates a new PENDING invoice for the same patient with the same encounter and consulting room as the source. The given line items are reassigned to the new invoice; lab requests linked to those lines follow. Vitals stay on the original invoice only (unique link). The original invoice is recalculated after the move. Not allowed for paid invoices or for lines that are settled, have `amountPaid`, or have payment allocations. At least one line must remain on the original invoice.',
+  })
+  @ApiParam({ name: 'id', description: 'Source invoice UUID' })
+  @ApiCreatedResponse({
+    description: 'Original and new invoice detail (same shape as GET /invoices/:id)',
+  })
+  @ApiBadRequestResponse({ description: 'Validation or business rule violation' })
+  @ApiNotFoundResponse({ description: 'Invoice not found' })
+  splitInvoice(
+    @Param('id') id: string,
+    @Body() dto: SplitInvoiceDto,
+    @Req() req: any,
+  ) {
+    return this.invoiceService.splitInvoice(id, dto, req);
   }
 
   @Delete(':id')

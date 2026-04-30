@@ -25,6 +25,7 @@ import {
   UpdateInvoiceItemDto,
   WalletDepositDto,
   ListInvoicesByCategoryQueryDto,
+  SplitInvoiceDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
@@ -1015,19 +1016,123 @@ export class InvoiceService {
   }
 
   /**
-   * Delete an invoice. Fails if it still has line items.
+   * Delete an invoice with its line items.
+   * Only `PENDING` invoices are deletable.
    */
   async remove(id: string) {
-    await this.findOne(id);
-    const itemCount = await this.prisma.invoiceItem.count({
-      where: { invoiceId: id },
-    });
-    if (itemCount > 0) {
+    const invoice = await this.findOne(id);
+    if (invoice.status !== InvoiceStatus.PENDING) {
       throw new BadRequestException(
-        `Cannot delete invoice: it has ${itemCount} line item(s). Remove them first.`,
+        'Cannot delete invoice: only PENDING invoices can be deleted.',
       );
     }
-    return this.prisma.invoice.delete({ where: { id } });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.invoiceItem.deleteMany({
+        where: { invoiceId: id },
+      });
+      return tx.invoice.delete({ where: { id } });
+    });
+  }
+
+  /**
+   * Moves the given line items onto a new invoice for the same patient.
+   * Copies encounter and consulting room from the source; `vitalsId` stays on the
+   * source invoice only (PatientVitals is one-to-one with an invoice).
+   * Blocked for paid invoices and for lines that are settled, paid, or have allocations.
+   */
+  async splitInvoice(sourceInvoiceId: string, dto: SplitInvoiceDto, req: any) {
+    const uniqueItemIds = [...new Set(dto.invoiceItemIds)];
+    if (uniqueItemIds.length === 0) {
+      throw new BadRequestException('At least one invoice line id is required.');
+    }
+
+    const { newInvoiceId } = await this.prisma.$transaction(async (tx) => {
+      const source = await tx.invoice.findUnique({
+        where: { id: sourceInvoiceId },
+      });
+      if (!source) {
+        throw new NotFoundException(`Invoice ${sourceInvoiceId} not found`);
+      }
+      this.assertInvoiceNotPaid(source.status);
+
+      const totalLines = await tx.invoiceItem.count({
+        where: { invoiceId: sourceInvoiceId },
+      });
+      if (uniqueItemIds.length >= totalLines) {
+        throw new BadRequestException(
+          'Cannot move every line: leave at least one line on the original invoice.',
+        );
+      }
+
+      const itemsToMove = await tx.invoiceItem.findMany({
+        where: { invoiceId: sourceInvoiceId, id: { in: uniqueItemIds } },
+        include: {
+          _count: { select: { allocations: true } },
+        },
+      });
+      if (itemsToMove.length !== uniqueItemIds.length) {
+        throw new BadRequestException(
+          'One or more line items were not found on this invoice.',
+        );
+      }
+
+      for (const item of itemsToMove) {
+        if (item.settled) {
+          throw new BadRequestException(
+            `Line item ${item.id} is settled and cannot be moved.`,
+          );
+        }
+        if (this.asDecimal(item.amountPaid).gt(0)) {
+          throw new BadRequestException(
+            `Line item ${item.id} has a payment amount and cannot be moved.`,
+          );
+        }
+        if (item._count.allocations > 0) {
+          throw new BadRequestException(
+            `Line item ${item.id} has payment allocations and cannot be moved.`,
+          );
+        }
+      }
+
+      const newInvoice = await tx.invoice.create({
+        data: {
+          invoiceID: generateInvoiceHumanId(),
+          patientId: source.patientId,
+          status: InvoiceStatus.PENDING,
+          amountPaid: new Prisma.Decimal(0),
+          totalAmount: new Prisma.Decimal(0),
+          createdById: req.user.sub,
+          staffId: source.staffId,
+          encounterId: source.encounterId ?? undefined,
+          consultingRoomId: source.consultingRoomId ?? undefined,
+        },
+      });
+
+      await tx.invoiceItem.updateMany({
+        where: { id: { in: uniqueItemIds } },
+        data: { invoiceId: newInvoice.id },
+      });
+
+      await tx.labRequest.updateMany({
+        where: { invoiceItemId: { in: uniqueItemIds } },
+        data: { invoiceId: newInvoice.id },
+      });
+
+      await tx.invoice.update({
+        where: { id: sourceInvoiceId },
+        data: { updatedById: req.user.sub },
+      });
+
+      await this.recalculateInvoiceTotals(sourceInvoiceId, tx);
+      await this.recalculateInvoiceTotals(newInvoice.id, tx);
+
+      return { newInvoiceId: newInvoice.id };
+    });
+
+    return {
+      original: await this.findOne(sourceInvoiceId),
+      splitOff: await this.findOne(newInvoiceId),
+    };
   }
 
   // ─── InvoiceItem CRUD ──────────────────────────────────────────────────────────

@@ -4,10 +4,29 @@ import * as xlsx from 'xlsx';
 import * as fs from 'fs';
 import * as path from 'path';
 
+function withLagosTimezone(connectionString: string): string {
+    try {
+        const url = new URL(connectionString);
+        const existingOptions = url.searchParams.get('options');
+        if (existingOptions?.includes('timezone=')) {
+            return connectionString;
+        }
+
+        const lagosTimezoneOption = '-c timezone=Africa/Lagos';
+        url.searchParams.set(
+            'options',
+            existingOptions ? `${existingOptions} ${lagosTimezoneOption}` : lagosTimezoneOption,
+        );
+        return url.toString();
+    } catch {
+        return connectionString;
+    }
+}
+
 // 2. Initialize Prisma with the PG Adapter, matching your PrismaService
 const prisma = new PrismaClient({
     adapter: new PrismaPg({
-        connectionString: process.env.DATABASE_URL!,
+        connectionString: withLagosTimezone(process.env.DATABASE_URL!),
     }),
 });
 const STAFF_ID = 'c59d31d7-b40c-425b-b1f9-c733fa0d5f02';

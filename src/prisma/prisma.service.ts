@@ -7,6 +7,30 @@ import { PrismaClient } from '@prisma/client';
 // if using Prisma Accelerate.
 import { PrismaPg } from '@prisma/adapter-pg';
 
+function withLagosTimezone(connectionString?: string): string | undefined {
+  if (!connectionString) return connectionString;
+
+  try {
+    const url = new URL(connectionString);
+    const existingOptions = url.searchParams.get('options');
+
+    if (existingOptions?.includes('timezone=')) {
+      return connectionString;
+    }
+
+    const lagosTimezoneOption = '-c timezone=Africa/Lagos';
+    url.searchParams.set(
+      'options',
+      existingOptions
+        ? `${existingOptions} ${lagosTimezoneOption}`
+        : lagosTimezoneOption,
+    );
+    return url.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
 /**
  * Extending PrismaClient directly gives us properly typed model
  * properties (e.g. `bill`, `billItem`, etc.) so that services
@@ -22,7 +46,7 @@ export class PrismaService
     super({
       log: ['error', 'warn'],
       adapter: new PrismaPg({
-        connectionString: process.env.DATABASE_URL,
+        connectionString: withLagosTimezone(process.env.DATABASE_URL),
       }),
     });
   }

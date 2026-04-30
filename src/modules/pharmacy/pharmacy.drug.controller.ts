@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -20,7 +21,38 @@ import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 @Controller('pharmacy/drugs')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PharmacyDrugController {
-  constructor(private readonly drugService: PharmacyDrugService) {}
+  constructor(private readonly drugService: PharmacyDrugService) { }
+
+  private applySelect<T extends Record<string, unknown>>(
+    payload: T,
+    select?: string,
+  ): Partial<T> | T {
+    if (!select?.trim()) return payload;
+ 
+    const fields = select
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean);
+    if (!fields.length) return payload;
+
+
+    const allowedFields = Object.keys(payload);
+    
+    const invalidFields = fields.filter(
+      (field) => !allowedFields.includes(field),
+    );
+    console.log("allowedFields", invalidFields);
+    if (invalidFields.length > 0) {
+      throw new BadRequestException(
+        `Invalid select field(s): ${invalidFields.join(', ')}.`,
+      );
+    }
+ 
+    return fields.reduce((acc, field) => {
+      acc[field as keyof T] = payload[field as keyof T];
+      return acc;
+    }, {} as Partial<T>);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create a drug' })
@@ -38,8 +70,9 @@ export class PharmacyDrugController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get drug by ID' })
-  findOne(@Param('id') id: string) {
-    return this.drugService.findOne(id);
+  async findOne(@Param('id') id: string, @Query('select') select?: string) {
+    const drug = await this.drugService.findOne(id);
+    return this.applySelect(drug as Record<string, unknown>, select);
   }
 
   @Patch(':id')

@@ -281,6 +281,7 @@ export class PatientService {
     return this.prisma.patient.findUnique({
       where: { id },
       include: {
+        ward: true,
         appointments: {
           orderBy: { date: 'desc' },
         },

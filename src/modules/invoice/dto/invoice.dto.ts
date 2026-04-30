@@ -79,6 +79,20 @@ export class CreateInvoiceDto {
 
 export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) { }
 
+/** Body for POST /invoices/:id/split */
+export class SplitInvoiceDto {
+  @ApiProperty({
+    type: [String],
+    description:
+      'UUIDs of invoice line items currently on this invoice to move onto a new invoice',
+    example: ['a1b2c3d4-e5f6-7890-abcd-ef1234567890'],
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one invoice line id is required' })
+  @IsUUID('4', { each: true })
+  invoiceItemIds!: string[];
+}
+
 /** Query for GET /invoices/by-service-categories */
 export class ListInvoicesByCategoryQueryDto extends DateRangeSkipTakeDto {
   @ApiProperty({

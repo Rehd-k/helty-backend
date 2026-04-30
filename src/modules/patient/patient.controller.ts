@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -22,6 +23,34 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 export class PatientController {
   private readonly log = new Logger(PatientController.name);
   constructor(private readonly patientService: PatientService) { }
+
+  private applySelect<T extends Record<string, unknown>>(
+    payload: T,
+    select?: string,
+  ): Partial<T> | T {
+    if (!select?.trim()) return payload;
+
+    const fields = select
+      .split(',')
+      .map((field) => field.trim())
+      .filter(Boolean);
+    if (!fields.length) return payload;
+
+    const allowedFields = Object.keys(payload);
+    const invalidFields = fields.filter(
+      (field) => !allowedFields.includes(field),
+    );
+    if (invalidFields.length > 0) {
+      throw new BadRequestException(
+        `Invalid select field(s): ${invalidFields.join(', ')}.`,
+      );
+    }
+
+    return fields.reduce((acc, field) => {
+      acc[field as keyof T] = payload[field as keyof T];
+      return acc;
+    }, {} as Partial<T>);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -87,8 +116,12 @@ export class PatientController {
     status: 200,
     description: 'Patient retrieved successfully',
   })
-  findOne(@Param('id') id: string) {
-    return this.patientService.findOne(id);
+  async findOne(@Param('id') id: string, @Query('select') select?: string) {
+    const patient = await this.patientService.findOne(id);
+    if (!patient) {
+      return patient;
+    }
+    return this.applySelect(patient as Record<string, unknown>, select);
   }
 
   @Patch(':id')
