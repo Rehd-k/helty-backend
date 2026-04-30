@@ -64,6 +64,15 @@ export class PatientService {
     } else if (createPatientDto.hmo) {
       data.hmo = createPatientDto.hmo;
     }
+
+    const ward = await this.prisma.ward.findUnique({
+      where: { id: createPatientDto.wardId },
+    });
+    if (!ward) {
+      throw new NotFoundException(`Ward "${createPatientDto.wardId}" not found.`);
+    }
+    data.ward = { connect: { id: createPatientDto.wardId } };
+
     if (createPatientDto.fingerprintData)
       data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;

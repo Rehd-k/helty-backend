@@ -12,7 +12,7 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PatientStatus } from '@prisma/client';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum Title {
   MR = 'Mr',
@@ -145,6 +145,12 @@ export class CreatePatientDto {
   @IsOptional()
   @IsUUID()
   hmoId?: string;
+
+  @ApiProperty({
+    description: 'Required: assign patient to a ward (GET /wards).',
+  })
+  @IsUUID()
+  wardId: string;
 
   @IsString()
   @IsOptional()

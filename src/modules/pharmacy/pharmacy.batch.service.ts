@@ -157,6 +157,7 @@ export class PharmacyBatchService {
       toLocationId,
       locationType,
       inStock,
+      doNotAllowempty,
       fromDate,
       toDate,
       limit = 20,
@@ -214,10 +215,11 @@ export class PharmacyBatchService {
       }
     }
 
-    if (inStock === 'true') {
+    if (doNotAllowempty === 'true') {
       where.quantityRemaining = { gt: 0 };
-    }
-    if (inStock === 'false') {
+    } else if (inStock === 'true') {
+      where.quantityRemaining = { gt: 0 };
+    } else if (inStock === 'false') {
       where.quantityRemaining = { equals: 0 };
     }
 

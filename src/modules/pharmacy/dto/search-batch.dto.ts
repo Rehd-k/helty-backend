@@ -85,6 +85,14 @@ export class SearchBatchDto extends PaginationDto {
   inStock?: 'true' | 'false';
 
   @ApiPropertyOptional({
+    description:
+      'When true, returns only batches with quantityRemaining > 0. When false or omitted, returns all batches (including empty).',
+  })
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  doNotAllowempty?: 'true' | 'false';
+
+  @ApiPropertyOptional({
     enum: [
       'batchNumber',
       'manufacturingDate',
