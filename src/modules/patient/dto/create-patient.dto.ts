@@ -146,11 +146,13 @@ export class CreatePatientDto {
   @IsUUID()
   hmoId?: string;
 
-  @ApiProperty({
-    description: 'Required: assign patient to a ward (GET /wards).',
+  @ApiPropertyOptional({
+    description:
+      'Optional: assign patient to a ward (GET /wards). When omitted, the system defaults to ward named "OPD".',
   })
+  @IsOptional()
   @IsUUID()
-  wardId: string;
+  wardId?: string;
 
   @IsString()
   @IsOptional()

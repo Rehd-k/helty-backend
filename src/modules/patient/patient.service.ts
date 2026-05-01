@@ -65,13 +65,28 @@ export class PatientService {
       data.hmo = createPatientDto.hmo;
     }
 
+    let wardIdToUse = createPatientDto.wardId;
+    if (!wardIdToUse) {
+      const opdWard = await this.prisma.ward.findFirst({
+        where: { name: { equals: 'OPD', mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (!opdWard) {
+        throw new NotFoundException(
+          'Default ward "OPD" not found. Please create it or provide wardId.',
+        );
+      }
+      wardIdToUse = opdWard.id;
+    }
+
     const ward = await this.prisma.ward.findUnique({
-      where: { id: createPatientDto.wardId },
+      where: { id: wardIdToUse },
+      select: { id: true },
     });
     if (!ward) {
-      throw new NotFoundException(`Ward "${createPatientDto.wardId}" not found.`);
+      throw new NotFoundException(`Ward "${wardIdToUse}" not found.`);
     }
-    data.ward = { connect: { id: createPatientDto.wardId } };
+    data.ward = { connect: { id: ward.id } };
 
     if (createPatientDto.fingerprintData)
       data.fingerprintData = createPatientDto.fingerprintData;

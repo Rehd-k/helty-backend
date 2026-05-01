@@ -439,6 +439,8 @@ export class InvoiceService {
         return InvoicePaymentSource.INSURANCE;
       case InvoicePaymentMethod.WAIVER:
         return InvoicePaymentSource.WAIVER;
+      case InvoicePaymentMethod.WALLET:
+        return InvoicePaymentSource.WALLET;
       default:
         return InvoicePaymentSource.CASH;
     }
@@ -837,7 +839,6 @@ export class InvoiceService {
       invoiceStatus,
       patientId,
     );
-    console.log(where);
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
@@ -1408,13 +1409,21 @@ export class InvoiceService {
       );
     }
 
-    const method = dto.method ?? this.sourceToDefaultMethod(dto.source);
+    const method =
+      dto.source === InvoicePaymentSource.WALLET
+        ? InvoicePaymentMethod.WALLET
+        : dto.method ?? this.sourceToDefaultMethod(dto.source);
 
     let walletTransactionId: string | undefined;
     if (dto.source === InvoicePaymentSource.WALLET) {
       const wallet = await this.ensureWallet(invoice.patientId, tx);
       if (wallet.balance.lt(paymentAmount)) {
-        throw new BadRequestException('Insufficient wallet balance');
+        throw new BadRequestException({
+          message:
+            'Insufficient wallet balance. Please fund wallet and try again.',
+          walletBalance: wallet.balance.toFixed(2),
+          amountRequired: paymentAmount.toFixed(2),
+        });
       }
 
       const walletTxn = await tx.walletTransaction.create({
@@ -1482,13 +1491,13 @@ export class InvoiceService {
     dto: RecordInvoicePaymentDto,
     createdByStaffId?: string,
   ) {
+
     try {
       await this.recalculateInvoiceTotals(invoiceId);
       return this.prisma.$transaction((tx) =>
         this.recordPaymentWithTx(tx, invoiceId, dto, createdByStaffId),
       );
     } catch (error) {
-      console.error(error);
       throw error;
     }
   }
@@ -1498,6 +1507,7 @@ export class InvoiceService {
     invoiceId: string,
     dto: AllocateInvoiceItemPaymentDto,
   ) {
+    console.log('allocatePaymentToInvoiceItems', invoiceId, dto);
     const staff = await this.prisma.staff.findUnique({
       where: { id: dto.staffId },
     });
@@ -1590,6 +1600,36 @@ export class InvoiceService {
         );
       }
 
+      let walletTransactionId: string | undefined;
+      if (dto.method === InvoicePaymentMethod.WALLET) {
+        const wallet = await this.ensureWallet(invoice.patientId, tx);
+        if (wallet.balance.lt(paymentAmount)) {
+          throw new BadRequestException({
+            message:
+              'Insufficient wallet balance. Please fund wallet and try again.',
+            walletBalance: wallet.balance.toFixed(2),
+            amountRequired: paymentAmount.toFixed(2),
+          });
+        }
+
+        const walletTxn = await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: WalletTransactionType.DEBIT,
+            amount: paymentAmount,
+            reference: dto.reference ?? 'invoice_payment_allocation',
+            invoiceId,
+            createdById: dto.staffId,
+          },
+        });
+        walletTransactionId = walletTxn.id;
+
+        await tx.patientWallet.update({
+          where: { id: wallet.id },
+          data: { balance: wallet.balance.sub(paymentAmount) },
+        });
+      }
+
       const invoicePaymentRow = await tx.invoicePayment.create({
         data: {
           invoiceId,
@@ -1601,6 +1641,7 @@ export class InvoiceService {
           receivedById: dto.staffId,
           createdById: dto.staffId,
           ...(bankId ? { bankId } : {}),
+          ...(walletTransactionId ? { walletTransactionId } : {}),
         },
         include: {
           receivedBy: {
