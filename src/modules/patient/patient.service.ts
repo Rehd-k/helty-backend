@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { customAlphabet } from 'nanoid';
-import { Prisma } from '@prisma/client';
+import { PatientStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class PatientService {
@@ -393,6 +393,9 @@ export class PatientService {
           );
         }
         data.ward = { connect: { id: updatePatientDto.wardId } };
+        if (ward.name?.trim().toUpperCase() === 'OPD') {
+          data.status = PatientStatus.OUTPATIENT;
+        }
       }
     }
 

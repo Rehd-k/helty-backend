@@ -5,10 +5,11 @@ import {
     HttpException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Prisma, InvoiceStatus } from '@prisma/client';
+import { Prisma, InvoiceStatus, InvoiceAuditAction } from '@prisma/client';
 import {
-  getSellableDrugBatchWhere,
-  mergeDrugBatchWhere,
+    getSellableDrugBatchWhere,
+    mergeDrugBatchWhere,
+    startOfToday,
 } from '../pharmacy/pharmacy-sellable-stock.util';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
@@ -16,6 +17,7 @@ import {
     UpdateInvoiceDto,
     UpdateInvoiceItemDto,
     SubstituteDrugInvoiceItemDto,
+    ReturnDrugInvoiceItemDto,
 } from './dto/invoice.dto';
 
 @Injectable()
@@ -73,7 +75,7 @@ export class InvoiceDrugService {
         if (totalAvailable < quantityToDeduct) {
             throw new BadRequestException(
                 `Insufficient stock for this drug: need ${quantityToDeduct} unit(s), ` +
-                    `${totalAvailable} available across batches.`,
+                `${totalAvailable} available across batches.`,
             );
         }
 
@@ -432,7 +434,7 @@ export class InvoiceDrugService {
                 },
             },
         });
-    } 
+    }
 
     async removeDrugInvoice(id: string) {
         const hasDrugs = await this.hasDrugItems(id);
@@ -667,6 +669,237 @@ export class InvoiceDrugService {
             if (error instanceof HttpException) throw error;
             const message =
                 error instanceof Error ? error.message : 'Substitute failed';
+            throw new BadRequestException(message);
+        }
+    }
+
+    private async findFirstDispensaryLocationByName(
+        tx: Prisma.TransactionClient,
+    ): Promise<{ id: string }> {
+        const loc = await tx.pharmacyLocation.findFirst({
+            where: {
+                name: { contains: 'dispensary', mode: 'insensitive' },
+            },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            select: { id: true },
+        });
+        if (!loc) {
+            throw new BadRequestException(
+                'No pharmacy location has "dispensary" in its name; cannot restock returns.',
+            );
+        }
+        return loc;
+    }
+
+    /**
+     * Credit returned units into batches at the dispensary (newest batches first),
+     * then create a new batch for any remainder (clone metadata from a template batch).
+     */
+    private async creditDrugStockToDispensary(
+        tx: Prisma.TransactionClient,
+        drugId: string,
+        quantityToCredit: number,
+        dispensaryLocationId: string,
+    ): Promise<void> {
+        if (quantityToCredit <= 0) return;
+
+        const start = startOfToday();
+        let remaining = quantityToCredit;
+        const batches = await tx.drugBatch.findMany({
+            where: {
+                drugId,
+                toLocationId: dispensaryLocationId,
+                expiryDate: { gte: start },
+            },
+            orderBy: [{ manufacturingDate: 'desc' }, { createdAt: 'desc' }],
+        });
+
+        for (const batch of batches) {
+            if (remaining <= 0) break;
+            const headroom = batch.quantityReceived - batch.quantityRemaining;
+            if (headroom <= 0) continue;
+            const add = Math.min(headroom, remaining);
+            await tx.drugBatch.update({
+                where: { id: batch.id },
+                data: { quantityRemaining: batch.quantityRemaining + add },
+            });
+            remaining -= add;
+        }
+
+        if (remaining <= 0) return;
+
+        const templateAtLocation = await tx.drugBatch.findFirst({
+            where: { drugId, toLocationId: dispensaryLocationId },
+            orderBy: [{ manufacturingDate: 'desc' }, { createdAt: 'desc' }],
+        });
+        const template =
+            templateAtLocation ??
+            (await tx.drugBatch.findFirst({
+                where: { drugId },
+                orderBy: [{ createdAt: 'desc' }],
+            }));
+        if (!template) {
+            throw new BadRequestException(
+                'Cannot accept stock return: no drug batch exists to use as a template.',
+            );
+        }
+
+        await tx.drugBatch.create({
+            data: {
+                drugId,
+                fromLocationId: dispensaryLocationId,
+                toLocationId: dispensaryLocationId,
+                batchNumber: `${template.batchNumber}-RET-${Date.now()}`,
+                manufacturingDate: template.manufacturingDate,
+                expiryDate: template.expiryDate,
+                supplierId: template.supplierId ?? undefined,
+                costPrice: template.costPrice,
+                sellingPrice: template.sellingPrice,
+                quantityReceived: remaining,
+                quantityRemaining: remaining,
+            },
+        });
+    }
+
+    async returnDrugInvoiceItem(
+        invoiceId: string,
+        itemId: string,
+        dto: ReturnDrugInvoiceItemDto,
+        performedByStaffId: string,
+    ) {
+        try {
+            const hasDrugs = await this.hasDrugItems(invoiceId);
+            if (!hasDrugs) {
+                throw new NotFoundException(
+                    `Invoice ${invoiceId} does not contain drug items`,
+                );
+            }
+
+
+            return await this.prisma.$transaction(async (tx) => {
+                const invoice = await tx.invoice.findUnique({
+                    where: { id: invoiceId },
+                });
+                if (!invoice) {
+                    throw new NotFoundException(`Invoice ${invoiceId} not found`);
+                }
+                this.assertInvoiceNotPaid(invoice.status);
+
+                const item = await tx.invoiceItem.findFirst({
+                    where: { id: itemId, invoiceId },
+                    include: { _count: { select: { allocations: true } } },
+                });
+                console.log(item?.drugId, 'item?.drugId');
+                if (!item || !item.drugId) {
+                    throw new NotFoundException(
+                        `Drug invoice item ${itemId} not found on invoice ${invoiceId}`,
+                    );
+                }
+
+                if (item.isRecurringDaily) {
+                    throw new BadRequestException(
+                        'Returns are not supported for recurring daily drug lines.',
+                    );
+                }
+
+                if (this.asDecimal(item.amountPaid).gt(0)) {
+                    throw new BadRequestException(
+                        'Cannot return a line that has a payment amount; only unpaid lines can be returned.',
+                    );
+                }
+                if (item._count.allocations > 0) {
+                    throw new BadRequestException(
+                        'Cannot return a line that has payment allocations.',
+                    );
+                }
+
+                const returnQty = dto.quantity;
+                if (returnQty > item.quantity) {
+                    throw new BadRequestException(
+                        `Return quantity (${returnQty}) exceeds line quantity (${item.quantity}).`,
+                    );
+                }
+
+                const dispensary = await this.findFirstDispensaryLocationByName(tx);
+
+                if (item.settled) {
+                    await this.creditDrugStockToDispensary(
+                        tx,
+                        item.drugId,
+                        returnQty,
+                        dispensary.id,
+                    );
+                }
+
+                const isFullReturn = returnQty === item.quantity;
+                let returnRow: { id: string };
+
+                if (isFullReturn) {
+                    returnRow = await tx.invoiceDrugReturn.create({
+                        data: {
+                            invoiceId,
+                            invoiceItemId: item.id,
+                            drugId: item.drugId,
+                            quantity: returnQty,
+                            dispensaryLocationId: dispensary.id,
+                            performedById: performedByStaffId,
+                            reason: dto.reason?.trim() || null,
+                        },
+                        select: { id: true },
+                    });
+                    await tx.invoiceItem.delete({ where: { id: itemId } });
+                } else {
+                    await tx.invoiceItem.update({
+                        where: { id: itemId },
+                        data: { quantity: item.quantity - returnQty },
+                    });
+                    returnRow = await tx.invoiceDrugReturn.create({
+                        data: {
+                            invoiceId,
+                            invoiceItemId: itemId,
+                            drugId: item.drugId,
+                            quantity: returnQty,
+                            dispensaryLocationId: dispensary.id,
+                            performedById: performedByStaffId,
+                            reason: dto.reason?.trim() || null,
+                        },
+                        select: { id: true },
+                    });
+                }
+
+                await this.recalculateInvoiceTotals(invoiceId, tx);
+
+                await tx.invoiceAuditLog.create({
+                    data: {
+                        invoiceId,
+                        action: InvoiceAuditAction.DRUG_RETURNED,
+                        description: `Drug return: ${returnQty} unit(s)${isFullReturn ? ' (line removed)' : ''}.`,
+                        performedById: performedByStaffId,
+                        metadata: {
+                            returnId: returnRow.id,
+                            invoiceItemId: item.id,
+                            drugId: item.drugId,
+                            quantity: returnQty,
+                            fullLine: isFullReturn,
+                        } as Prisma.InputJsonValue,
+                    },
+                });
+
+                const updatedInvoice = await tx.invoice.findUniqueOrThrow({
+                    where: { id: invoiceId },
+                    include: InvoiceDrugService.invoiceDrugInclude,
+                });
+
+                return {
+                    returnId: returnRow.id,
+                    fullLineRemoved: isFullReturn,
+                    invoice: updatedInvoice,
+                };
+            });
+        } catch (error) {
+            if (error instanceof HttpException) throw error;
+            const message =
+                error instanceof Error ? error.message : 'Drug return failed';
             throw new BadRequestException(message);
         }
     }

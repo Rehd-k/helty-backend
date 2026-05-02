@@ -917,6 +917,7 @@ export class PharmacyDashboardService {
           drug: { select: { id: true, genericName: true, brandName: true } },
           invoice: {
             select: {
+              id: true,
               invoiceID: true,
               updatedAt: true,
               encounterId: true,
@@ -934,10 +935,10 @@ export class PharmacyDashboardService {
       }),
       this.prisma.invoiceItem.count({ where }),
     ]);
-    console.log(rows);
     return {
       data: rows.map((row) => ({
         invoiceItemId: row.id,
+        invoiceUUID: row.invoice.id,
         invoiceId: row.invoice.invoiceID,
         dispensedAt: row.invoice.updatedAt,
         encounterId: row.invoice.encounterId,

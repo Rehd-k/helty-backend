@@ -409,6 +409,7 @@ model Drug {
   updatedById      String?
   medicationOrders MedicationOrder[]
   invoiceItems     InvoiceItem[]
+  invoiceDrugReturns InvoiceDrugReturn[]
   drugPrices       DrugPrice[]
 
   @@index([manufacturerId])
@@ -625,6 +626,7 @@ model PharmacyLocation {
   consumableMovements    ConsumableMovement[]
   staff                  Staff?               @relation("PharmacyLocationStaff", fields: [staffId], references: [id])
   staffId                String?              @unique
+  invoiceDrugReturns     InvoiceDrugReturn[]  @relation("InvoiceDrugReturnDispensary")
 }
 
 model Dispensation {
@@ -825,6 +827,7 @@ model Invoice {
   vitals           PatientVitals?  @relation("InvoiceVitals", fields: [vitalsId], references: [id], onDelete: SetNull)
   vitalsId         String?         @unique
   labRequests      LabRequest[]
+  drugReturns      InvoiceDrugReturn[]
 
   @@index([patientId])
   @@index([invoiceID])
@@ -859,6 +862,7 @@ model InvoiceItem {
   radiologyOrderItem RadiologyOrderItem?
   labOrder           LabOrder?
   labRequest         LabRequest?
+  drugReturns        InvoiceDrugReturn[]
 
   @@index([invoiceId])
   @@index([createdById])
@@ -972,6 +976,27 @@ model InvoiceAuditLog {
   @@index([invoiceId, createdAt])
 }
 
+model InvoiceDrugReturn {
+  id                     String           @id @default(uuid())
+  invoice                Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId              String
+  invoiceItem            InvoiceItem?     @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId          String?
+  drug                   Drug             @relation(fields: [drugId], references: [id])
+  drugId                 String
+  quantity               Int
+  dispensaryLocation     PharmacyLocation @relation("InvoiceDrugReturnDispensary", fields: [dispensaryLocationId], references: [id])
+  dispensaryLocationId   String
+  performedBy            Staff            @relation("InvoiceDrugReturnPerformedBy", fields: [performedById], references: [id])
+  performedById          String
+  reason                 String?
+  createdAt              DateTime         @default(now())
+
+  @@index([invoiceId, createdAt])
+  @@index([drugId])
+  @@index([dispensaryLocationId])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BILLING MODULE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1013,6 +1038,7 @@ enum InvoiceAuditAction {
   ITEM_ADDED
   ITEM_UPDATED
   ITEM_REMOVED
+  DRUG_RETURNED
 }
 
 // Staff: department / account category (paired with StaffRole).
@@ -1433,6 +1459,7 @@ model Staff {
   invoiceRefundsCreated               InvoiceRefund[]            @relation("InvoiceRefundCreatedBy")
   walletTransactionsCreated           WalletTransaction[]        @relation("WalletTransactionCreatedBy")
   invoiceAuditLogsPerformed           InvoiceAuditLog[]          @relation("InvoiceAuditLogPerformedBy")
+  invoiceDrugReturnsPerformed         InvoiceDrugReturn[]        @relation("InvoiceDrugReturnPerformedBy")
 
   staffConversationMemberships       StaffConversationMember[]
   staffConversationMessagesSent      StaffConversationMessage[]     @relation("StaffConversationMessageSender")

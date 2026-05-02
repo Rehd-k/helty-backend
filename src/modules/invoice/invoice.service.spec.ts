@@ -113,7 +113,13 @@ describe('InvoiceService', () => {
         }),
         update: jest
           .fn()
-          .mockResolvedValueOnce({})
+          .mockResolvedValueOnce({
+            id: 'inv-1',
+            totalAmount: new Prisma.Decimal(500),
+            amountPaid: new Prisma.Decimal(100),
+            status: InvoiceStatus.PARTIALLY_PAID,
+          })
+          .mockResolvedValueOnce({ id: 'inv-1' })
           .mockResolvedValueOnce({
             id: 'inv-1',
             totalAmount: new Prisma.Decimal(500),
@@ -194,7 +200,11 @@ describe('InvoiceService', () => {
           amountPaid: new Prisma.Decimal(100),
           invoiceItems: [lineItem],
         }),
-        update: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          status: InvoiceStatus.PARTIALLY_PAID,
+          totalAmount: new Prisma.Decimal(500),
+        }),
       },
       patientWallet: {
         upsert: jest.fn().mockResolvedValue({
@@ -643,5 +653,130 @@ describe('InvoiceService', () => {
     expect(tx.invoicePayment.delete).toHaveBeenCalledWith({
       where: { id: 'pay-3' },
     });
+  });
+
+  it('rebuilds line payment allocations when recordPayment fully pays the invoice', async () => {
+    const line1 = {
+      id: 'l1',
+      quantity: 1,
+      unitPrice: new Prisma.Decimal(300),
+      isRecurringDaily: false,
+      usageSegments: [] as { startAt: Date; endAt: Date | null }[],
+      amountPaid: new Prisma.Decimal(0),
+    };
+    const line2 = {
+      id: 'l2',
+      quantity: 1,
+      unitPrice: new Prisma.Decimal(200),
+      isRecurringDaily: false,
+      usageSegments: [] as { startAt: Date; endAt: Date | null }[],
+      amountPaid: new Prisma.Decimal(0),
+    };
+    const items = [line1, line2];
+    const fullInv = (amountPaid: Prisma.Decimal) => ({
+      id: 'inv-1',
+      patientId: 'pat-1',
+      amountPaid,
+      totalAmount: new Prisma.Decimal(500),
+      invoiceItems: items.map((i) => ({
+        id: i.id,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        isRecurringDaily: i.isRecurringDaily,
+        usageSegments: i.usageSegments,
+      })),
+    });
+
+    let findIdx = 0;
+    const tx: any = {
+      invoice: {
+        findUnique: jest.fn().mockImplementation(() => {
+          findIdx += 1;
+          if (findIdx === 1) return fullInv(new Prisma.Decimal(0));
+          if (findIdx === 2) {
+            return {
+              id: 'inv-1',
+              patientId: 'pat-1',
+              totalAmount: new Prisma.Decimal(500),
+              amountPaid: new Prisma.Decimal(0),
+            };
+          }
+          if (findIdx === 3) return fullInv(new Prisma.Decimal(500));
+          return null;
+        }),
+        update: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'inv-1',
+            status: InvoiceStatus.PENDING,
+            totalAmount: new Prisma.Decimal(500),
+          })
+          .mockResolvedValueOnce({ id: 'inv-1' })
+          .mockResolvedValueOnce({
+            id: 'inv-1',
+            status: InvoiceStatus.PAID,
+            totalAmount: new Prisma.Decimal(500),
+          }),
+      },
+      invoicePayment: {
+        create: jest.fn().mockResolvedValue({ id: 'pay-final' }),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: 'pay-final', amount: new Prisma.Decimal(500) },
+          ]),
+      },
+      invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
+      bank: { findUnique: jest.fn() },
+      invoiceItem: {
+        findMany: jest.fn().mockResolvedValue(
+          items.map((i) => ({
+            ...i,
+            usageSegments: [],
+          })),
+        ),
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      invoiceItemPayment: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({ id: 'alloc-1' }),
+      },
+    };
+
+    const prisma: any = {
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue(fullInv(new Prisma.Decimal(0))),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      bank: { findUnique: jest.fn() },
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(tx)),
+    };
+
+    const service = createInvoiceService(prisma);
+    await service.recordPayment(
+      'inv-1',
+      {
+        amount: 500,
+        source: InvoicePaymentSource.CASH,
+      },
+      'staff-1',
+    );
+
+    expect(tx.invoiceItemPayment.deleteMany).toHaveBeenCalled();
+    expect(tx.invoicePayment.findMany).toHaveBeenCalled();
+    expect(tx.invoiceItemPayment.create).toHaveBeenCalled();
+    expect(tx.invoiceItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'l1' },
+        data: { amountPaid: new Prisma.Decimal(300) },
+      }),
+    );
+    expect(tx.invoiceItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'l2' },
+        data: { amountPaid: new Prisma.Decimal(200) },
+      }),
+    );
   });
 });

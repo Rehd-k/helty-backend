@@ -10,6 +10,7 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -20,12 +21,14 @@ import {
   ApiNotFoundResponse,
   ApiNoContentResponse,
   ApiBadRequestResponse,
+  ApiBody,
 } from '@nestjs/swagger';
 import { InvoiceDrugService } from './invoice-drug.service';
 import {
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
   SubstituteDrugInvoiceItemDto,
+  ReturnDrugInvoiceItemDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
@@ -150,6 +153,41 @@ export class InvoiceDrugController {
     @Body() dto: SubstituteDrugInvoiceItemDto,
   ) {
     return this.invoiceDrugService.substituteDrugInvoiceItem(id, itemId, dto);
+  }
+
+  @Post(':id/items/:itemId/return')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Return drug units on an invoice line',
+    description:
+      'Returns unpaid drug line quantity: reduces or removes the line, recalculates the invoice, persists an `InvoiceDrugReturn`, and restocks settled lines into the first pharmacy location whose name contains "dispensary".',
+  })
+  @ApiParam({ name: 'id', description: 'Invoice UUID' })
+  @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID (drug line)' })
+  @ApiBody({ type: ReturnDrugInvoiceItemDto })
+  @ApiOkResponse({ description: 'Return recorded; invoice snapshot included' })
+  @ApiBadRequestResponse({
+    description:
+      'Paid invoice, paid line, quantity too high, recurring line, or no dispensary location',
+  })
+  returnDrugItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: ReturnDrugInvoiceItemDto,
+    @Req() req: { user?: { sub: string } },
+  ) {
+    const staffId = req.user?.sub;
+    if (!staffId) {
+      throw new UnauthorizedException(
+        'Authenticated staff id required for drug return',
+      );
+    }
+    return this.invoiceDrugService.returnDrugInvoiceItem(
+      id,
+      itemId,
+      dto,
+      staffId,
+    );
   }
 
   @Delete(':id/items/:itemId')

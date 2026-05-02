@@ -280,6 +280,18 @@ export class UpdateInvoiceItemDto {
   settled?: boolean;
 }
 
+export class ReturnDrugInvoiceItemDto {
+  @ApiProperty({ description: 'Units being returned', example: 2 })
+  @IsInt()
+  @IsPositive()
+  quantity!: number;
+
+  @ApiPropertyOptional({ description: 'Optional reason for the return' })
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+
 export class RecordInvoicePaymentDto {
   @ApiProperty({ example: 5000 })
   @IsNumber()

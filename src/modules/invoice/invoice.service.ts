@@ -1365,6 +1365,91 @@ export class InvoiceService {
   }
 
   /**
+   * When an invoice becomes fully PAID via `recordPaymentWithTx`, rebuild per-line
+   * `InvoiceItemPayment` rows and set each line's `amountPaid` to its line total
+   * so voids and "unpaid line" rules stay consistent.
+   */
+  private async reconcileLinePaymentsWhenInvoiceFullyPaid(
+    tx: Prisma.TransactionClient,
+    invoiceId: string,
+    now: Date,
+  ) {
+    const items = await tx.invoiceItem.findMany({
+      where: { invoiceId },
+      include: {
+        usageSegments: { orderBy: { startAt: 'asc' } },
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    const lineTotalById = new Map<string, Prisma.Decimal>();
+    for (const it of items) {
+      lineTotalById.set(it.id, this.invoiceLineTotal(it, now));
+    }
+
+    await tx.invoiceItemPayment.deleteMany({
+      where: { invoiceItem: { invoiceId } },
+    });
+
+    await tx.invoiceItem.updateMany({
+      where: { invoiceId },
+      data: { amountPaid: new Prisma.Decimal(0) },
+    });
+
+    const payments = await tx.invoicePayment.findMany({
+      where: { invoiceId },
+      orderBy: [{ paidAt: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    const remaining = new Map<string, Prisma.Decimal>();
+    for (const it of items) {
+      remaining.set(it.id, this.asDecimal(lineTotalById.get(it.id)!));
+    }
+
+    for (const p of payments) {
+      let payLeft = this.asDecimal(p.amount);
+      for (const it of items) {
+        if (payLeft.lte(0)) break;
+        const rem = remaining.get(it.id)!;
+        if (rem.lte(0)) continue;
+        const take = rem.lt(payLeft) ? rem : payLeft;
+        if (take.lte(0)) continue;
+        await tx.invoiceItemPayment.create({
+          data: {
+            invoiceItemId: it.id,
+            invoicePaymentId: p.id,
+            amount: take,
+          },
+        });
+        remaining.set(it.id, rem.sub(take));
+        payLeft = payLeft.sub(take);
+      }
+      if (payLeft.gt(0)) {
+        throw new BadRequestException(
+          `Cannot reconcile line payments: payment ${p.id} has unallocated remainder ${payLeft.toFixed(2)}.`,
+        );
+      }
+    }
+
+    for (const it of items) {
+      const rem = remaining.get(it.id)!;
+      if (rem.gt(0)) {
+        throw new BadRequestException(
+          `Cannot reconcile line payments: line ${it.id} still owes ${rem.toFixed(2)} after applying all payments.`,
+        );
+      }
+    }
+
+    for (const it of items) {
+      const lt = lineTotalById.get(it.id)!;
+      await tx.invoiceItem.update({
+        where: { id: it.id },
+        data: { amountPaid: lt },
+      });
+    }
+  }
+
+  /**
    * Record a payment inside an existing interactive transaction (invoice + wallet + payment + audit).
    */
   async recordPaymentWithTx(
@@ -1470,6 +1555,14 @@ export class InvoiceService {
       },
     });
     const updated = await this.recalculateInvoiceTotals(invoiceId, tx);
+    const now = new Date();
+    if (updated.status === InvoiceStatus.PAID) {
+      await this.reconcileLinePaymentsWhenInvoiceFullyPaid(
+        tx,
+        invoiceId,
+        now,
+      );
+    }
     await this.logInvoiceAudit(tx, {
       invoiceId,
       action: InvoiceAuditAction.PAYMENT_RECEIVED,
