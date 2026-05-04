@@ -36,7 +36,10 @@ export class SupportTicketController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a help ticket' })
-  create(@Req() req: { user?: { sub?: string } }, @Body() dto: CreateTicketDto) {
+  create(
+    @Req() req: { user?: { sub?: string } },
+    @Body() dto: CreateTicketDto,
+  ) {
     return this.tickets.create(this.staffId(req), dto.title);
   }
 
@@ -80,10 +83,7 @@ export class SupportTicketController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get ticket with messages and audit log' })
-  getOne(
-    @Req() req: { user?: { sub?: string } },
-    @Param('id') id: string,
-  ) {
+  getOne(@Req() req: { user?: { sub?: string } }, @Param('id') id: string) {
     return this.tickets.getByIdForStaff(id, this.staffId(req));
   }
 

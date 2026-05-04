@@ -32,7 +32,7 @@ model Patient {
   town                  String?
   permanentAddress      String?
   religion              String?
-  email                 String?       @unique
+  email                 String?
   preferredLanguage     String?
   phoneNumber           String?       @unique
   addressOfResidence    String?
@@ -1469,6 +1469,20 @@ model Staff {
   supportTicketAssignmentsAsAssignee SupportTicketAssignment[]      @relation("SupportTicketAssignmentAssignee")
   supportTicketAssignmentsAsAssigner SupportTicketAssignment[]      @relation("SupportTicketAssignmentBy")
   supportTicketAuditLogsAsActor      SupportTicketAuditLog[]
+  passwordResets                     StaffPasswordReset[]
+}
+
+/// One-time 6-digit codes for staff password reset (plain `code` in DB for admin handoff until SMTP).
+model StaffPasswordReset {
+  id        String    @id @default(uuid())
+  staffId   String
+  staff     Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  code      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([staffId])
 }
 
 enum ChatMessageStatus {

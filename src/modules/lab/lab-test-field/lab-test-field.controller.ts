@@ -29,8 +29,7 @@ export class LabTestFieldController {
   @Get(':versionId')
   @ApiOperation({
     summary: 'List fields for a test version (by position)',
-    description:
-      'Path parameter is the lab test version UUID, not a field id.',
+    description: 'Path parameter is the lab test version UUID, not a field id.',
   })
   @ApiParam({ name: 'versionId', description: 'Lab test version UUID' })
   findAllByVersionId(@Param('versionId') versionId: string) {

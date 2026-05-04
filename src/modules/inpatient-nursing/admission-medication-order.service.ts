@@ -43,7 +43,12 @@ export class AdmissionMedicationOrderService {
   ) {
     const admission = await this.prisma.admission.findUnique({
       where: { id: admissionId },
-      select: { id: true, status: true, patientId: true, encounter: { select: { id: true } } },
+      select: {
+        id: true,
+        status: true,
+        patientId: true,
+        encounter: { select: { id: true } },
+      },
     });
     if (!admission) {
       throw new NotFoundException(`Admission "${admissionId}" not found.`);

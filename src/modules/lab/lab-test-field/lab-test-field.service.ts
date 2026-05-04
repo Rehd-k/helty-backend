@@ -60,7 +60,10 @@ export class LabTestFieldService {
     if (!field) {
       throw new NotFoundException(`Lab test field "${id}" not found.`);
     }
-    if (dto.testVersionId !== undefined && dto.testVersionId !== field.testVersionId) {
+    if (
+      dto.testVersionId !== undefined &&
+      dto.testVersionId !== field.testVersionId
+    ) {
       const version = await this.prisma.labTestVersion.findUnique({
         where: { id: dto.testVersionId },
       });

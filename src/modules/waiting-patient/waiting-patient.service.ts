@@ -17,7 +17,7 @@ import { CONSULTATION_BILLING_CATEGORY } from '../invoice/invoice-link.constants
 
 @Injectable()
 export class WaitingPatientService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private queueBaseWhere(
     dateRange?: { from: Date; to: Date },
@@ -33,7 +33,9 @@ export class WaitingPatientService {
         };
 
     return {
-      ...(dateRange ? { updatedAt: { gte: dateRange.from, lte: dateRange.to } } : {}),
+      ...(dateRange
+        ? { updatedAt: { gte: dateRange.from, lte: dateRange.to } }
+        : {}),
       status: 'PAID',
       patient: patientWhere,
       invoiceItems: {
@@ -59,8 +61,8 @@ export class WaitingPatientService {
         firstName: true,
         surname: true,
         email: true,
-        patientId: true
-      }
+        patientId: true,
+      },
     },
     consultingRoom: { select: { id: true, name: true } },
     vitals: true,
@@ -264,4 +266,3 @@ export class WaitingPatientService {
     );
   }
 }
-

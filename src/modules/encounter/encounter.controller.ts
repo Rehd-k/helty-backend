@@ -29,7 +29,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Encounter')
 @Controller('encounters')
 export class EncounterController {
-  constructor(private readonly encounterService: EncounterService) { }
+  constructor(private readonly encounterService: EncounterService) {}
 
   @Post()
   @ApiOperation({
@@ -60,9 +60,8 @@ export class EncounterController {
     @Body() dto: StartOutpatientEncounterDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { encounter, reused } = await this.encounterService.startOutpatient(
-      dto,
-    );
+    const { encounter, reused } =
+      await this.encounterService.startOutpatient(dto);
     res.status(reused ? HttpStatus.OK : HttpStatus.CREATED);
     return encounter;
   }
@@ -127,10 +126,7 @@ export class EncounterController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update encounter' })
-  update(
-    @Param('id') id: string,
-    @Body() updateEncounterDto: any,
-  ) {
+  update(@Param('id') id: string, @Body() updateEncounterDto: any) {
     return this.encounterService.update(id, updateEncounterDto);
   }
 

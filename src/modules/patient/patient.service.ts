@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { customAlphabet } from 'nanoid';
@@ -9,26 +15,70 @@ export class PatientService {
   private nanoid = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
   private readonly logger = new Logger(PatientService.name);
 
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
-  async create(createPatientDto: CreatePatientDto, req: any) {
-    const patientId = `${this.nanoid()}`;
+  /** Ward whose trimmed name is `OPD` (same rule as `update` ward handling). */
+  private async resolveOpdWardId(): Promise<string> {
+    const wards = await this.prisma.ward.findMany({
+      select: { id: true, name: true },
+    });
+    const opd = wards.find((w) => w.name?.trim().toUpperCase() === 'OPD');
+    if (!opd) {
+      throw new BadRequestException(
+        'No ward named "OPD" exists. Create it before using listStatusFilter.',
+      );
+    }
+    return opd.id;
+  }
 
-    const data: any = {
-      patientId: createPatientDto.email ? patientId : null,
-      title: createPatientDto.title,
+  async create(
+    createPatientDto: CreatePatientDto,
+    req: { user: { sub: string } },
+  ) {
+    const staffId = req.user.sub;
+    const wardId = createPatientDto.wardId;
+    const hmoId = createPatientDto.hmoId;
+
+    const [staff, ward, hmo] = await Promise.all([
+      this.prisma.staff.findUnique({ where: { id: staffId } }),
+      wardId
+        ? this.prisma.ward.findUnique({ where: { id: wardId } })
+        : Promise.resolve(null),
+      hmoId
+        ? this.prisma.hmo.findUnique({ where: { id: hmoId } })
+        : Promise.resolve(null),
+    ]);
+
+    if (!staff) {
+      throw new NotFoundException(`Staff "${staffId}" not found.`);
+    }
+    if (wardId && !ward) {
+      throw new NotFoundException(`Ward "${wardId}" not found.`);
+    }
+    if (hmoId && !hmo) {
+      throw new NotFoundException(`HMO "${hmoId}" not found.`);
+    }
+
+    const patientId = this.nanoid();
+
+    const data: Prisma.PatientUncheckedCreateInput = {
+      patientId,
+      title: createPatientDto.title ?? null,
       surname: createPatientDto.surname ?? '',
       firstName: createPatientDto.firstName,
-      dob: new Date(createPatientDto.dob ?? Date.now()),
-      gender: createPatientDto.gender,
-      maritalStatus: createPatientDto.maritalStatus,
+      dob: createPatientDto.dob ? new Date(createPatientDto.dob) : null,
+      gender: createPatientDto.gender ?? null,
+      maritalStatus: createPatientDto.maritalStatus ?? null,
       nationality: createPatientDto.nationality || '',
       stateOfOrigin: createPatientDto.stateOfOrigin || '',
       lga: createPatientDto.lga || '',
       town: createPatientDto.town || '',
       permanentAddress: createPatientDto.permanentAddress || '',
-      createdById: req.user.sub,
-      updatedById: req.user.sub,
+      createdById: staffId,
+      updatedById: staffId,
+      wardId: wardId ?? null,
+      hmoId: hmoId ?? null,
+      hmo: !hmoId && createPatientDto.hmo ? createPatientDto.hmo : null,
     };
 
     if (createPatientDto.otherName) data.otherName = createPatientDto.otherName;
@@ -50,37 +100,30 @@ export class PatientService {
       data.nextOfKinAddress = createPatientDto.nextOfKinAddress;
     if (createPatientDto.nextOfKinRelationship)
       data.nextOfKinRelationship = createPatientDto.nextOfKinRelationship;
-    if (createPatientDto.hmoId) {
-      const hmo = await this.prisma.hmo.findUnique({
-        where: { id: createPatientDto.hmoId },
-      });
-      if (!hmo) {
-        throw new NotFoundException(
-          `HMO "${createPatientDto.hmoId}" not found.`,
-        );
-      }
-      data.hmoId = createPatientDto.hmoId;
-      data.hmo = hmo.name;
-    } else if (createPatientDto.hmo) {
-      data.hmo = createPatientDto.hmo;
-    }
-
-    const ward = await this.prisma.ward.findUnique({
-      where: { id: createPatientDto.wardId },
-    });
-    if (!ward) {
-      throw new NotFoundException(`Ward "${createPatientDto.wardId}" not found.`);
-    }
-    data.wardId = createPatientDto.wardId;
-
     if (createPatientDto.fingerprintData)
       data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
-    console.log('data', data);
-    const newPatient = this.prisma.patient.create({
-      data,
-    });
-    return newPatient;
+
+    try {
+      const newPatient = await this.prisma.patient.create({ data });
+      this.logger.log(
+        `Patient created id=${newPatient.id} patientId=${patientId}`,
+      );
+      return newPatient;
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const target = (e.meta?.target as string[] | undefined) ?? [];
+        if (target.includes('phoneNumber')) {
+          throw new ConflictException(
+            'This phone number is already registered.',
+          );
+        }
+      }
+      throw e;
+    }
   }
 
   private readonly ALLOWED_FILTER_FIELDS = new Set([
@@ -149,87 +192,118 @@ export class PatientService {
     toDate?: string,
     sortBy?: string,
     isAscending = false,
+    listStatusFilter?: string,
   ) {
-    const where: Prisma.PatientWhereInput = {};
+    /** Directory listing must never include incomplete records (no hospital id). */
+    const andParts: Prisma.PatientWhereInput[] = [{ patientId: { not: null } }];
+
+    const listFilter = listStatusFilter?.trim();
+    if (
+      listFilter &&
+      listFilter !== 'onlyAdmitted' &&
+      listFilter !== 'excludeAdmitted'
+    ) {
+      throw new BadRequestException(
+        `Invalid listStatusFilter "${listStatusFilter}". Use onlyAdmitted or excludeAdmitted.`,
+      );
+    }
 
     if (search && search.trim() !== '') {
       const trimmedSearch = search.trim();
 
       if (filterCategory === 'patientId') {
-        where.patientId = {
-          contains: trimmedSearch.toUpperCase(),
-          mode: 'insensitive',
-        };
+        andParts.push({
+          patientId: {
+            contains: trimmedSearch.toUpperCase(),
+            mode: 'insensitive',
+          },
+        });
       } else if (filterCategory === 'fullName') {
-        where.AND = [
-          { patientId: { not: null } },
-          {
-            OR: [
-              {
-                firstName: {
-                  contains: trimmedSearch,
-                  mode: 'insensitive',
-                },
+        andParts.push({
+          OR: [
+            {
+              firstName: {
+                contains: trimmedSearch,
+                mode: 'insensitive',
               },
-              {
-                surname: {
-                  contains: trimmedSearch,
-                  mode: 'insensitive',
-                },
+            },
+            {
+              surname: {
+                contains: trimmedSearch,
+                mode: 'insensitive',
               },
-            ],
-          },
-        ];
+            },
+          ],
+        });
       } else if (filterCategory === 'nameIdPhonenumber') {
-        // Only patients with patientId, AND search must match one of the fields
-        where.AND = [
-          { patientId: { not: null } },
-          {
-            OR: [
-              {
-                phoneNumber: {
-                  contains: trimmedSearch,
-                  mode: 'insensitive',
-                },
+        andParts.push({
+          OR: [
+            {
+              phoneNumber: {
+                contains: trimmedSearch,
+                mode: 'insensitive',
               },
-              {
-                patientId: {
-                  contains: trimmedSearch.toUpperCase(),
-                  mode: 'insensitive',
-                },
+            },
+            {
+              patientId: {
+                contains: trimmedSearch.toUpperCase(),
+                mode: 'insensitive',
               },
-              {
-                firstName: {
-                  contains: trimmedSearch,
-                  mode: 'insensitive',
-                },
+            },
+            {
+              firstName: {
+                contains: trimmedSearch,
+                mode: 'insensitive',
               },
-              {
-                surname: {
-                  contains: trimmedSearch,
-                  mode: 'insensitive',
-                },
+            },
+            {
+              surname: {
+                contains: trimmedSearch,
+                mode: 'insensitive',
               },
-            ],
-          },
-        ];
+            },
+          ],
+        });
       } else if (
         filterCategory &&
         this.ALLOWED_FILTER_FIELDS.has(filterCategory)
       ) {
-        where[filterCategory] = {
-          contains: trimmedSearch,
-          mode: 'insensitive',
-        };
+        andParts.push({
+          [filterCategory]: {
+            contains: trimmedSearch,
+            mode: 'insensitive',
+          },
+        } as Prisma.PatientWhereInput);
       }
     }
 
     if (fromDate && toDate) {
-      where.createdAt = {
-        gte: new Date(fromDate),
-        lte: new Date(toDate),
-      };
+      andParts.push({
+        createdAt: {
+          gte: new Date(fromDate),
+          lte: new Date(toDate),
+        },
+      });
     }
+
+    if (listFilter === 'onlyAdmitted' || listFilter === 'excludeAdmitted') {
+      const opdWardId = await this.resolveOpdWardId();
+      await this.prisma.patient.updateMany({
+        where: { wardId: null },
+        data: {
+          wardId: opdWardId,
+          status: PatientStatus.OUTPATIENT,
+        },
+      });
+      if (listFilter === 'onlyAdmitted') {
+        andParts.push({ wardId: { not: opdWardId } });
+      } else {
+        andParts.push({ wardId: opdWardId });
+      }
+    }
+
+    const where: Prisma.PatientWhereInput =
+      andParts.length === 1 ? andParts[0] : { AND: andParts };
 
     let orderBy: Prisma.PatientOrderByWithRelationInput = {
       createdAt: Prisma.SortOrder.desc,
@@ -345,14 +419,26 @@ export class PatientService {
     });
   }
 
-  async update(id: string, updatePatientDto: UpdatePatientDto, req: any) {
+  async update(
+    id: string,
+    updatePatientDto: UpdatePatientDto,
+    req: { user: { sub: string } },
+  ) {
+    const staffId = req.user.sub;
+    const actor = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+    });
+    if (!actor) {
+      throw new NotFoundException(`Staff "${staffId}" not found.`);
+    }
+
     const existing = await this.prisma.patient.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Patient with id ${id} not found`);
     }
 
     const data: Prisma.PatientUpdateInput = {
-      updatedBy: { connect: { id: req.user.sub } },
+      updatedBy: { connect: { id: staffId } },
     };
 
     for (const key of PatientService.PATIENT_PATCH_KEYS) {
@@ -376,7 +462,7 @@ export class PatientService {
           );
         }
         data.hmoProvider = { connect: { id: updatePatientDto.hmoId } };
-        data.hmo = hmo.name;
+        data.hmo = null;
       }
     }
 
@@ -399,13 +485,29 @@ export class PatientService {
       }
     }
 
-    if (!existing.patientId || updatePatientDto.patientId === undefined) {
+    // Only backfill when the record never had a hospital id; do not rotate id on every partial PATCH.
+    if (!existing.patientId && updatePatientDto.patientId === undefined) {
       (data as Record<string, unknown>).patientId = this.nanoid();
     }
-    return this.prisma.patient.update({
-      where: { id },
-      data,
-    });
+    try {
+      return await this.prisma.patient.update({
+        where: { id },
+        data,
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const target = (e.meta?.target as string[] | undefined) ?? [];
+        if (target.includes('phoneNumber')) {
+          throw new ConflictException(
+            'This phone number is already registered.',
+          );
+        }
+      }
+      throw e;
+    }
   }
   async remove(id: string) {
     return this.prisma.patient.delete({

@@ -18,7 +18,7 @@ export class LabRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) { }
+  ) {}
 
   async create(dto: CreateLabRequestDto) {
     const encounter = await this.prisma.encounter.findUnique({

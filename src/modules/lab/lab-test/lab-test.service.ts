@@ -80,7 +80,10 @@ export class LabTestService {
     if (!existing) {
       throw new NotFoundException(`Lab test "${id}" not found.`);
     }
-    if (dto.categoryId !== undefined && dto.categoryId !== existing.categoryId) {
+    if (
+      dto.categoryId !== undefined &&
+      dto.categoryId !== existing.categoryId
+    ) {
       const category = await this.prisma.labCategory.findUnique({
         where: { id: dto.categoryId },
       });

@@ -27,11 +27,7 @@ export class CarePlanService {
     });
   }
 
-  async create(
-    admissionId: string,
-    dto: CreateCarePlanDto,
-    staffId: string,
-  ) {
+  async create(admissionId: string, dto: CreateCarePlanDto, staffId: string) {
     const admission = await assertAdmissionExists(this.prisma, admissionId);
     assertAdmissionWritable(admission);
     await assertStaffIsNurseOrThrow(this.prisma, staffId);
@@ -71,7 +67,9 @@ export class CarePlanService {
       data: {
         ...(dto.problem !== undefined && { problem: dto.problem }),
         ...(dto.goal !== undefined && { goal: dto.goal }),
-        ...(dto.intervention !== undefined && { intervention: dto.intervention }),
+        ...(dto.intervention !== undefined && {
+          intervention: dto.intervention,
+        }),
         ...(dto.evaluationStatus !== undefined && {
           evaluationStatus: dto.evaluationStatus,
         }),

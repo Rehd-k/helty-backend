@@ -21,7 +21,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Lab Request')
 @Controller('lab-requests')
 export class LabRequestController {
-  constructor(private readonly labRequestService: LabRequestService) { }
+  constructor(private readonly labRequestService: LabRequestService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

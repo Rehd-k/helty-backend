@@ -61,17 +61,15 @@ export class HmoController {
   @ApiParam({ name: 'id', description: 'HMO UUID' })
   @ApiOkResponse({ description: 'Paginated patients' })
   @ApiNotFoundResponse({ description: 'HMO not found' })
-  findPatients(
-    @Param('id') id: string,
-    @Query() query: QueryHmoPatientsDto,
-  ) {
+  findPatients(@Param('id') id: string, @Query() query: QueryHmoPatientsDto) {
     return this.hmoService.findPatients(id, query);
   }
 
   @Get(':id')
   @ApiOperation({
     summary: 'Get HMO by id',
-    description: 'Includes service price rows with nested service details and patient count.',
+    description:
+      'Includes service price rows with nested service details and patient count.',
   })
   @ApiParam({ name: 'id', description: 'HMO UUID' })
   @ApiOkResponse({ description: 'HMO detail' })

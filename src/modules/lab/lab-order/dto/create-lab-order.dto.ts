@@ -46,7 +46,9 @@ export class CreateLabOrderDto {
   @IsOptional()
   invoiceId?: string;
 
-  @ApiPropertyOptional({ description: 'Paid laboratory invoice line item UUID' })
+  @ApiPropertyOptional({
+    description: 'Paid laboratory invoice line item UUID',
+  })
   @IsUUID()
   @IsOptional()
   invoiceItemId?: string;

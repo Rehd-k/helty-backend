@@ -44,7 +44,9 @@ describe('nurses-dashboard-window.util', () => {
     const span = w.end.getTime() - w.start.getTime();
     expect(p.end.getTime()).toBe(w.start.getTime() - 1);
     expect(p.end.getTime() - p.start.getTime()).toBe(span);
-    expect(startOfUtcDay(p.start).toISOString()).toBe('2026-04-11T00:00:00.000Z');
+    expect(startOfUtcDay(p.start).toISOString()).toBe(
+      '2026-04-11T00:00:00.000Z',
+    );
     expect(endOfUtcDay(p.end).toISOString()).toBe('2026-04-11T23:59:59.999Z');
   });
 });

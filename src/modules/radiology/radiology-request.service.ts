@@ -17,7 +17,7 @@ export class RadiologyRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) { }
+  ) {}
 
   async create(dto: CreateRadiologyRequestDto) {
     const patient = await this.prisma.patient.findUnique({

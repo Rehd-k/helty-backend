@@ -238,7 +238,9 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
 
   async getUnread(staffId: string, conversationId: string): Promise<number> {
     if (!this.useRedis()) {
-      return this.memUnread.get(this.unreadMemKey(staffId, conversationId)) ?? 0;
+      return (
+        this.memUnread.get(this.unreadMemKey(staffId, conversationId)) ?? 0
+      );
     }
     const v = await this.redis!.get(this.unreadKey(staffId, conversationId));
     return v ? Number(v) : 0;
@@ -253,10 +255,7 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
 
     if (!this.useRedis()) {
       for (const id of conversationIds) {
-        out.set(
-          id,
-          this.memUnread.get(this.unreadMemKey(staffId, id)) ?? 0,
-        );
+        out.set(id, this.memUnread.get(this.unreadMemKey(staffId, id)) ?? 0);
       }
       return out;
     }

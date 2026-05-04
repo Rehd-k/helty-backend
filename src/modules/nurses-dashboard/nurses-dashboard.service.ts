@@ -46,11 +46,7 @@ function formatPercentDelta(cmp: {
   const sign = v > 0 ? '+' : '';
   const label = `${sign}${v}%`;
   const isPositive =
-    cmp.direction === 'flat'
-      ? true
-      : cmp.direction === 'up'
-        ? v >= 0
-        : v <= 0;
+    cmp.direction === 'flat' ? true : cmp.direction === 'up' ? v >= 0 : v <= 0;
   return {
     kind: 'percent',
     value: Math.round(v * 100) / 100,
@@ -74,7 +70,10 @@ function formatBedOccupancyDelta(cmp: {
   return base;
 }
 
-function formatWaitDelta(currentAvg: number, previousAvg: number): DeltaMinutes {
+function formatWaitDelta(
+  currentAvg: number,
+  previousAvg: number,
+): DeltaMinutes {
   const diff = Math.round(currentAvg - previousAvg);
   let direction: 'up' | 'down' | 'flat' = 'flat';
   if (diff > 0) direction = 'up';
@@ -110,7 +109,10 @@ function alertSeverityApi(s: AlertSeverity): 'critical' | 'warning' {
 }
 
 function relativeLabel(occurredAt: Date, asOf: Date): string {
-  const sec = Math.max(0, Math.floor((asOf.getTime() - occurredAt.getTime()) / 1000));
+  const sec = Math.max(
+    0,
+    Math.floor((asOf.getTime() - occurredAt.getTime()) / 1000),
+  );
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min}m ago`;
@@ -137,7 +139,8 @@ export class NursesDashboardService {
       where: { id: staffId },
       select: { firstName: true, lastName: true },
     });
-    const userDisplayName = staff?.firstName?.trim() || staff?.lastName?.trim() || 'there';
+    const userDisplayName =
+      staff?.firstName?.trim() || staff?.lastName?.trim() || 'there';
 
     const [
       totalPatientsCurrent,
@@ -242,8 +245,10 @@ export class NursesDashboardService {
         where: { admissionDateTime: { gte: from, lte: to } },
       }),
     ]);
-    return new Set([...enc.map((e) => e.patientId), ...adm.map((a) => a.patientId)])
-      .size;
+    return new Set([
+      ...enc.map((e) => e.patientId),
+      ...adm.map((a) => a.patientId),
+    ]).size;
   }
 
   /**
@@ -323,9 +328,7 @@ export class NursesDashboardService {
     timeRange: NurseDashboardTimeRange,
     window: { start: Date; end: Date },
     asOf: Date,
-  ): Promise<
-    Array<{ label: string; admissions: number; discharges: number }>
-  > {
+  ): Promise<Array<{ label: string; admissions: number; discharges: number }>> {
     if (timeRange === 'Today') {
       const y = window.start.getUTCFullYear();
       const mo = window.start.getUTCMonth();
@@ -349,8 +352,11 @@ export class NursesDashboardService {
     }
 
     if (timeRange === 'Last 7 Days') {
-      const points: Array<{ label: string; admissions: number; discharges: number }> =
-        [];
+      const points: Array<{
+        label: string;
+        admissions: number;
+        discharges: number;
+      }> = [];
       for (let i = 0; i < 7; i += 1) {
         const day = new Date(window.start);
         day.setUTCDate(day.getUTCDate() + i);
@@ -393,8 +399,11 @@ export class NursesDashboardService {
     }
 
     if (timeRange === 'This Month') {
-      const points: Array<{ label: string; admissions: number; discharges: number }> =
-        [];
+      const points: Array<{
+        label: string;
+        admissions: number;
+        discharges: number;
+      }> = [];
       const cursor = new Date(window.start);
       while (cursor.getTime() <= window.end.getTime()) {
         const from = new Date(
@@ -433,8 +442,11 @@ export class NursesDashboardService {
       return points;
     }
 
-    const points: Array<{ label: string; admissions: number; discharges: number }> =
-      [];
+    const points: Array<{
+      label: string;
+      admissions: number;
+      discharges: number;
+    }> = [];
     const startMonth = window.start.getUTCMonth();
     const endMonth = asOf.getUTCMonth();
     const year = asOf.getUTCFullYear();
@@ -442,7 +454,8 @@ export class NursesDashboardService {
       if (m < startMonth) continue;
       const from = new Date(Date.UTC(year, m, 1, 0, 0, 0, 0));
       const to = new Date(Date.UTC(year, m + 1, 0, 23, 59, 59, 999));
-      const sliceFrom = from.getTime() < window.start.getTime() ? window.start : from;
+      const sliceFrom =
+        from.getTime() < window.start.getTime() ? window.start : from;
       const sliceTo = to.getTime() > window.end.getTime() ? window.end : to;
       const [admissions, discharges] = await Promise.all([
         this.admissionsInRange(sliceFrom, sliceTo),
@@ -533,8 +546,13 @@ export class NursesDashboardService {
       const name = `${s.firstName} ${s.lastName}`.trim();
       const recent = s.patientVitalsRecorded[0]?.recordedAt;
       let status = 'On duty';
-      let statusTone: 'success' | 'warning' | 'danger' | 'neutral' | 'busy' | 'break' =
-        'neutral';
+      let statusTone:
+        | 'success'
+        | 'warning'
+        | 'danger'
+        | 'neutral'
+        | 'busy'
+        | 'break' = 'neutral';
       if (recent) {
         status = 'Active — vitals';
         statusTone = 'busy';
@@ -574,9 +592,7 @@ export class NursesDashboardService {
 
     return rows.map((r) => {
       const loc =
-        r.admission.wardEntity?.name ??
-        r.admission.ward ??
-        'Inpatient';
+        r.admission.wardEntity?.name ?? r.admission.ward ?? 'Inpatient';
       return {
         id: r.id,
         location: loc,

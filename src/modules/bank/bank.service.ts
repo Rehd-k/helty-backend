@@ -83,7 +83,7 @@ export class BankService {
   }
 
   // ─── Find One ─────────────────────────────────────────────────────────────────
- 
+
   async findOne(id: string) {
     const bank = await this.prisma.bank.findUnique({
       where: { id },

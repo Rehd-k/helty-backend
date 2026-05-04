@@ -15,7 +15,10 @@ export const MEDICATION_ORDER_STATUSES = [
   'Dispensed',
   'Cancelled',
 ] as const;
-export const MEDICATION_ADMINISTRATION_STATUSES = ['ACTIVE', 'STOPPED'] as const;
+export const MEDICATION_ADMINISTRATION_STATUSES = [
+  'ACTIVE',
+  'STOPPED',
+] as const;
 export type MedicationOrderStatus = (typeof MEDICATION_ORDER_STATUSES)[number];
 
 export class CreateMedicationOrderDto {

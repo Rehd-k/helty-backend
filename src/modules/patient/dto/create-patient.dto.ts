@@ -140,17 +140,19 @@ export class CreatePatientDto {
   hmo?: string;
 
   @ApiPropertyOptional({
-    description: 'Preferred: link patient to an HMO record (GET /hmos). Syncs legacy `hmo` text to the HMO name.',
+    description:
+      'Preferred: link patient to an HMO record (GET /hmos). Syncs legacy `hmo` text to the HMO name.',
   })
   @IsOptional()
   @IsUUID()
   hmoId?: string;
 
-  @ApiProperty({
-    description: 'Required: assign patient to a ward (GET /wards).',
+  @ApiPropertyOptional({
+    description: 'Optional: assign patient to a ward (GET /wards).',
   })
+  @IsOptional()
   @IsUUID()
-  wardId: string;
+  wardId?: string;
 
   @IsString()
   @IsOptional()
@@ -158,7 +160,7 @@ export class CreatePatientDto {
 
   @IsString()
   @IsOptional()
-  cardNo?: string
+  cardNo?: string;
 }
 
 export class UpdatePatientDto {
@@ -200,7 +202,8 @@ export class UpdatePatientDto {
   hmo?: string;
 
   @ApiPropertyOptional({
-    description: 'Link patient to an HMO (GET /hmos). When set, updates legacy `hmo` text to match HMO name; use null to clear.',
+    description:
+      'Link patient to an HMO (GET /hmos). When set, updates legacy `hmo` text to match HMO name; use null to clear.',
   })
   @IsOptional()
   @IsUUID()

@@ -66,7 +66,11 @@ export class LabOrderService {
       },
     } as const;
 
-    const hasInvoiceLink = !!(dto.invoiceId || dto.invoiceItemId || dto.serviceId);
+    const hasInvoiceLink = !!(
+      dto.invoiceId ||
+      dto.invoiceItemId ||
+      dto.serviceId
+    );
     if (hasInvoiceLink) {
       if (!dto.invoiceId || !dto.invoiceItemId || !dto.serviceId) {
         throw invoiceLinkException(

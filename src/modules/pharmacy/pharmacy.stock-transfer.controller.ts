@@ -19,7 +19,7 @@ import { ListStockTransferDto } from './dto/list-stock-transfer.dto';
 @Controller('pharmacy/stock-transfers')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PharmacyStockTransferController {
-  constructor(private readonly service: PharmacyStockTransferService) { }
+  constructor(private readonly service: PharmacyStockTransferService) {}
 
   @Post()
   @ApiOperation({

@@ -14,7 +14,8 @@ export class SendConversationMessageRestDto {
   type?: StaffConversationMessageType;
 
   @ApiPropertyOptional({
-    description: 'Relative path from upload endpoint (e.g. chat/{convId}/file.png)',
+    description:
+      'Relative path from upload endpoint (e.g. chat/{convId}/file.png)',
   })
   @IsOptional()
   @IsString()

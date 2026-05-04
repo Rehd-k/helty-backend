@@ -31,8 +31,7 @@ export class AlertLogController {
     @Param('admissionId') admissionId: string,
     @Query('unresolvedOnly') unresolvedOnly?: string,
   ) {
-    const only =
-      unresolvedOnly === 'true' || unresolvedOnly === '1';
+    const only = unresolvedOnly === 'true' || unresolvedOnly === '1';
     return this.service.list(admissionId, only);
   }
 

@@ -90,7 +90,8 @@ export class HmoService {
     const staff = await this.prisma.staff.findUnique({
       where: { id: req.user.sub },
     });
-    if (!staff) throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
+    if (!staff)
+      throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
 
     const prices = dto.servicePrices ?? [];
     this.validatePriceRows(prices);
@@ -238,7 +239,8 @@ export class HmoService {
     const staff = await this.prisma.staff.findUnique({
       where: { id: req.user.sub },
     });
-    if (!staff) throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
+    if (!staff)
+      throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
 
     if (dto.name !== undefined) {
       const conflict = await this.prisma.hmo.findFirst({

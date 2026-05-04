@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { isFloat16Array } from 'util/types';
 
 export class CreateWardDto {
@@ -39,4 +46,3 @@ export class CreateWardDto {
   @IsString()
   departmentId?: string;
 }
-

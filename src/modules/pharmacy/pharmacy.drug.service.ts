@@ -15,7 +15,7 @@ import {
 
 @Injectable()
 export class PharmacyDrugService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateDrugDto, createdById: string) {
     // Generate a random service code in the format "PHAR" + 6 digit number (e.g., PHAR000002)
@@ -137,9 +137,9 @@ export class PharmacyDrugService {
         ...(dto.atcCode != null && {
           atcCode: dto.atcCode?.trim() ?? null,
         }),
-        ...(dto.manufacturerId !== null) && {
+        ...(dto.manufacturerId !== null && {
           manufacturerId: dto.manufacturerId,
-        },
+        }),
         ...(dto.isControlled !== undefined && {
           isControlled: dto.isControlled,
         }),
@@ -363,11 +363,11 @@ export class PharmacyDrugService {
           include: {
             ward: {
               select: {
-                name: true
-              }
-            }
-          }
-        }
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -388,20 +388,20 @@ export class PharmacyDrugService {
       );
       const earliestBatch = batches.length
         ? batches.reduce((earliest, b) =>
-          b.createdAt < earliest.createdAt ? b : earliest,
-        )
+            b.createdAt < earliest.createdAt ? b : earliest,
+          )
         : null;
       const sellingPrice = earliestBatch?.sellingPrice ?? null;
       const expiryDateClosest = batches.length
         ? batches.reduce((closest, b) => {
-          const diff = Math.abs(
-            new Date(b.expiryDate).getTime() - today.getTime(),
-          );
-          const closestDiff = Math.abs(
-            new Date(closest.expiryDate).getTime() - today.getTime(),
-          );
-          return diff < closestDiff ? b : closest;
-        }).expiryDate
+            const diff = Math.abs(
+              new Date(b.expiryDate).getTime() - today.getTime(),
+            );
+            const closestDiff = Math.abs(
+              new Date(closest.expiryDate).getTime() - today.getTime(),
+            );
+            return diff < closestDiff ? b : closest;
+          }).expiryDate
         : null;
 
       const { batches: _batches, ...rest } = drug;

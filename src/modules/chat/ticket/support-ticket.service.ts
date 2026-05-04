@@ -19,9 +19,13 @@ export class SupportTicketService {
 
   private sanitizeContent(raw?: string | null): string | null {
     if (raw == null || raw === '') return null;
-    const trimmed = raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim();
+    const trimmed = raw
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .trim();
     if (trimmed.length > MAX_TICKET_MESSAGE) {
-      throw new BadRequestException(`Content exceeds ${MAX_TICKET_MESSAGE} characters`);
+      throw new BadRequestException(
+        `Content exceeds ${MAX_TICKET_MESSAGE} characters`,
+      );
     }
     return trimmed.length ? trimmed : null;
   }
@@ -61,10 +65,7 @@ export class SupportTicketService {
     filters?: { status?: SupportTicketStatus; assignedToMe?: boolean },
   ) {
     const visibility: Prisma.SupportTicketWhereInput = {
-      OR: [
-        { createdById: staffId },
-        { assignments: { some: { staffId } } },
-      ],
+      OR: [{ createdById: staffId }, { assignments: { some: { staffId } } }],
     };
     const where: Prisma.SupportTicketWhereInput = {
       AND: [
@@ -76,7 +77,7 @@ export class SupportTicketService {
       ],
     };
 
-    return this.prisma.supportTicket.findMany({
+    const tickets = await this.prisma.supportTicket.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
       include: {
@@ -112,6 +113,8 @@ export class SupportTicketService {
         },
       },
     });
+    console.log(tickets);
+    return tickets;
   }
 
   async getByIdForStaff(id: string, staffId: string) {
@@ -189,18 +192,19 @@ export class SupportTicketService {
       where: { id: ticketId },
       data: { status, updatedAt: new Date() },
     });
-    await this.audit(ticketId, actorId, SupportTicketAuditAction.STATUS_CHANGED, {
-      from: prev,
-      to: status,
-    });
+    await this.audit(
+      ticketId,
+      actorId,
+      SupportTicketAuditAction.STATUS_CHANGED,
+      {
+        from: prev,
+        to: status,
+      },
+    );
     return updated;
   }
 
-  async assign(
-    ticketId: string,
-    actorId: string,
-    assignStaffId: string,
-  ) {
+  async assign(ticketId: string, actorId: string, assignStaffId: string) {
     await this.assertTicketAccess(ticketId, actorId);
     const staff = await this.prisma.staff.findUnique({
       where: { id: assignStaffId },
@@ -283,9 +287,14 @@ export class SupportTicketService {
       data: { updatedAt: new Date() },
     });
 
-    await this.audit(ticketId, senderId, SupportTicketAuditAction.MESSAGE_ADDED, {
-      messageId: msg.id,
-    });
+    await this.audit(
+      ticketId,
+      senderId,
+      SupportTicketAuditAction.MESSAGE_ADDED,
+      {
+        messageId: msg.id,
+      },
+    );
 
     return msg;
   }

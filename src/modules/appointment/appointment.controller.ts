@@ -31,10 +31,7 @@ export class AppointmentController {
     @Body() createAppointmentDto: CreateAppointmentDto,
     @Req() req: { user: { sub: string } },
   ) {
-    return this.appointmentService.create(
-      createAppointmentDto,
-      req.user.sub,
-    );
+    return this.appointmentService.create(createAppointmentDto, req.user.sub);
   }
 
   @Get()

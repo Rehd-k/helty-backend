@@ -32,7 +32,7 @@ const medicationOrderSelect = {
 
 @Injectable()
 export class MedicationAdministrationService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async list(admissionId: string) {
     await assertAdmissionExists(this.prisma, admissionId);
@@ -97,10 +97,7 @@ export class MedicationAdministrationService {
     if (!row) {
       throw new NotFoundException('Medication administration not found.');
     }
-    if (
-      row.administeredByNurseId !== staffId &&
-      !isSuperAdminStaff(actor)
-    ) {
+    if (row.administeredByNurseId !== staffId && !isSuperAdminStaff(actor)) {
       throw new BadRequestException(
         'Only the recording nurse can update this administration.',
       );

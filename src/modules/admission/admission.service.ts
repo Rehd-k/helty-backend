@@ -18,7 +18,7 @@ import {
 
 @Injectable()
 export class AdmissionService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
@@ -195,7 +195,7 @@ export class AdmissionService {
             firstName: true,
             surname: true,
             patientId: true,
-            dob: true
+            dob: true,
           },
         },
         wardEntity: {
@@ -209,7 +209,7 @@ export class AdmissionService {
           select: {
             id: true,
             medicationOrders: true,
-          }
+          },
         },
         patientVitals: true,
         medicationOrders: {

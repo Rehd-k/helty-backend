@@ -441,7 +441,10 @@ describe('InvoiceService', () => {
       invoice: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const service = createInvoiceService({} as any);
-    const result = await service.findFirstConsumableConsultationItem(tx, 'pat-1');
+    const result = await service.findFirstConsumableConsultationItem(
+      tx,
+      'pat-1',
+    );
     expect(result).toBeNull();
   });
 

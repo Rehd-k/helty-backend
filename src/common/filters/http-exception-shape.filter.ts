@@ -31,7 +31,9 @@ export class HttpExceptionShapeFilter implements ExceptionFilter {
       return res.status(status).json({
         statusCode: status,
         error:
-          typeof p.error === 'string' ? p.error : HttpStatus[status] ?? 'Error',
+          typeof p.error === 'string'
+            ? p.error
+            : (HttpStatus[status] ?? 'Error'),
         code: p.code,
         message,
       });

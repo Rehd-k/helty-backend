@@ -42,7 +42,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 @ApiTags('Invoices')
 @Controller('invoices')
 export class InvoiceController {
-  constructor(private readonly invoiceService: InvoiceService) { }
+  constructor(private readonly invoiceService: InvoiceService) {}
 
   // ─── Invoice Endpoints ────────────────────────────────────────────────────────
 
@@ -173,7 +173,11 @@ export class InvoiceController {
   })
   @ApiQuery({ name: 'fromDate', required: false, type: String })
   @ApiQuery({ name: 'toDate', required: false, type: String })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'PARTIALLY_PAID', 'PAID'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['PENDING', 'PARTIALLY_PAID', 'PAID'],
+  })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'transactionId', required: false, type: String })
   @ApiQuery({ name: 'invoiceId', required: false, type: String })
@@ -246,9 +250,12 @@ export class InvoiceController {
   })
   @ApiParam({ name: 'id', description: 'Source invoice UUID' })
   @ApiCreatedResponse({
-    description: 'Original and new invoice detail (same shape as GET /invoices/:id)',
+    description:
+      'Original and new invoice detail (same shape as GET /invoices/:id)',
   })
-  @ApiBadRequestResponse({ description: 'Validation or business rule violation' })
+  @ApiBadRequestResponse({
+    description: 'Validation or business rule violation',
+  })
   @ApiNotFoundResponse({ description: 'Invoice not found' })
   splitInvoice(
     @Param('id') id: string,

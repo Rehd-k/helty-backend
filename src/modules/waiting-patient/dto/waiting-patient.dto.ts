@@ -24,7 +24,8 @@ export class CreateWaitingPatientDto {
 
 export class SendToConsultingRoomDto {
   @ApiProperty({
-    description: 'Consulting room UUID to assign to this paid consultation invoice',
+    description:
+      'Consulting room UUID to assign to this paid consultation invoice',
   })
   @IsUUID()
   @IsNotEmpty()
@@ -79,7 +80,8 @@ export class QueryWaitingPatientDto {
   unassignedOnly?: boolean;
 
   @ApiPropertyOptional({
-    description: 'If true, return only entries not yet registered to the system',
+    description:
+      'If true, return only entries not yet registered to the system',
   })
   @Transform(({ value }) =>
     value === undefined ? undefined : value === 'true' || value === true,
@@ -87,7 +89,6 @@ export class QueryWaitingPatientDto {
   @IsBoolean()
   @IsOptional()
   unregisteredOnly?: boolean;
-
 
   @ApiPropertyOptional({
     description: 'If true, return only entries already linked to an encounter',
@@ -139,4 +140,3 @@ export class QueryWaitingPatientDto {
   @IsDateString()
   toDate?: string;
 }
-

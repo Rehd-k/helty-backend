@@ -28,12 +28,12 @@ import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-que
   'RADIOGRAPHER',
   'RADIOLOGY_RECEPTIONIST',
   'RADIOLOGY',
-  'MEDICAL_RECORDS'
+  'MEDICAL_RECORDS',
 )
 export class RadiologyRequestController {
   constructor(
     private readonly radiologyRequestService: RadiologyRequestService,
-  ) { }
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

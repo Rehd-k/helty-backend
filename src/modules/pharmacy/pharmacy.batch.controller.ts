@@ -24,7 +24,7 @@ import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 @Controller('pharmacy/batches')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PharmacyBatchController {
-  constructor(private readonly batchService: PharmacyBatchService) { }
+  constructor(private readonly batchService: PharmacyBatchService) {}
 
   @Get('preview-ward-pricing/:id')
   @ApiOperation({
@@ -62,7 +62,10 @@ export class PharmacyBatchController {
     description:
       'Sets quantityReceived and quantityRemaining. Allowed only if the batch was created at least 24 hours ago. The generic PATCH on this resource also updates quantity but has no time restriction.',
   })
-  correctQuantity(@Param('id') id: string, @Body() dto: CorrectBatchQuantityDto) {
+  correctQuantity(
+    @Param('id') id: string,
+    @Body() dto: CorrectBatchQuantityDto,
+  ) {
     return this.batchService.correctQuantity(id, dto);
   }
 

@@ -34,7 +34,16 @@ export class StaffService {
   async findById(id: string) {
     const user = await this.prisma.staff.findUnique({
       where: { id },
-      include: { department: true, headedDepartment: true },
+      include: {
+        department: true,
+        headedDepartment: true,
+        passwordResets: {
+          where: { usedAt: null, expiresAt: { gt: new Date() } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, code: true, expiresAt: true, createdAt: true },
+        },
+      },
     });
     if (!user) throw new NotFoundException('Staff member not found');
     return user;
@@ -45,6 +54,19 @@ export class StaffService {
     return this.prisma.staff.findUnique({
       where: { email },
       include: { department: true, headedDepartment: true },
+    });
+  }
+
+  /** Active staff with non-null email (case-insensitive), for password reset. */
+  async findActiveByEmailForPasswordReset(email: string) {
+    const trimmed = email?.trim() ?? '';
+    if (!trimmed || !trimmed.includes('@')) return null;
+    return this.prisma.staff.findFirst({
+      where: {
+        email: { equals: trimmed, mode: 'insensitive' },
+        isActive: true,
+      },
+      select: { id: true, email: true },
     });
   }
 

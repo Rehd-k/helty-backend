@@ -13,10 +13,9 @@ import {
 
 @Injectable()
 export class PatientVitalsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreatePatientVitalsDto) {
-
     try {
       const {
         patientId,
@@ -73,7 +72,6 @@ export class PatientVitalsService {
     } catch (error) {
       throw new BadRequestException(error.message);
     }
-
   }
 
   private async createForInvoice(

@@ -22,9 +22,13 @@ export class StaffConversationMessageService {
 
   private sanitizeContent(raw?: string | null): string | null {
     if (raw == null || raw === '') return null;
-    const trimmed = raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim();
+    const trimmed = raw
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .trim();
     if (trimmed.length > MAX_CONTENT_LENGTH) {
-      throw new BadRequestException(`Content exceeds ${MAX_CONTENT_LENGTH} characters`);
+      throw new BadRequestException(
+        `Content exceeds ${MAX_CONTENT_LENGTH} characters`,
+      );
     }
     return trimmed.length ? trimmed : null;
   }
@@ -50,10 +54,7 @@ export class StaffConversationMessageService {
         where.OR = [
           { createdAt: { lt: anchor.createdAt } },
           {
-            AND: [
-              { createdAt: anchor.createdAt },
-              { id: { lt: anchor.id } },
-            ],
+            AND: [{ createdAt: anchor.createdAt }, { id: { lt: anchor.id } }],
           },
         ];
       }
@@ -113,11 +114,7 @@ export class StaffConversationMessageService {
     if (type === StaffConversationMessageType.TEXT && !content) {
       throw new BadRequestException('Text messages require content');
     }
-    if (
-      type !== StaffConversationMessageType.TEXT &&
-      !fileUrl &&
-      !content
-    ) {
+    if (type !== StaffConversationMessageType.TEXT && !fileUrl && !content) {
       throw new BadRequestException('File messages require fileUrl or caption');
     }
 

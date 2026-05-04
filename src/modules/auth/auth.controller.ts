@@ -11,6 +11,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from 'src/common/decorators';
 
 @ApiTags('Auth')
@@ -31,12 +33,46 @@ export class AuthController {
         dto.password,
       );
       if (!user) {
-        throw new BadRequestException('Invalid email, phone number, or password');
+        throw new BadRequestException(
+          'Invalid email, phone number, or password',
+        );
       }
       return this.authService.login(user);
     } catch (err) {
       throw err;
     }
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Request a 6-digit password reset code (emailed when SMTP is set; otherwise stored for admin relay)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Generic confirmation (no email enumeration)',
+  })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.requestForgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Set a new password using the 6-digit code (from email or administrator)',
+  })
+  @ApiResponse({ status: 200, description: 'Password updated' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired code' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPasswordWithCode(
+      dto.email,
+      dto.code,
+      dto.newPassword,
+    );
   }
 
   @Get('me')

@@ -24,7 +24,7 @@ export class EncounterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) { }
+  ) {}
 
   /** Ongoing encounter for the same patient, type, and admission scope (reuse instead of duplicate create). */
   private async findUnfinishedEncounterForCreate(dto: CreateEncounterDto) {
@@ -121,7 +121,12 @@ export class EncounterService {
               },
             },
             doctor: {
-              select: { id: true, firstName: true, lastName: true, staffId: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                staffId: true,
+              },
             },
             admission: dto.admissionId
               ? { select: { id: true, status: true } }
@@ -248,10 +253,20 @@ export class EncounterService {
         },
         include: {
           patient: {
-            select: { id: true, firstName: true, surname: true, patientId: true },
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
           },
           doctor: {
-            select: { id: true, firstName: true, lastName: true, staffId: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffId: true,
+            },
           },
         },
       });
@@ -354,8 +369,8 @@ export class EncounterService {
             firstName: true,
             gender: true,
             hmo: true,
-            status: true
-          }
+            status: true,
+          },
         },
         doctor: {
           select: {
@@ -456,8 +471,7 @@ export class EncounterService {
       data.examinationNotes = dto.examinationNotes;
     if (dto.soapSubjective !== undefined)
       data.soapSubjective = dto.soapSubjective;
-    if (dto.soapObjective !== undefined)
-      data.soapObjective = dto.soapObjective;
+    if (dto.soapObjective !== undefined) data.soapObjective = dto.soapObjective;
     if (dto.soapAssessment !== undefined)
       data.soapAssessment = dto.soapAssessment;
     if (dto.soapPlan !== undefined) data.soapPlan = dto.soapPlan;

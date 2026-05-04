@@ -208,11 +208,7 @@ export class ChatController {
     @Param('id') id: string,
     @Body() dto: PromoteAdminDto,
   ) {
-    return this.conversations.promoteAdmin(
-      id,
-      this.staffId(req),
-      dto.staffId,
-    );
+    return this.conversations.promoteAdmin(id, this.staffId(req), dto.staffId);
   }
 
   @Get('conversations/:id/messages')
@@ -287,9 +283,7 @@ export class ChatController {
           return;
         }
         cb(
-          new BadRequestException(
-            'File type not allowed for chat upload',
-          ),
+          new BadRequestException('File type not allowed for chat upload'),
           false,
         );
       },
@@ -347,9 +341,7 @@ export class ChatController {
           return;
         }
         cb(
-          new BadRequestException(
-            'File type not allowed for ticket upload',
-          ),
+          new BadRequestException('File type not allowed for ticket upload'),
           false,
         );
       },
@@ -393,7 +385,8 @@ export class ChatController {
 
   @Get('files/conversation-message/by-path')
   @ApiOperation({
-    summary: 'Download by relative path (use after upload, before message exists)',
+    summary:
+      'Download by relative path (use after upload, before message exists)',
   })
   async downloadConversationFileByPath(
     @Req() req: { user?: { sub?: string } },
@@ -424,7 +417,10 @@ export class ChatController {
       where: { id: messageId },
     });
     if (!msg?.fileUrl) throw new NotFoundException('Message or file not found');
-    await this.conversations.assertMember(msg.conversationId, this.staffId(req));
+    await this.conversations.assertMember(
+      msg.conversationId,
+      this.staffId(req),
+    );
     const rel = msg.fileUrl.replace(/\\/g, '/');
     if (!rel.startsWith(`${CHAT_UPLOAD_SUB}/`)) {
       throw new BadRequestException('Invalid stored path');

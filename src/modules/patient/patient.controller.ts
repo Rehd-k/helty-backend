@@ -22,7 +22,7 @@ import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 @Controller('patients')
 export class PatientController {
   private readonly log = new Logger(PatientController.name);
-  constructor(private readonly patientService: PatientService) { }
+  constructor(private readonly patientService: PatientService) {}
 
   private applySelect<T extends Record<string, unknown>>(
     payload: T,
@@ -60,7 +60,6 @@ export class PatientController {
     description: 'Patient created successfully',
   })
   create(@Body() createPatientDto: CreatePatientDto, @Req() req: any) {
-
     return this.patientService.create(createPatientDto, req);
   }
 
@@ -80,6 +79,7 @@ export class PatientController {
     @Query('toDate') toDate: string = '',
     @Query('sortBy') sortBy: string = '',
     @Query('isAscending') isAscending: boolean = true,
+    @Query('listStatusFilter') listStatusFilter?: string,
   ) {
     return this.patientService.findAll(
       parseInt(skip),
@@ -90,6 +90,7 @@ export class PatientController {
       toDate,
       sortBy,
       isAscending,
+      listStatusFilter,
     );
   }
 
@@ -130,7 +131,11 @@ export class PatientController {
     status: 200,
     description: 'Patient updated successfully',
   })
-  update(@Param('id') id: string, @Body() updatePatientDto: any, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() updatePatientDto: any,
+    @Req() req: any,
+  ) {
     console.log(updatePatientDto);
     this.log.log('GET / called');
     return this.patientService.update(id, updatePatientDto, req);

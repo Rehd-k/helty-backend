@@ -1,7 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
-export const EXCLUDED_STOCK_LOCATION_NAMES = ['sold stock', 'damaged stock'] as const;
+export const EXCLUDED_STOCK_LOCATION_NAMES = [
+  'sold stock',
+  'damaged stock',
+] as const;
 
 type DbClient = Prisma.TransactionClient | PrismaService;
 
@@ -73,9 +76,7 @@ export async function getEligibleDrugBatchWhere(
 export function mergeDrugBatchWhere(
   ...parts: Prisma.DrugBatchWhereInput[]
 ): Prisma.DrugBatchWhereInput {
-  const filtered = parts.filter(
-    (p) => p && Object.keys(p).length > 0,
-  ) as Prisma.DrugBatchWhereInput[];
+  const filtered = parts.filter((p) => p && Object.keys(p).length > 0);
   if (filtered.length === 0) return {};
   if (filtered.length === 1) return filtered[0];
   return { AND: filtered };

@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsString, IsUUID, MinLength, ArrayMinSize } from 'class-validator';
+import {
+  IsArray,
+  IsString,
+  IsUUID,
+  MinLength,
+  ArrayMinSize,
+} from 'class-validator';
 
 export class CreateGroupConversationDto {
   @ApiProperty()

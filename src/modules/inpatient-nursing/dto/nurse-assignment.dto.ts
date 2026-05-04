@@ -10,7 +10,9 @@ export class CreateNurseAssignmentDto {
   @IsUUID()
   nurseId: string;
 
-  @ApiProperty({ description: 'Calendar day for the shift (ISO date or datetime)' })
+  @ApiProperty({
+    description: 'Calendar day for the shift (ISO date or datetime)',
+  })
   @IsDateString()
   shiftDate: string;
 

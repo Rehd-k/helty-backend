@@ -18,9 +18,7 @@ import { CreateIvMonitoringDto } from './dto/iv.dto';
 @ApiTags('Inpatient — IV monitoring')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, AccessGuard)
-@Controller(
-  'admissions/:admissionId/iv-fluid-orders/:orderId/monitorings',
-)
+@Controller('admissions/:admissionId/iv-fluid-orders/:orderId/monitorings')
 export class IvMonitoringController {
   constructor(private readonly service: IvMonitoringService) {}
 

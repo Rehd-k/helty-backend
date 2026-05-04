@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   assertAdmissionExists,
@@ -24,7 +28,9 @@ export class IvMonitoringService {
       where: { id: orderId, admissionId },
     });
     if (!order) {
-      throw new NotFoundException('IV fluid order not found for this admission.');
+      throw new NotFoundException(
+        'IV fluid order not found for this admission.',
+      );
     }
     return this.prisma.iVMonitoring.findMany({
       where: { ivOrderId: orderId, admissionId },

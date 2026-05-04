@@ -50,7 +50,9 @@ export class PharmacyConsumableController {
   }
 
   @Post(':id/batches')
-  @ApiOperation({ summary: 'Create a consumable batch with cost and selling price' })
+  @ApiOperation({
+    summary: 'Create a consumable batch with cost and selling price',
+  })
   createBatch(@Param('id') id: string, @Body() dto: CreateConsumableBatchDto) {
     return this.service.createBatch(id, dto);
   }

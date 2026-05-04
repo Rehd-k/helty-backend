@@ -30,11 +30,13 @@ import {
 @UseGuards(JwtAuthGuard, AccessGuard)
 @Controller('admissions/:admissionId/medication-orders')
 export class AdmissionMedicationOrderController {
-  constructor(private readonly service: AdmissionMedicationOrderService) { }
+  constructor(private readonly service: AdmissionMedicationOrderService) {}
 
   @Get()
   @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
-  @ApiOperation({ summary: 'List inpatient medication orders for an admission' })
+  @ApiOperation({
+    summary: 'List inpatient medication orders for an admission',
+  })
   @ApiParam({ name: 'admissionId' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -42,8 +44,16 @@ export class AdmissionMedicationOrderController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE', 'INPATIENT_NURSE', 'OUTPATIENT_NURSE')
-  @ApiOperation({ summary: 'Create an admission medication order (prescriber)' })
+  @AccountTypes(
+    'INPATIENT_DOCTOR',
+    'CONSULTANT',
+    'HEAD_NURSE',
+    'INPATIENT_NURSE',
+    'OUTPATIENT_NURSE',
+  )
+  @ApiOperation({
+    summary: 'Create an admission medication order (prescriber)',
+  })
   create(
     @Param('admissionId') admissionId: string,
     @Body() dto: CreateAdmissionMedicationOrderDto,

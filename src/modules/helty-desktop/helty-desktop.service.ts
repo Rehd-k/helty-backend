@@ -110,7 +110,7 @@ export class HeltyDesktopService {
     if (!latest) {
       throw new NotFoundException('No desktop release has been published yet');
     }
-   
+
     return { version: latest.version };
   }
 

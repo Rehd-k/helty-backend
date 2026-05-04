@@ -29,10 +29,16 @@ import {
 // @UseGuards(JwtAuthGuard)
 @Controller('admissions/:admissionId/medication-administrations')
 export class MedicationAdministrationController {
-  constructor(private readonly service: MedicationAdministrationService) { }
+  constructor(private readonly service: MedicationAdministrationService) {}
 
   @Get()
-  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE', 'INPATIENT_NURSE', 'OUTPATIENT_NURSE')
+  @AccountTypes(
+    'INPATIENT_DOCTOR',
+    'CONSULTANT',
+    'HEAD_NURSE',
+    'INPATIENT_NURSE',
+    'OUTPATIENT_NURSE',
+  )
   @ApiOperation({ summary: 'List medication administrations for an admission' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -42,7 +48,8 @@ export class MedicationAdministrationController {
   @HttpCode(HttpStatus.CREATED)
   // @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE', 'INPATIENT_NURSE', 'OUTPATIENT_NURSE')
   @ApiOperation({
-    summary: 'Record a medication administration (nurse; nurse resolved from JWT)',
+    summary:
+      'Record a medication administration (nurse; nurse resolved from JWT)',
   })
   async create(
     @Param('admissionId') admissionId: string,
@@ -63,6 +70,11 @@ export class MedicationAdministrationController {
     @Body() dto: UpdateMedicationAdministrationDto,
     @Req() req: { user: { sub: string } },
   ) {
-    return this.service.update(admissionId, administrationId, dto, req.user.sub);
+    return this.service.update(
+      admissionId,
+      administrationId,
+      dto,
+      req.user.sub,
+    );
   }
 }

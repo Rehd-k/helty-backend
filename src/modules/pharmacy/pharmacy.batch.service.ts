@@ -107,12 +107,42 @@ export class PharmacyBatchService {
       throw new NotFoundException(`Drug "${drugId}" not found.`);
     }
 
-    const latestBatch = await this.prisma.drugBatch.findFirst({
-      where: { drugId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, costPrice: true },
+    const drugsWithBatches = await this.prisma.drug.findMany({
+      where: {
+        deletedAt: null,
+        batches: { some: {} },
+      },
+      select: { id: true },
     });
 
+    const latestBatches = await Promise.all(
+      drugsWithBatches.map(async ({ id }) => {
+        const latestBatch = await this.prisma.drugBatch.findFirst({
+          where: { drugId: id },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { id: true, drugId: true, costPrice: true },
+        });
+        return latestBatch;
+      }),
+    );
+
+    const latestBatchByDrug = new Map(
+      latestBatches
+        .filter((batch): batch is NonNullable<typeof batch> => batch !== null)
+        .map((batch) => [batch.drugId, batch]),
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const batch of latestBatchByDrug.values()) {
+        await this.drugPriceService.syncWardPricesFromCost(
+          tx,
+          batch.drugId,
+          batch.costPrice,
+        );
+      }
+    });
+
+    const latestBatch = latestBatchByDrug.get(drugId);
     if (!latestBatch) {
       return {
         updated: false,
@@ -121,19 +151,10 @@ export class PharmacyBatchService {
       };
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await this.drugPriceService.syncWardPricesFromCost(
-        tx,
-        drugId,
-        latestBatch.costPrice,
-      );
-    });
-
-    const wardPricing =
-      await this.drugPriceService.previewWardPricingFromCost(
-        drugId,
-        latestBatch.costPrice.toString(),
-      );
+    const wardPricing = await this.drugPriceService.previewWardPricingFromCost(
+      drugId,
+      latestBatch.costPrice.toString(),
+    );
 
     return {
       updated: true,

@@ -157,7 +157,10 @@ export class SyncWardPricingFromLatestBatchDto {
 }
 
 export class CorrectBatchQuantityDto {
-  @ApiProperty({ example: 100, description: 'Corrected total quantity received' })
+  @ApiProperty({
+    example: 100,
+    description: 'Corrected total quantity received',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)

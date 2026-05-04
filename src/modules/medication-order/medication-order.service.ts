@@ -15,12 +15,16 @@ export class MedicationOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) { }
+  ) {}
 
   async create(dto: CreateMedicationOrderDto) {
     await this.validateEncounter(dto.encounterId);
     if (dto.admissionId) {
-      await this.validateAdmission(dto.admissionId, dto.encounterId, dto.patientId);
+      await this.validateAdmission(
+        dto.admissionId,
+        dto.encounterId,
+        dto.patientId,
+      );
     }
     const drug = await this.validateDrug(dto.drugId);
     const patient = await this.validatePatient(dto.patientId);
@@ -36,7 +40,9 @@ export class MedicationOrderService {
         duration: dto.duration ?? undefined,
         route: dto.route ?? undefined,
         specialInstructions: dto.specialInstructions ?? undefined,
-        startDateTime: dto.startDateTime ? new Date(dto.startDateTime) : undefined,
+        startDateTime: dto.startDateTime
+          ? new Date(dto.startDateTime)
+          : undefined,
         endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : undefined,
         notes: dto.notes ?? undefined,
         administrationStatus: dto.administrationStatus ?? undefined,
@@ -122,9 +128,9 @@ export class MedicationOrderService {
       data: {
         ...(dto.drugId !== undefined &&
           drugName !== undefined && {
-          drugId: dto.drugId,
-          drugName,
-        }),
+            drugId: dto.drugId,
+            drugName,
+          }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.dose !== undefined && { dose: dto.dose }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),
@@ -178,10 +184,16 @@ export class MedicationOrderService {
   ) {
     const admission = await this.prisma.admission.findUnique({
       where: { id: admissionId },
-      select: { id: true, patientId: true, encounter: { select: { id: true } } },
+      select: {
+        id: true,
+        patientId: true,
+        encounter: { select: { id: true } },
+      },
     });
     if (!admission) {
-      throw new NotFoundException(`Admission with id "${admissionId}" not found.`);
+      throw new NotFoundException(
+        `Admission with id "${admissionId}" not found.`,
+      );
     }
     if (admission.patientId !== patientId) {
       throw new BadRequestException(

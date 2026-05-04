@@ -18,7 +18,10 @@ export class HmoServicePriceItemDto {
   @IsUUID()
   serviceId!: string;
 
-  @ApiProperty({ description: 'Full / list price for this service under the HMO', example: 5000 })
+  @ApiProperty({
+    description: 'Full / list price for this service under the HMO',
+    example: 5000,
+  })
   @IsNumber()
   @Min(0)
   fullCost!: number;
@@ -28,7 +31,10 @@ export class HmoServicePriceItemDto {
   @Min(0)
   hmoPays!: number;
 
-  @ApiProperty({ description: 'Amount paid by the patient (co-pay)', example: 1000 })
+  @ApiProperty({
+    description: 'Amount paid by the patient (co-pay)',
+    example: 1000,
+  })
   @IsNumber()
   @Min(0)
   patientPays!: number;
@@ -37,12 +43,17 @@ export class HmoServicePriceItemDto {
 // ─── Create HMO ───────────────────────────────────────────────────────────────
 
 export class CreateHmoDto {
-  @ApiProperty({ description: 'HMO / insurer display name', example: 'NHIS Standard Plan' })
+  @ApiProperty({
+    description: 'HMO / insurer display name',
+    example: 'NHIS Standard Plan',
+  })
   @IsString()
   @IsNotEmpty()
   name!: string;
 
-  @ApiPropertyOptional({ description: 'Optional short code or policy family code' })
+  @ApiPropertyOptional({
+    description: 'Optional short code or policy family code',
+  })
   @IsString()
   @IsOptional()
   code?: string;
@@ -118,7 +129,9 @@ export class QueryHmoDto {
 // ─── Patients under an HMO ────────────────────────────────────────────────────
 
 export class QueryHmoPatientsDto {
-  @ApiPropertyOptional({ description: 'Search surname, first name, phone, patientId' })
+  @ApiPropertyOptional({
+    description: 'Search surname, first name, phone, patientId',
+  })
   @IsString()
   @IsOptional()
   search?: string;

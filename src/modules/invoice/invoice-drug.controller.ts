@@ -35,7 +35,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 @ApiTags('Invoice Drugs')
 @Controller('invoice-drugs')
 export class InvoiceDrugController {
-  constructor(private readonly invoiceDrugService: InvoiceDrugService) { }
+  constructor(private readonly invoiceDrugService: InvoiceDrugService) {}
 
   @Get()
   @ApiOperation({
@@ -77,7 +77,9 @@ export class InvoiceDrugController {
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiOkResponse({ description: 'Invoice detail with computed totalAmount' })
-  @ApiNotFoundResponse({ description: 'Invoice not found or does not contain drug items' })
+  @ApiNotFoundResponse({
+    description: 'Invoice not found or does not contain drug items',
+  })
   findOne(@Param('id') id: string) {
     return this.invoiceDrugService.findOneDrugInvoice(id);
   }
@@ -90,7 +92,9 @@ export class InvoiceDrugController {
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiOkResponse({ description: 'Invoice updated successfully' })
-  @ApiNotFoundResponse({ description: 'Invoice not found or does not contain drug items' })
+  @ApiNotFoundResponse({
+    description: 'Invoice not found or does not contain drug items',
+  })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateInvoiceDto,
@@ -108,7 +112,9 @@ export class InvoiceDrugController {
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiNoContentResponse({ description: 'Invoice deleted' })
-  @ApiNotFoundResponse({ description: 'Invoice not found or does not contain drug items' })
+  @ApiNotFoundResponse({
+    description: 'Invoice not found or does not contain drug items',
+  })
   @ApiBadRequestResponse({ description: 'Invoice still has line items' })
   remove(@Param('id') id: string) {
     return this.invoiceDrugService.removeDrugInvoice(id);
@@ -123,7 +129,10 @@ export class InvoiceDrugController {
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID' })
   @ApiOkResponse({ description: 'Line item updated' })
-  @ApiNotFoundResponse({ description: 'Invoice or InvoiceItem not found, or invoice does not contain drug items' })
+  @ApiNotFoundResponse({
+    description:
+      'Invoice or InvoiceItem not found, or invoice does not contain drug items',
+  })
   updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
@@ -139,7 +148,10 @@ export class InvoiceDrugController {
       'Replaces the drug on an existing drug line in a single transaction by updating the same line item (same id), then recalculating invoice totals. If the invoice has an `encounterId`, matching medication orders for that encounter and the previous drug are updated to the new drug. Does not delete the line, so partial line payments and usage segments stay attached. Blocked for settled lines and paid invoices.',
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
-  @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID (must be a drug line)' })
+  @ApiParam({
+    name: 'itemId',
+    description: 'InvoiceItem UUID (must be a drug line)',
+  })
   @ApiOkResponse({ description: 'Line item updated with the new drug' })
   @ApiNotFoundResponse({
     description: 'Invoice or drug line not found, or invoice has no drug items',
@@ -194,12 +206,16 @@ export class InvoiceDrugController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Remove a line item from a drug invoice',
-    description: 'Permanently removes a line item from an invoice that contains drug items.',
+    description:
+      'Permanently removes a line item from an invoice that contains drug items.',
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID' })
   @ApiNoContentResponse({ description: 'Line item removed' })
-  @ApiNotFoundResponse({ description: 'Invoice or InvoiceItem not found, or invoice does not contain drug items' })
+  @ApiNotFoundResponse({
+    description:
+      'Invoice or InvoiceItem not found, or invoice does not contain drug items',
+  })
   removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
     return this.invoiceDrugService.removeDrugInvoiceItem(id, itemId);
   }

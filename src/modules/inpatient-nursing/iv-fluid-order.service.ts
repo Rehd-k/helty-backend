@@ -65,7 +65,9 @@ export class IvFluidOrderService {
       where: { id: orderId, admissionId },
     });
     if (!row) {
-      throw new NotFoundException('IV fluid order not found for this admission.');
+      throw new NotFoundException(
+        'IV fluid order not found for this admission.',
+      );
     }
     return this.prisma.iVFluidOrder.update({
       where: { id: orderId },

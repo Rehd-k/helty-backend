@@ -77,7 +77,7 @@ export class CreateInvoiceDto {
   vitalsId?: string;
 }
 
-export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) { }
+export class UpdateInvoiceDto extends PartialType(CreateInvoiceDto) {}
 
 /** Body for POST /invoices/:id/split */
 export class SplitInvoiceDto {
@@ -154,14 +154,16 @@ export class ListInvoicesByCategoryQueryDto extends DateRangeSkipTakeDto {
   invoiceId?: string;
 
   @ApiPropertyOptional({
-    description: 'Same as `invoiceId` (alternate query key used by some clients)',
+    description:
+      'Same as `invoiceId` (alternate query key used by some clients)',
   })
   @IsOptional()
   @IsString()
   invoiceID?: string;
 
   @ApiPropertyOptional({
-    description: 'Filter by patient first or last name (substring, case-insensitive)',
+    description:
+      'Filter by patient first or last name (substring, case-insensitive)',
   })
   @IsOptional()
   @IsString()

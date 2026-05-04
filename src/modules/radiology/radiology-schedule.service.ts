@@ -28,7 +28,9 @@ export class RadiologyScheduleService {
       );
     }
     if (orderItem.status !== RadiologyRequestStatus.PENDING) {
-      throw new BadRequestException('Only PENDING order items can be scheduled.');
+      throw new BadRequestException(
+        'Only PENDING order items can be scheduled.',
+      );
     }
     if (dto.radiographerId) {
       const staff = await this.prisma.staff.findUnique({

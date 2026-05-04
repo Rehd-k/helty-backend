@@ -33,7 +33,9 @@ export class IvFluidOrderController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE')
-  @ApiOperation({ summary: 'Create IV fluid order (ordering clinician from JWT)' })
+  @ApiOperation({
+    summary: 'Create IV fluid order (ordering clinician from JWT)',
+  })
   create(
     @Param('admissionId') admissionId: string,
     @Body() dto: CreateIvFluidOrderDto,

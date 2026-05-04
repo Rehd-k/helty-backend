@@ -98,7 +98,9 @@ export class LabResultService {
       select: { orderId: true },
     });
     if (!link) {
-      throw new NotFoundException(`Lab order item "${dto.orderItemId}" not found.`);
+      throw new NotFoundException(
+        `Lab order item "${dto.orderItemId}" not found.`,
+      );
     }
 
     const out = await this.prisma.$transaction(async (tx) => {
@@ -151,7 +153,9 @@ export class LabResultService {
       select: { orderId: true },
     });
     if (!link) {
-      throw new NotFoundException(`Lab order item "${dto.orderItemId}" not found.`);
+      throw new NotFoundException(
+        `Lab order item "${dto.orderItemId}" not found.`,
+      );
     }
 
     const created = await this.prisma.$transaction(async (tx) => {

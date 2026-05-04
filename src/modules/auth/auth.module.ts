@@ -7,6 +7,8 @@ import { AuthController } from './auth.controller';
 import { LocalStrategy } from './local.strategy';
 import { JwtStrategy } from './jwt.strategy';
 import { StaffModule } from '../staff/staff.module';
+import { PrismaModule } from '../../prisma/prisma.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { StaffModule } from '../staff/staff.module';
       }),
     }),
     StaffModule,
+    PrismaModule,
+    MailModule,
   ],
   providers: [AuthService, LocalStrategy, JwtStrategy],
   controllers: [AuthController],

@@ -117,7 +117,7 @@ export class PharmacyDrugPriceService {
       maxPrice,
       search,
       skip = 0,
-      limit = 20, 
+      limit = 20,
       sortOrder,
     } = query;
     const take = Math.min(Math.max(1, limit), 100);

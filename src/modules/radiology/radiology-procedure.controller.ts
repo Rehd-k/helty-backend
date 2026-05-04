@@ -29,7 +29,9 @@ export class RadiologyProcedureController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Record imaging procedure (scan start) for an order item' })
+  @ApiOperation({
+    summary: 'Record imaging procedure (scan start) for an order item',
+  })
   create(
     @Param('orderItemId') orderItemId: string,
     @Body() dto: CreateRadiologyProcedureDto,

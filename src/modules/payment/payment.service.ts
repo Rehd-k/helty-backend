@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
@@ -185,9 +182,7 @@ export class PaymentService {
           select: { id: true },
         });
         if (!staff) {
-          throw new NotFoundException(
-            `Staff "${dto.receivedById}" not found.`,
-          );
+          throw new NotFoundException(`Staff "${dto.receivedById}" not found.`);
         }
         data.receivedBy = { connect: { id: dto.receivedById } };
       } else {

@@ -85,7 +85,9 @@ export class InvoicePaymentsController {
       'Reverses line allocations, invoice amountPaid, and wallet debit when applicable; removes the payment and writes an audit log. Optional `reason` query parameter.',
   })
   @ApiParam({ name: 'id', description: 'InvoicePayment UUID' })
-  @ApiOkResponse({ description: 'Payment voided; returns updated invoice snapshot' })
+  @ApiOkResponse({
+    description: 'Payment voided; returns updated invoice snapshot',
+  })
   removeInvoicePayment(
     @Param('id') id: string,
     @Query() query: VoidInvoicePaymentQueryDto,

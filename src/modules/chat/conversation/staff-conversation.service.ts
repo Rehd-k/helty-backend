@@ -173,11 +173,7 @@ export class StaffConversationService {
     });
   }
 
-  async createGroup(
-    creatorId: string,
-    name: string,
-    memberStaffIds: string[],
-  ) {
+  async createGroup(creatorId: string, name: string, memberStaffIds: string[]) {
     const unique = [...new Set([creatorId, ...memberStaffIds])];
     const count = await this.prisma.staff.count({
       where: { id: { in: unique } },
@@ -217,17 +213,15 @@ export class StaffConversationService {
     });
   }
 
-  async addMember(
-    conversationId: string,
-    actorId: string,
-    newStaffId: string,
-  ) {
+  async addMember(conversationId: string, actorId: string, newStaffId: string) {
     const conv = await this.prisma.staffConversation.findUnique({
       where: { id: conversationId },
     });
     if (!conv) throw new NotFoundException('Conversation not found');
     if (conv.type !== StaffConversationType.GROUP) {
-      throw new BadRequestException('Only group conversations support add member');
+      throw new BadRequestException(
+        'Only group conversations support add member',
+      );
     }
     await this.assertAdminOrSuper(conversationId, actorId);
 
@@ -322,11 +316,7 @@ export class StaffConversationService {
     return this.getOne(conversationId, actorId);
   }
 
-  async renameGroup(
-    conversationId: string,
-    actorId: string,
-    name: string,
-  ) {
+  async renameGroup(conversationId: string, actorId: string, name: string) {
     const conv = await this.prisma.staffConversation.findUnique({
       where: { id: conversationId },
     });

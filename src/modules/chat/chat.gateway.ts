@@ -137,9 +137,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.emit('online_users', onlineUsers);
   }
 
-  private staffOnly(
-    client: AuthenticatedSocket,
-  ): OnlineUserInfo | null {
+  private staffOnly(client: AuthenticatedSocket): OnlineUserInfo | null {
     const user = client.data.user;
     if (!user || user.id.startsWith('guest-')) {
       client.emit('chat_error', { message: 'Staff authentication required' });
@@ -169,7 +167,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!user) return;
     const dto = await this.validateDto(WsJoinConversationDto, body);
     if (!dto) {
-      client.emit('chat_error', { message: 'Invalid joinConversation payload' });
+      client.emit('chat_error', {
+        message: 'Invalid joinConversation payload',
+      });
       return;
     }
     try {
@@ -207,17 +207,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
     try {
-      const msg = await this.conversationMessages.send(dto.conversationId, user.id, {
-        content: dto.content,
-        type: dto.type,
-        fileUrl: dto.fileUrl,
-      });
+      const msg = await this.conversationMessages.send(
+        dto.conversationId,
+        user.id,
+        {
+          content: dto.content,
+          type: dto.type,
+          fileUrl: dto.fileUrl,
+        },
+      );
       const payload = {
         ...msg,
         createdAt: msg.createdAt.toISOString(),
       };
       client.emit('message_sent', payload);
-      this.server.to(convRoom(dto.conversationId)).emit('receiveMessage', payload);
+      this.server
+        .to(convRoom(dto.conversationId))
+        .emit('receiveMessage', payload);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Send failed';
       client.emit('chat_error', { message: msg });
@@ -325,7 +331,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!user) return;
     const dto = await this.validateDto(WsSendTicketMessageDto, body);
     if (!dto) {
-      client.emit('chat_error', { message: 'Invalid sendTicketMessage payload' });
+      client.emit('chat_error', {
+        message: 'Invalid sendTicketMessage payload',
+      });
       return;
     }
     try {

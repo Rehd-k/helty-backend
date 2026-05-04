@@ -49,7 +49,7 @@ function generateInvoiceHumanId(): string {
 
 @Injectable()
 export class InvoiceService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
@@ -92,17 +92,16 @@ export class InvoiceService {
       },
     });
     if (!vitals) {
-      throw new NotFoundException(`Patient vitals "${params.vitalsId}" not found.`);
+      throw new NotFoundException(
+        `Patient vitals "${params.vitalsId}" not found.`,
+      );
     }
     if (vitals.patientId && vitals.patientId !== params.patientId) {
       throw new BadRequestException(
         'Selected vitals does not belong to the invoice patient.',
       );
     }
-    if (
-      vitals.invoice &&
-      vitals.invoice.id !== params.invoiceIdToIgnore
-    ) {
+    if (vitals.invoice && vitals.invoice.id !== params.invoiceIdToIgnore) {
       throw new BadRequestException(
         'This vitals record is already linked to another invoice.',
       );
@@ -129,7 +128,9 @@ export class InvoiceService {
     staffId: string | undefined,
   ): Promise<{ createdById?: string }> {
     if (!staffId) return {};
-    const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+    });
     if (!staff) {
       throw new NotFoundException(`Staff "${staffId}" not found.`);
     }
@@ -242,7 +243,7 @@ export class InvoiceService {
       if (
         !categoryName ||
         categoryName.trim().toLowerCase() !==
-        RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
       ) {
         throw invoiceLinkException(
           'INVOICE_ITEM_CATEGORY_MISMATCH',
@@ -391,7 +392,7 @@ export class InvoiceService {
       if (
         !name ||
         name.trim().toLowerCase() !==
-        RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
       ) {
         throw invoiceLinkException(
           'INVOICE_ITEM_CATEGORY_MISMATCH',
@@ -400,8 +401,7 @@ export class InvoiceService {
       }
     } else {
       const okCat = LAB_BILLING_CATEGORIES.some(
-        (c) =>
-          !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
+        (c) => !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
       );
       if (!okCat) {
         throw invoiceLinkException(
@@ -653,10 +653,7 @@ export class InvoiceService {
   /** Optional `?status=` query (case-insensitive); invalid values throw. */
   private parseInvoiceListStatus(value: unknown): InvoiceStatus | undefined {
     if (value === undefined || value === null || value === '') return undefined;
-    const normalized = String(value)
-      .trim()
-      .toUpperCase()
-      .replace(/-/g, '_');
+    const normalized = String(value).trim().toUpperCase().replace(/-/g, '_');
     const allowed = Object.values(InvoiceStatus) as string[];
     if (!allowed.includes(normalized)) {
       throw new BadRequestException(
@@ -884,7 +881,6 @@ export class InvoiceService {
             firstName: true,
             surname: true,
             phoneNumber: true,
-
           },
         },
         createdBy: {
@@ -1044,7 +1040,9 @@ export class InvoiceService {
   async splitInvoice(sourceInvoiceId: string, dto: SplitInvoiceDto, req: any) {
     const uniqueItemIds = [...new Set(dto.invoiceItemIds)];
     if (uniqueItemIds.length === 0) {
-      throw new BadRequestException('At least one invoice line id is required.');
+      throw new BadRequestException(
+        'At least one invoice line id is required.',
+      );
     }
 
     const { newInvoiceId } = await this.prisma.$transaction(async (tx) => {
@@ -1165,11 +1163,11 @@ export class InvoiceService {
       const drug = await this.prisma.drug.findUnique({
         where: { id: dto.drugId },
       });
-      if (!drug)
-        throw new NotFoundException(`Drug ${dto.drugId} not found`);
+      if (!drug) throw new NotFoundException(`Drug ${dto.drugId} not found`);
     }
 
-    const creator = await this.resolveOptionalInvoiceItemCreator(createdByStaffId);
+    const creator =
+      await this.resolveOptionalInvoiceItemCreator(createdByStaffId);
 
     const item = await this.prisma.invoiceItem.create({
       data: {
@@ -1474,14 +1472,11 @@ export class InvoiceService {
     }
 
     const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
-    if (!invoice)
-      throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
 
     const paymentAmount = this.asDecimal(dto.amount);
     if (paymentAmount.lte(0)) {
-      throw new BadRequestException(
-        'Payment amount must be greater than zero',
-      );
+      throw new BadRequestException('Payment amount must be greater than zero');
     }
 
     const maxPayable = this.asDecimal(invoice.totalAmount).sub(
@@ -1497,7 +1492,7 @@ export class InvoiceService {
     const method =
       dto.source === InvoicePaymentSource.WALLET
         ? InvoicePaymentMethod.WALLET
-        : dto.method ?? this.sourceToDefaultMethod(dto.source);
+        : (dto.method ?? this.sourceToDefaultMethod(dto.source));
 
     let walletTransactionId: string | undefined;
     if (dto.source === InvoicePaymentSource.WALLET) {
@@ -1539,9 +1534,9 @@ export class InvoiceService {
         notes: dto.notes,
         ...(createdByStaffId
           ? {
-            receivedById: createdByStaffId,
-            createdById: createdByStaffId,
-          }
+              receivedById: createdByStaffId,
+              createdById: createdByStaffId,
+            }
           : {}),
         ...(bankId ? { bankId } : {}),
         walletTransactionId,
@@ -1557,11 +1552,7 @@ export class InvoiceService {
     const updated = await this.recalculateInvoiceTotals(invoiceId, tx);
     const now = new Date();
     if (updated.status === InvoiceStatus.PAID) {
-      await this.reconcileLinePaymentsWhenInvoiceFullyPaid(
-        tx,
-        invoiceId,
-        now,
-      );
+      await this.reconcileLinePaymentsWhenInvoiceFullyPaid(tx, invoiceId, now);
     }
     await this.logInvoiceAudit(tx, {
       invoiceId,
@@ -1584,7 +1575,6 @@ export class InvoiceService {
     dto: RecordInvoicePaymentDto,
     createdByStaffId?: string,
   ) {
-
     try {
       await this.recalculateInvoiceTotals(invoiceId);
       return this.prisma.$transaction((tx) =>
@@ -1921,13 +1911,22 @@ export class InvoiceService {
     });
   }
 
-  async listAllPayments(query: DateRangeSkipTakeDto & {
-    source?: InvoicePaymentSource;
-    paymentMethod?: InvoicePaymentMethod;
-    processedById?: string;
-  }) {
-    const { skip = 0, take = 20, fromDate, toDate, source, paymentMethod, processedById } =
-      query;
+  async listAllPayments(
+    query: DateRangeSkipTakeDto & {
+      source?: InvoicePaymentSource;
+      paymentMethod?: InvoicePaymentMethod;
+      processedById?: string;
+    },
+  ) {
+    const {
+      skip = 0,
+      take = 20,
+      fromDate,
+      toDate,
+      source,
+      paymentMethod,
+      processedById,
+    } = query;
     const { from, to } = parseDateRange(fromDate, toDate);
 
     const where: Prisma.InvoicePaymentWhereInput = {
@@ -1969,16 +1968,28 @@ export class InvoiceService {
                   drug: {
                     select: { id: true, genericName: true, brandName: true },
                   },
-                  createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+                  createdBy: {
+                    select: InvoiceService.invoiceItemCreatedBySelect,
+                  },
                 },
               },
             },
           },
           receivedBy: {
-            select: { id: true, firstName: true, lastName: true, staffId: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffId: true,
+            },
           },
           createdBy: {
-            select: { id: true, firstName: true, lastName: true, staffId: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffId: true,
+            },
           },
           bank: { select: { id: true, name: true, accountNumber: true } },
           walletTransaction: true,
@@ -1999,9 +2010,9 @@ export class InvoiceService {
 
     const staffRows = staffIds.length
       ? await this.prisma.staff.findMany({
-        where: { id: { in: staffIds } },
-        select: { id: true, staffId: true, firstName: true, lastName: true },
-      })
+          where: { id: { in: staffIds } },
+          select: { id: true, staffId: true, firstName: true, lastName: true },
+        })
       : [];
     const staffById = new Map(staffRows.map((s) => [s.id, s]));
 
@@ -2039,9 +2050,7 @@ export class InvoiceService {
       patientName,
     } = query;
     const normalized = [
-      ...new Set(
-        category.map((c) => c.trim()).filter((c) => c.length > 0),
-      ),
+      ...new Set(category.map((c) => c.trim()).filter((c) => c.length > 0)),
     ];
     if (!normalized.length) {
       throw new BadRequestException('At least one category is required');
@@ -2050,9 +2059,9 @@ export class InvoiceService {
     const dateClause =
       fromDate || toDate
         ? (() => {
-          const { from, to } = parseDateRange(fromDate, toDate);
-          return { updatedAt: { gte: from, lte: to } as const };
-        })()
+            const { from, to } = parseDateRange(fromDate, toDate);
+            return { updatedAt: { gte: from, lte: to } as const };
+          })()
         : {};
 
     const itemMatchWhere: Prisma.InvoiceItemWhereInput = {
@@ -2169,23 +2178,25 @@ export class InvoiceService {
             const cb = it.createdBy;
             const requestingDoctor =
               cb?.accountType === 'PHYSICIAN'
-                ? [cb.firstName, cb.lastName].filter(Boolean).join(' ').trim() ||
-                null
+                ? [cb.firstName, cb.lastName]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim() || null
                 : null;
             return {
               id: it.id,
               serviceId: it.serviceId,
               service: it.service
                 ? {
-                  id: it.service.id,
-                  name: it.service.name,
-                  category: it.service.category
-                    ? {
-                      id: it.service.category.id,
-                      name: it.service.category.name,
-                    }
-                    : null,
-                }
+                    id: it.service.id,
+                    name: it.service.name,
+                    category: it.service.category
+                      ? {
+                          id: it.service.category.id,
+                          name: it.service.category.name,
+                        }
+                      : null,
+                  }
                 : null,
               quantity: it.quantity,
               unitPrice: it.unitPrice.toFixed(2),
@@ -2194,10 +2205,10 @@ export class InvoiceService {
               requestingDoctor,
               createdBy: cb
                 ? {
-                  id: cb.id,
-                  firstName: cb.firstName,
-                  lastName: cb.lastName,
-                }
+                    id: cb.id,
+                    firstName: cb.firstName,
+                    lastName: cb.lastName,
+                  }
                 : null,
             };
           }),
@@ -2223,9 +2234,9 @@ export class InvoiceService {
     const dateClause =
       fromDate || toDate
         ? (() => {
-          const { from, to } = parseDateRange(fromDate, toDate);
-          return { updatedAt: { gte: from, lte: to } as const };
-        })()
+            const { from, to } = parseDateRange(fromDate, toDate);
+            return { updatedAt: { gte: from, lte: to } as const };
+          })()
         : {};
 
     const where: Prisma.InvoiceWhereInput = {
@@ -2283,27 +2294,20 @@ export class InvoiceService {
         age: this.patientAgeYears(p.dob),
         date: inv.updatedAt.toISOString(),
         services: inv.invoiceItems.map((it) => {
-          const drugLabel =
-            it.drug?.genericName ??
-            it.drug?.brandName ??
-            null;
+          const drugLabel = it.drug?.genericName ?? it.drug?.brandName ?? null;
           return {
             invoiceItemId: it.id,
-            name:
-              it.service?.name ??
-              drugLabel ??
-              it.customDescription ??
-              null,
+            name: it.service?.name ?? drugLabel ?? it.customDescription ?? null,
             category: it.service?.category?.name ?? null,
             quantity: it.quantity,
             unitPrice: it.unitPrice.toFixed(2),
             amountPaid: it.amountPaid.toFixed(2),
             createdBy: it.createdBy
               ? {
-                id: it.createdBy.id,
-                firstName: it.createdBy.firstName,
-                lastName: it.createdBy.lastName,
-              }
+                  id: it.createdBy.id,
+                  firstName: it.createdBy.firstName,
+                  lastName: it.createdBy.lastName,
+                }
               : null,
           };
         }),
@@ -2338,7 +2342,9 @@ export class InvoiceService {
     const staffId = dto.staffId ?? authStaffId;
 
     if (staffId) {
-      const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+      const staff = await this.prisma.staff.findUnique({
+        where: { id: staffId },
+      });
       if (!staff) throw new NotFoundException(`Staff "${staffId}" not found.`);
     }
 
@@ -2372,7 +2378,9 @@ export class InvoiceService {
 
     const staffId = dto.staffId ?? authStaffId;
     if (staffId) {
-      const staff = await this.prisma.staff.findUnique({ where: { id: staffId } });
+      const staff = await this.prisma.staff.findUnique({
+        where: { id: staffId },
+      });
       if (!staff) throw new NotFoundException(`Staff "${staffId}" not found.`);
     }
 
