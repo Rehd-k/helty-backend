@@ -49,7 +49,7 @@ function generateInvoiceHumanId(): string {
 
 @Injectable()
 export class InvoiceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
@@ -243,7 +243,7 @@ export class InvoiceService {
       if (
         !categoryName ||
         categoryName.trim().toLowerCase() !==
-          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+        RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
       ) {
         throw invoiceLinkException(
           'INVOICE_ITEM_CATEGORY_MISMATCH',
@@ -392,7 +392,7 @@ export class InvoiceService {
       if (
         !name ||
         name.trim().toLowerCase() !==
-          RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
+        RADIOLOGY_BILLING_CATEGORY.trim().toLowerCase()
       ) {
         throw invoiceLinkException(
           'INVOICE_ITEM_CATEGORY_MISMATCH',
@@ -1534,9 +1534,9 @@ export class InvoiceService {
         notes: dto.notes,
         ...(createdByStaffId
           ? {
-              receivedById: createdByStaffId,
-              createdById: createdByStaffId,
-            }
+            receivedById: createdByStaffId,
+            createdById: createdByStaffId,
+          }
           : {}),
         ...(bankId ? { bankId } : {}),
         walletTransactionId,
@@ -1783,7 +1783,7 @@ export class InvoiceService {
 
   async listPayments(invoiceId: string) {
     await this.findOne(invoiceId);
-    return this.prisma.invoicePayment.findMany({
+    const payments = await this.prisma.invoicePayment.findMany({
       where: { invoiceId },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -1793,6 +1793,8 @@ export class InvoiceService {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
+    console.log(payments);
+    return payments;
   }
 
   /**
@@ -2010,9 +2012,9 @@ export class InvoiceService {
 
     const staffRows = staffIds.length
       ? await this.prisma.staff.findMany({
-          where: { id: { in: staffIds } },
-          select: { id: true, staffId: true, firstName: true, lastName: true },
-        })
+        where: { id: { in: staffIds } },
+        select: { id: true, staffId: true, firstName: true, lastName: true },
+      })
       : [];
     const staffById = new Map(staffRows.map((s) => [s.id, s]));
 
@@ -2059,9 +2061,9 @@ export class InvoiceService {
     const dateClause =
       fromDate || toDate
         ? (() => {
-            const { from, to } = parseDateRange(fromDate, toDate);
-            return { updatedAt: { gte: from, lte: to } as const };
-          })()
+          const { from, to } = parseDateRange(fromDate, toDate);
+          return { updatedAt: { gte: from, lte: to } as const };
+        })()
         : {};
 
     const itemMatchWhere: Prisma.InvoiceItemWhereInput = {
@@ -2179,24 +2181,24 @@ export class InvoiceService {
             const requestingDoctor =
               cb?.accountType === 'PHYSICIAN'
                 ? [cb.firstName, cb.lastName]
-                    .filter(Boolean)
-                    .join(' ')
-                    .trim() || null
+                  .filter(Boolean)
+                  .join(' ')
+                  .trim() || null
                 : null;
             return {
               id: it.id,
               serviceId: it.serviceId,
               service: it.service
                 ? {
-                    id: it.service.id,
-                    name: it.service.name,
-                    category: it.service.category
-                      ? {
-                          id: it.service.category.id,
-                          name: it.service.category.name,
-                        }
-                      : null,
-                  }
+                  id: it.service.id,
+                  name: it.service.name,
+                  category: it.service.category
+                    ? {
+                      id: it.service.category.id,
+                      name: it.service.category.name,
+                    }
+                    : null,
+                }
                 : null,
               quantity: it.quantity,
               unitPrice: it.unitPrice.toFixed(2),
@@ -2205,10 +2207,10 @@ export class InvoiceService {
               requestingDoctor,
               createdBy: cb
                 ? {
-                    id: cb.id,
-                    firstName: cb.firstName,
-                    lastName: cb.lastName,
-                  }
+                  id: cb.id,
+                  firstName: cb.firstName,
+                  lastName: cb.lastName,
+                }
                 : null,
             };
           }),
@@ -2234,9 +2236,9 @@ export class InvoiceService {
     const dateClause =
       fromDate || toDate
         ? (() => {
-            const { from, to } = parseDateRange(fromDate, toDate);
-            return { updatedAt: { gte: from, lte: to } as const };
-          })()
+          const { from, to } = parseDateRange(fromDate, toDate);
+          return { updatedAt: { gte: from, lte: to } as const };
+        })()
         : {};
 
     const where: Prisma.InvoiceWhereInput = {
@@ -2304,10 +2306,10 @@ export class InvoiceService {
             amountPaid: it.amountPaid.toFixed(2),
             createdBy: it.createdBy
               ? {
-                  id: it.createdBy.id,
-                  firstName: it.createdBy.firstName,
-                  lastName: it.createdBy.lastName,
-                }
+                id: it.createdBy.id,
+                firstName: it.createdBy.firstName,
+                lastName: it.createdBy.lastName,
+              }
               : null,
           };
         }),
@@ -2673,3 +2675,6 @@ export class InvoiceService {
     return item;
   }
 }
+
+
+
