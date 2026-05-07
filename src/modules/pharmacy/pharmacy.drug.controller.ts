@@ -40,7 +40,6 @@ export class PharmacyDrugController {
     const invalidFields = fields.filter(
       (field) => !allowedFields.includes(field),
     );
-    console.log('allowedFields', invalidFields);
     if (invalidFields.length > 0) {
       throw new BadRequestException(
         `Invalid select field(s): ${invalidFields.join(', ')}.`,

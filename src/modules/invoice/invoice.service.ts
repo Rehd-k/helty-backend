@@ -519,6 +519,86 @@ export class InvoiceService {
     return unitPrice.mul(item.quantity);
   }
 
+  private async invoiceCoveredAmount(
+    invoiceId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    const coverageModel = (tx as unknown as { invoiceCoverage?: any }).invoiceCoverage;
+    if (!coverageModel?.aggregate) {
+      return new Prisma.Decimal(0);
+    }
+    const aggregated = await tx.invoiceCoverage.aggregate({
+      where: {
+        invoiceId,
+        status: { not: 'REVERSED' },
+      },
+      _sum: { amount: true },
+    });
+    return this.asDecimal(aggregated._sum.amount ?? 0);
+  }
+
+  private computeLineCoverageFromRows(
+    items: Array<{
+      id: string;
+      unitPrice: Prisma.Decimal;
+      quantity: number;
+      isRecurringDaily: boolean;
+      usageSegments: Array<{ startAt: Date; endAt: Date | null }>;
+    }>,
+    coverages: Array<{
+      scope: 'INVOICE' | 'ITEM';
+      amount: Prisma.Decimal;
+      invoiceItemId: string | null;
+    }>,
+    now: Date,
+  ): Map<string, Prisma.Decimal> {
+    const lineTotals = new Map<string, Prisma.Decimal>();
+    let invoiceGross = new Prisma.Decimal(0);
+    for (const item of items) {
+      const total = this.invoiceLineTotal(item, now);
+      lineTotals.set(item.id, total);
+      invoiceGross = invoiceGross.add(total);
+    }
+
+    const perLineCovered = new Map<string, Prisma.Decimal>(
+      items.map((it) => [it.id, new Prisma.Decimal(0)]),
+    );
+    let invoiceScopeCovered = new Prisma.Decimal(0);
+
+    for (const c of coverages) {
+      const amt = this.asDecimal(c.amount);
+      if (amt.lte(0)) continue;
+      if (c.scope === 'ITEM' && c.invoiceItemId && perLineCovered.has(c.invoiceItemId)) {
+        perLineCovered.set(
+          c.invoiceItemId,
+          this.asDecimal(perLineCovered.get(c.invoiceItemId)!).add(amt),
+        );
+      } else if (c.scope === 'INVOICE') {
+        invoiceScopeCovered = invoiceScopeCovered.add(amt);
+      }
+    }
+
+    if (invoiceScopeCovered.gt(0) && invoiceGross.gt(0)) {
+      for (let idx = 0; idx < items.length; idx++) {
+        const item = items[idx];
+        const lineTotal = this.asDecimal(lineTotals.get(item.id)!);
+        const proportional =
+          idx === items.length - 1
+            ? invoiceScopeCovered.sub(
+              [...items.slice(0, idx)].reduce((sum, prev) => {
+                const prevTotal = this.asDecimal(lineTotals.get(prev.id)!);
+                return sum.add(invoiceScopeCovered.mul(prevTotal).div(invoiceGross));
+              }, new Prisma.Decimal(0)),
+            )
+            : invoiceScopeCovered.mul(lineTotal).div(invoiceGross);
+        const next = this.asDecimal(perLineCovered.get(item.id)!).add(proportional);
+        perLineCovered.set(item.id, next.gt(lineTotal) ? lineTotal : next);
+      }
+    }
+
+    return perLineCovered;
+  }
+
   async recalculateInvoiceTotals(
     invoiceId: string,
     tx: Prisma.TransactionClient = this.prisma,
@@ -548,10 +628,11 @@ export class InvoiceService {
     }, new Prisma.Decimal(0));
 
     const amountPaid = this.asDecimal(invoice.amountPaid);
+    const coveredAmount = await this.invoiceCoveredAmount(invoiceId, tx);
     let status: InvoiceStatus = InvoiceStatus.PENDING;
-    if (totalAmount.gt(0) && amountPaid.gte(totalAmount)) {
+    if (totalAmount.gt(0) && amountPaid.add(coveredAmount).gte(totalAmount)) {
       status = InvoiceStatus.PAID;
-    } else if (amountPaid.gt(0)) {
+    } else if (amountPaid.gt(0) || coveredAmount.gt(0)) {
       status = InvoiceStatus.PARTIALLY_PAID;
     }
 
@@ -650,17 +731,42 @@ export class InvoiceService {
     return Boolean(value);
   }
 
-  /** Optional `?status=` query (case-insensitive); invalid values throw. */
-  private parseInvoiceListStatus(value: unknown): InvoiceStatus | undefined {
+  /**
+   * Optional `?status=` query (case-insensitive).
+   * Supports:
+   * - single value: `PAID`
+   * - comma list: `PENDING,PARTIALLY_PAID`
+   * - bracket list string: `['PENDING','PARTIALLY_PAID']`
+   */
+  private parseInvoiceListStatus(value: unknown): InvoiceStatus[] | undefined {
     if (value === undefined || value === null || value === '') return undefined;
-    const normalized = String(value).trim().toUpperCase().replace(/-/g, '_');
+
     const allowed = Object.values(InvoiceStatus) as string[];
-    if (!allowed.includes(normalized)) {
+    const raw = String(value).trim();
+
+    // Remove optional wrappers like [ ... ] and quotes.
+    const unwrapped = raw.startsWith('[') && raw.endsWith(']')
+      ? raw.slice(1, -1)
+      : raw;
+
+    const parts = unwrapped
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean)
+      .map((s) => s.toUpperCase().replace(/-/g, '_'));
+
+    const normalizedList = parts.length > 0
+      ? [...new Set(parts)]
+      : [raw.toUpperCase().replace(/-/g, '_')];
+
+    const invalid = normalizedList.filter((s) => !allowed.includes(s));
+    if (invalid.length > 0) {
       throw new BadRequestException(
         `Invalid invoice status filter. Use one of: ${allowed.join(', ')}.`,
       );
     }
-    return normalized as InvoiceStatus;
+
+    return normalizedList as InvoiceStatus[];
   }
 
   private invoiceListWhere(
@@ -669,7 +775,7 @@ export class InvoiceService {
     allowInpatient: boolean,
     rawQuery?: string,
     category?: string,
-    invoiceStatus?: InvoiceStatus,
+    invoiceStatuses?: InvoiceStatus[],
     /** `Patient.id` / invoice FK — not the optional hospital `Patient.patientId` string */
     filterPatientId?: string,
   ): Prisma.InvoiceWhereInput {
@@ -677,8 +783,10 @@ export class InvoiceService {
       ? PatientStatus.ADMITED
       : PatientStatus.OUTPATIENT;
     const updatedAt: Prisma.DateTimeFilter = { gte: from, lte: to };
-    const statusWhere: Prisma.InvoiceWhereInput = invoiceStatus
-      ? { status: invoiceStatus }
+    const statusWhere: Prisma.InvoiceWhereInput = invoiceStatuses?.length
+      ? invoiceStatuses.length === 1
+        ? { status: invoiceStatuses[0] }
+        : { status: { in: invoiceStatuses } }
       : {};
     const patientPkScope: Prisma.InvoiceWhereInput = filterPatientId?.trim()
       ? { patientId: filterPatientId.trim() }
@@ -789,6 +897,8 @@ export class InvoiceService {
         patientId: true,
         firstName: true,
         surname: true,
+        hmo: true,
+        hmoId: true,
       },
     },
     createdBy: { select: { id: true, firstName: true, lastName: true } },
@@ -826,14 +936,14 @@ export class InvoiceService {
     } = params;
     const { from, to } = parseDateRange(fromDate, toDate);
     const allowInpatient = this.parseAllowInpatient(params.allowIP);
-    const invoiceStatus = this.parseInvoiceListStatus(params.status);
+    const invoiceStatuses = this.parseInvoiceListStatus(params.status);
     const where = this.invoiceListWhere(
       from,
       to,
       allowInpatient,
       query,
       category,
-      invoiceStatus,
+      invoiceStatuses,
       patientId,
     );
     const [invoices, total] = await Promise.all([
@@ -881,6 +991,7 @@ export class InvoiceService {
             firstName: true,
             surname: true,
             phoneNumber: true,
+            hmoProvider: true
           },
         },
         createdBy: {
@@ -930,6 +1041,16 @@ export class InvoiceService {
         payments: {
           orderBy: { createdAt: 'desc' },
         },
+        coverages: {
+          where: { status: { not: 'REVERSED' } },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            hmo: { select: { id: true, name: true } },
+            policy: { select: { id: true, name: true, reason: true, mode: true, value: true } },
+            payer: { select: { id: true, firstName: true, lastName: true } },
+            appliedBy: { select: { id: true, firstName: true, lastName: true, accountType: true, staffRole: true } },
+          },
+        },
         refunds: {
           orderBy: { refundedAt: 'desc' },
           include: {
@@ -944,26 +1065,42 @@ export class InvoiceService {
     });
 
     if (!invoice) throw new NotFoundException(`Invoice ${id} not found`);
-    const amountDue = this.asDecimal(invoice.totalAmount).sub(
-      invoice.amountPaid,
-    );
+    const coveredAmount = await this.invoiceCoveredAmount(id);
+    const effectivePayable = this.asDecimal(invoice.totalAmount).sub(coveredAmount);
+    const amountDue = effectivePayable.sub(invoice.amountPaid);
     const now = new Date();
+    const lineCoveredById = this.computeLineCoverageFromRows(
+      invoice.invoiceItems,
+      invoice.coverages.map((c) => ({
+        scope: c.scope,
+        amount: c.amount,
+        invoiceItemId: c.invoiceItemId ?? null,
+      })),
+      now,
+    );
     const invoiceItems = invoice.invoiceItems.map((item) => {
       const lineTotal = this.invoiceLineTotal(item, now);
+      const lineCovered = this.asDecimal(lineCoveredById.get(item.id) ?? 0);
+      const lineEffectiveDue = lineTotal.sub(lineCovered);
       const paid = this.asDecimal(item.amountPaid);
       return {
         ...item,
         lineTotal,
-        lineAmountDue: lineTotal.sub(paid),
+        lineCovered,
+        lineEffectiveDue,
+        lineAmountDue: lineEffectiveDue.sub(paid),
       };
     });
 
     // Invoice is authoritative for client-facing due amount.
     // Do not override with linked transaction financial fields.
     const netAmountDue = amountDue;
+   
     return {
       ...invoice,
       invoiceItems,
+      coveredAmount,
+      effectivePayable,
       amountDue,
       netAmountDue,
     };
@@ -1372,17 +1509,45 @@ export class InvoiceService {
     invoiceId: string,
     now: Date,
   ) {
-    const items = await tx.invoiceItem.findMany({
-      where: { invoiceId },
-      include: {
-        usageSegments: { orderBy: { startAt: 'asc' } },
-      },
-      orderBy: { id: 'asc' },
-    });
+    const [items, coverageRows] = await Promise.all([
+      tx.invoiceItem.findMany({
+        where: { invoiceId },
+        include: {
+          usageSegments: { orderBy: { startAt: 'asc' } },
+        },
+        orderBy: { id: 'asc' },
+      }),
+      (tx as any).invoiceCoverage?.findMany
+        ? tx.invoiceCoverage.findMany({
+          where: { invoiceId, status: { not: 'REVERSED' } },
+          select: { scope: true, amount: true, invoiceItemId: true },
+        })
+        : Promise.resolve([]),
+    ]);
 
     const lineTotalById = new Map<string, Prisma.Decimal>();
     for (const it of items) {
       lineTotalById.set(it.id, this.invoiceLineTotal(it, now));
+    }
+
+    const lineCoveredById = this.computeLineCoverageFromRows(
+      items,
+      coverageRows.map((c) => ({
+        scope: c.scope,
+        amount: c.amount,
+        invoiceItemId: c.invoiceItemId ?? null,
+      })),
+      now,
+    );
+    const lineRequiredById = new Map<string, Prisma.Decimal>();
+    for (const it of items) {
+      const gross = this.asDecimal(lineTotalById.get(it.id)!);
+      const covered = this.asDecimal(lineCoveredById.get(it.id) ?? 0);
+      const required = gross.sub(covered);
+      lineRequiredById.set(
+        it.id,
+        required.isNeg() ? new Prisma.Decimal(0) : required,
+      );
     }
 
     await tx.invoiceItemPayment.deleteMany({
@@ -1401,7 +1566,7 @@ export class InvoiceService {
 
     const remaining = new Map<string, Prisma.Decimal>();
     for (const it of items) {
-      remaining.set(it.id, this.asDecimal(lineTotalById.get(it.id)!));
+      remaining.set(it.id, this.asDecimal(lineRequiredById.get(it.id)!));
     }
 
     for (const p of payments) {
@@ -1439,10 +1604,9 @@ export class InvoiceService {
     }
 
     for (const it of items) {
-      const lt = lineTotalById.get(it.id)!;
       await tx.invoiceItem.update({
         where: { id: it.id },
-        data: { amountPaid: lt },
+        data: { amountPaid: this.asDecimal(lineRequiredById.get(it.id)!) },
       });
     }
   }
@@ -1479,9 +1643,9 @@ export class InvoiceService {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
 
-    const maxPayable = this.asDecimal(invoice.totalAmount).sub(
-      this.asDecimal(invoice.amountPaid),
-    );
+    const coveredAmount = await this.invoiceCoveredAmount(invoiceId, tx);
+    const effectivePayable = this.asDecimal(invoice.totalAmount).sub(coveredAmount);
+    const maxPayable = effectivePayable.sub(this.asDecimal(invoice.amountPaid));
 
     if (paymentAmount.gt(maxPayable)) {
       throw new BadRequestException(
@@ -1590,7 +1754,6 @@ export class InvoiceService {
     invoiceId: string,
     dto: AllocateInvoiceItemPaymentDto,
   ) {
-    console.log('allocatePaymentToInvoiceItems', invoiceId, dto);
     const staff = await this.prisma.staff.findUnique({
       where: { id: dto.staffId },
     });
@@ -1658,6 +1821,22 @@ export class InvoiceService {
       }
 
       const itemsById = new Map(invoice.invoiceItems.map((it) => [it.id, it]));
+      const coveredAmount = await this.invoiceCoveredAmount(invoiceId, tx);
+      const coverageRows = (tx as any).invoiceCoverage?.findMany
+        ? await tx.invoiceCoverage.findMany({
+          where: { invoiceId, status: { not: 'REVERSED' } },
+          select: { scope: true, amount: true, invoiceItemId: true },
+        })
+        : [];
+      const lineCoveredById = this.computeLineCoverageFromRows(
+        invoice.invoiceItems,
+        coverageRows.map((c) => ({
+          scope: c.scope,
+          amount: c.amount,
+          invoiceItemId: c.invoiceItemId ?? null,
+        })),
+        now,
+      );
       for (const [itemId, allocAmt] of merged) {
         const item = itemsById.get(itemId);
         if (!item) {
@@ -1666,17 +1845,18 @@ export class InvoiceService {
           );
         }
         const lineTotal = this.invoiceLineTotal(item, now);
+        const lineCovered = this.asDecimal(lineCoveredById.get(itemId) ?? 0);
+        const lineEffectiveDue = lineTotal.sub(lineCovered);
         const itemPaid = this.asDecimal(item.amountPaid);
-        if (itemPaid.add(allocAmt).gt(lineTotal)) {
+        if (itemPaid.add(allocAmt).gt(lineEffectiveDue)) {
           throw new BadRequestException(
-            `Allocation for item "${itemId}" would exceed line total (max ${lineTotal.toFixed(2)}, already paid ${itemPaid.toFixed(2)})`,
+            `Allocation for item "${itemId}" would exceed line due (max ${lineEffectiveDue.toFixed(2)}, already paid ${itemPaid.toFixed(2)})`,
           );
         }
       }
 
-      const invoiceOutstanding = this.asDecimal(invoice.totalAmount).sub(
-        invoice.amountPaid,
-      );
+      const effectivePayable = this.asDecimal(invoice.totalAmount).sub(coveredAmount);
+      const invoiceOutstanding = effectivePayable.sub(invoice.amountPaid);
       if (paymentAmount.gt(invoiceOutstanding)) {
         throw new BadRequestException(
           `Payment amount exceeds outstanding invoice balance ${invoiceOutstanding.toFixed(2)}`,
@@ -1793,7 +1973,6 @@ export class InvoiceService {
         createdBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
-    console.log(payments);
     return payments;
   }
 

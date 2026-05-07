@@ -59,6 +59,13 @@ export class HmoService {
         this.asDecimal(row.hmoPays),
         this.asDecimal(row.patientPays),
       );
+      if (row.coveragePercent !== undefined && row.coveragePercent !== null) {
+        if (row.coveragePercent < 0 || row.coveragePercent > 100) {
+          throw new BadRequestException(
+            `coveragePercent must be between 0 and 100 (serviceId "${row.serviceId}").`,
+          );
+        }
+      }
     }
   }
 
@@ -103,6 +110,10 @@ export class HmoService {
           name: dto.name.trim(),
           code: dto.code?.trim() || null,
           notes: dto.notes?.trim() || null,
+          defaultCoveragePercent:
+            dto.defaultCoveragePercent !== undefined
+              ? this.asDecimal(dto.defaultCoveragePercent)
+              : null,
           createdById: req.user.sub,
           updatedById: req.user.sub,
         },
@@ -116,6 +127,10 @@ export class HmoService {
             fullCost: this.asDecimal(p.fullCost),
             hmoPays: this.asDecimal(p.hmoPays),
             patientPays: this.asDecimal(p.patientPays),
+            coveragePercent:
+              p.coveragePercent !== undefined
+                ? this.asDecimal(p.coveragePercent)
+                : null,
           })),
         });
       }
@@ -270,6 +285,10 @@ export class HmoService {
               fullCost: this.asDecimal(p.fullCost),
               hmoPays: this.asDecimal(p.hmoPays),
               patientPays: this.asDecimal(p.patientPays),
+              coveragePercent:
+                p.coveragePercent !== undefined
+                  ? this.asDecimal(p.coveragePercent)
+                  : null,
             })),
           });
         }
@@ -282,6 +301,12 @@ export class HmoService {
         ...(dto.name !== undefined && { name: dto.name.trim() }),
         ...(dto.code !== undefined && { code: dto.code?.trim() || null }),
         ...(dto.notes !== undefined && { notes: dto.notes?.trim() || null }),
+        ...(dto.defaultCoveragePercent !== undefined && {
+          defaultCoveragePercent:
+            dto.defaultCoveragePercent !== null
+              ? this.asDecimal(dto.defaultCoveragePercent)
+              : null,
+        }),
         updatedById: req.user.sub,
       },
     });

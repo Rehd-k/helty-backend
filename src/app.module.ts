@@ -43,6 +43,8 @@ import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module
 import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboard.module';
 import { HmoModule } from './modules/hmo/hmo.module';
 import { InpatientNursingModule } from './modules/inpatient-nursing/inpatient-nursing.module';
+import { DiscountModule } from './modules/discount/discount.module';
+import { ReceivablesModule } from './modules/receivables/receivables.module';
 
 @Module({
   imports: [
@@ -102,6 +104,8 @@ import { InpatientNursingModule } from './modules/inpatient-nursing/inpatient-nu
     NursesDashboardModule,
     HmoModule,
     InpatientNursingModule,
+    DiscountModule,
+    ReceivablesModule,
   ],
   controllers: [AppController],
   providers: [

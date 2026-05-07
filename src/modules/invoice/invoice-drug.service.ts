@@ -803,7 +803,6 @@ export class InvoiceDrugService {
           where: { id: itemId, invoiceId },
           include: { _count: { select: { allocations: true } } },
         });
-        console.log(item?.drugId, 'item?.drugId');
         if (!item || !item.drugId) {
           throw new NotFoundException(
             `Drug invoice item ${itemId} not found on invoice ${invoiceId}`,

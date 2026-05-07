@@ -15,7 +15,7 @@ export class PatientService {
   private nanoid = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
   private readonly logger = new Logger(PatientService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /** Ward whose trimmed name is `OPD` (same rule as `update` ward handling). */
   private async resolveOpdWardId(): Promise<string> {
@@ -351,7 +351,6 @@ export class PatientService {
         where,
       }),
     ]);
-
     return {
       patients,
       total,

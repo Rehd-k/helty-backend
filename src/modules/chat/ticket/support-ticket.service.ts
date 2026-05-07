@@ -113,7 +113,6 @@ export class SupportTicketService {
         },
       },
     });
-    console.log(tickets);
     return tickets;
   }
 

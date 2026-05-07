@@ -57,7 +57,6 @@ export class MedicationAdministrationController {
     @Req() req: { user: { sub: string } },
   ) {
     const addmi = await this.service.create(admissionId, dto, req.user.sub);
-    console.log('addmi', addmi);
     return addmi;
   }
 

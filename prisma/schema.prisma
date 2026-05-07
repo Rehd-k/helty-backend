@@ -403,14 +403,14 @@ model Drug {
   prescriptionItems  PrescriptionItem[]
   inventoryMovements InventoryMovement[]
 
-  createdBy        Staff             @relation("DrugCreatedBy", fields: [createdById], references: [id])
-  createdById      String
-  updatedBy        Staff?            @relation("DrugUpdatedBy", fields: [updatedById], references: [id])
-  updatedById      String?
-  medicationOrders MedicationOrder[]
-  invoiceItems     InvoiceItem[]
+  createdBy          Staff               @relation("DrugCreatedBy", fields: [createdById], references: [id])
+  createdById        String
+  updatedBy          Staff?              @relation("DrugUpdatedBy", fields: [updatedById], references: [id])
+  updatedById        String?
+  medicationOrders   MedicationOrder[]
+  invoiceItems       InvoiceItem[]
   invoiceDrugReturns InvoiceDrugReturn[]
-  drugPrices       DrugPrice[]
+  drugPrices         DrugPrice[]
 
   @@index([manufacturerId])
   @@index([isControlled])
@@ -765,8 +765,14 @@ model Hmo {
   code  String?
   notes String?
 
+  /// Default coverage percent (0-100) used when no per-service override exists in HmoServicePrice.
+  defaultCoveragePercent Decimal? @db.Decimal(5, 2)
+
   patients      Patient[]
   servicePrices HmoServicePrice[]
+
+  invoiceCoverages    InvoiceCoverage[]
+  coverageRemittances CoverageRemittance[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -787,6 +793,9 @@ model HmoServicePrice {
   fullCost    Decimal @db.Decimal(12, 2)
   hmoPays     Decimal @db.Decimal(12, 2)
   patientPays Decimal @db.Decimal(12, 2)
+
+  /// Per-service coverage percent override (0-100); overrides Hmo.defaultCoveragePercent for this service.
+  coveragePercent Decimal? @db.Decimal(5, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -815,17 +824,18 @@ model Invoice {
   walletTxns      WalletTransaction[]
   insuranceClaims InsuranceClaim[]
   auditLogs       InvoiceAuditLog[]
+  coverages       InvoiceCoverage[]
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
   staff           Staff               @relation(fields: [staffId], references: [id])
   staffId         String
 
-  encounter        Encounter?      @relation(fields: [encounterId], references: [id])
+  encounter        Encounter?          @relation(fields: [encounterId], references: [id])
   encounterId      String?
-  consultingRoom   ConsultingRoom? @relation(fields: [consultingRoomId], references: [id], onDelete: SetNull)
+  consultingRoom   ConsultingRoom?     @relation(fields: [consultingRoomId], references: [id], onDelete: SetNull)
   consultingRoomId String?
-  vitals           PatientVitals?  @relation("InvoiceVitals", fields: [vitalsId], references: [id], onDelete: SetNull)
-  vitalsId         String?         @unique
+  vitals           PatientVitals?      @relation("InvoiceVitals", fields: [vitalsId], references: [id], onDelete: SetNull)
+  vitalsId         String?             @unique
   labRequests      LabRequest[]
   drugReturns      InvoiceDrugReturn[]
 
@@ -863,6 +873,7 @@ model InvoiceItem {
   labOrder           LabOrder?
   labRequest         LabRequest?
   drugReturns        InvoiceDrugReturn[]
+  coverages          InvoiceCoverage[]
 
   @@index([invoiceId])
   @@index([createdById])
@@ -977,24 +988,190 @@ model InvoiceAuditLog {
 }
 
 model InvoiceDrugReturn {
-  id                     String           @id @default(uuid())
-  invoice                Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  invoiceId              String
-  invoiceItem            InvoiceItem?     @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
-  invoiceItemId          String?
-  drug                   Drug             @relation(fields: [drugId], references: [id])
-  drugId                 String
-  quantity               Int
-  dispensaryLocation     PharmacyLocation @relation("InvoiceDrugReturnDispensary", fields: [dispensaryLocationId], references: [id])
-  dispensaryLocationId   String
-  performedBy            Staff            @relation("InvoiceDrugReturnPerformedBy", fields: [performedById], references: [id])
-  performedById          String
-  reason                 String?
-  createdAt              DateTime         @default(now())
+  id                   String           @id @default(uuid())
+  invoice              Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId            String
+  invoiceItem          InvoiceItem?     @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId        String?
+  drug                 Drug             @relation(fields: [drugId], references: [id])
+  drugId               String
+  quantity             Int
+  dispensaryLocation   PharmacyLocation @relation("InvoiceDrugReturnDispensary", fields: [dispensaryLocationId], references: [id])
+  dispensaryLocationId String
+  performedBy          Staff            @relation("InvoiceDrugReturnPerformedBy", fields: [performedById], references: [id])
+  performedById        String
+  reason               String?
+  createdAt            DateTime         @default(now())
 
   @@index([invoiceId, createdAt])
   @@index([drugId])
   @@index([dispensaryLocationId])
+}
+
+// ─── Invoice Coverage / Receivables ──────────────────────────────────────────
+//
+// InvoiceCoverage rows represent money that a third party (HMO) or a discount
+// authority (CMD/CMAC/SUPER_ADMIN) commits to cover on a patient invoice.
+// They reduce the invoice's effective payable but never count as cash.
+// Approved (non-REVERSED) coverage + cash payments together drive the invoice
+// status. SETTLED rows have been remitted by the payer via CoverageRemittance.
+
+enum InvoiceCoverageKind {
+  HMO
+  DISCOUNT
+}
+
+enum InvoiceCoverageMode {
+  PERCENT
+  FIXED
+}
+
+enum InvoiceCoverageScope {
+  INVOICE
+  ITEM
+}
+
+enum InvoiceCoverageStatus {
+  APPLIED
+  REVERSED
+  SETTLED
+}
+
+enum DiscountReason {
+  CMD
+  CMAC
+  SUPER_ADMIN
+}
+
+enum CoverageRemittancePayerType {
+  HMO
+  STAFF
+}
+
+/// Discount catalog created by CMD / CMAC / SUPER_ADMIN.
+/// Billing staff applies one of these to an invoice; the resulting
+/// InvoiceCoverage charges to the policy's owner receivables.
+model DiscountPolicy {
+  id          String              @id @default(uuid())
+  name        String
+  description String?
+  reason      DiscountReason
+  mode        InvoiceCoverageMode
+  /// Percent (0-100) when mode = PERCENT, or a fixed money amount when mode = FIXED.
+  value       Decimal             @db.Decimal(12, 2)
+  active      Boolean             @default(true)
+
+  /// Staff to whose receivables every use of this policy is charged.
+  owner   Staff  @relation("DiscountPolicyOwner", fields: [ownerId], references: [id])
+  ownerId String
+
+  createdBy   Staff   @relation("DiscountPolicyCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("DiscountPolicyUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  coverages InvoiceCoverage[]
+
+  @@index([reason])
+  @@index([ownerId])
+  @@index([active])
+}
+
+model InvoiceCoverage {
+  id            String       @id @default(uuid())
+  invoice       Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId     String
+  invoiceItem   InvoiceItem? @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId String?
+
+  scope InvoiceCoverageScope @default(INVOICE)
+  kind  InvoiceCoverageKind
+
+  // For HMO coverage
+  hmo   Hmo?    @relation(fields: [hmoId], references: [id])
+  hmoId String?
+
+  // For DISCOUNT coverage
+  policy   DiscountPolicy? @relation(fields: [policyId], references: [id])
+  policyId String?
+  reason   DiscountReason?
+
+  /// Staff who owns the receivable (for DISCOUNT). For HMO, hmoId is the payer.
+  payer        Staff?  @relation("InvoiceCoveragePayer", fields: [payerStaffId], references: [id])
+  payerStaffId String?
+
+  mode   InvoiceCoverageMode
+  /// Input value (percent or fixed amount, mirrors mode at apply time).
+  value  Decimal             @db.Decimal(12, 2)
+  /// Computed money amount actually covered.
+  amount Decimal             @db.Decimal(12, 2)
+
+  status InvoiceCoverageStatus @default(APPLIED)
+  notes  String?
+
+  appliedBy   Staff  @relation("InvoiceCoverageAppliedBy", fields: [appliedById], references: [id])
+  appliedById String
+
+  reversedBy     Staff?    @relation("InvoiceCoverageReversedBy", fields: [reversedById], references: [id])
+  reversedById   String?
+  reversedAt     DateTime?
+  reversalReason String?
+
+  remittance CoverageRemittanceLine?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
+  @@index([invoiceItemId])
+  @@index([hmoId, status])
+  @@index([payerStaffId, status])
+  @@index([policyId])
+  @@index([kind, status])
+  @@index([reason, status])
+}
+
+/// One remittance from a payer (HMO or staff) that settles one or more coverage rows.
+model CoverageRemittance {
+  id           String                      @id @default(uuid())
+  payerType    CoverageRemittancePayerType
+  hmo          Hmo?                        @relation(fields: [hmoId], references: [id])
+  hmoId        String?
+  payerStaff   Staff?                      @relation("CoverageRemittancePayer", fields: [payerStaffId], references: [id])
+  payerStaffId String?
+
+  amount    Decimal @db.Decimal(12, 2)
+  reference String?
+  notes     String?
+
+  receivedBy   Staff?  @relation("CoverageRemittanceReceivedBy", fields: [receivedById], references: [id])
+  receivedById String?
+
+  paidAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  lines CoverageRemittanceLine[]
+
+  @@index([payerType])
+  @@index([hmoId])
+  @@index([payerStaffId])
+  @@index([paidAt])
+}
+
+model CoverageRemittanceLine {
+  id           String             @id @default(uuid())
+  remittance   CoverageRemittance @relation(fields: [remittanceId], references: [id], onDelete: Cascade)
+  remittanceId String
+  coverage     InvoiceCoverage    @relation(fields: [coverageId], references: [id])
+  coverageId   String             @unique
+  amount       Decimal            @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([remittanceId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1039,6 +1216,9 @@ enum InvoiceAuditAction {
   ITEM_UPDATED
   ITEM_REMOVED
   DRUG_RETURNED
+  COVERAGE_APPLIED
+  COVERAGE_REVERSED
+  COVERAGE_REMITTANCE_RECORDED
 }
 
 // Staff: department / account category (paired with StaffRole).
@@ -1392,74 +1572,83 @@ model Staff {
   waitingPatientsCreated WaitingPatient[] @relation("WaitingPatientCreatedBy")
   waitingPatientsUpdated WaitingPatient[] @relation("WaitingPatientUpdatedBy")
 
-  admissionsAdmitted                  Admission[]                @relation("AdmissionAdmittedByDoctor")
-  ivFluidOrdersOrdered                IVFluidOrder[]
-  auditTrailsPerformed                AuditTrail[]
-  alertLogs                           AlertLog[]
-  nurseAssignments                    NurseAssignment[]          @relation("NurseAssignmentNurse")
-  medicationAdministrations           MedicationAdministration[] @relation("MedicationAdministrationNurse")
-  ivMonitorings                       IVMonitoring[]             @relation("IVMonitoringNurse")
-  intakeOutputRecords                 IntakeOutputRecord[]       @relation("IntakeOutputRecordNurse")
-  nursingNotes                        NursingNote[]              @relation("NursingNoteNurse")
-  procedureRecords                    ProcedureRecord[]          @relation("ProcedureRecordNurse")
-  woundAssessments                    WoundAssessment[]          @relation("WoundAssessmentNurse")
-  carePlans                           CarePlan[]                 @relation("CarePlanNurse")
-  monitoringCharts                    MonitoringChart[]          @relation("MonitoringChartNurse")
-  handoverReports                     HandoverReport[]           @relation("HandoverReportNurse")
-  patientVitalsRecorded               PatientVitals[]            @relation("PatientVitalsRecordedByNurse")
-  encountersAsDoctor                  Encounter[]                @relation("EncounterDoctor")
-  encountersCreated                   Encounter[]                @relation("EncounterCreatedBy")
-  encountersUpdated                   Encounter[]                @relation("EncounterUpdatedBy")
-  labRequestsOrdered                  LabRequest[]               @relation("LabRequestOrderedBy")
-  radiologyOrdersRequested            RadiologyOrder[]           @relation("RadiologyOrderOrderedBy")
-  prescriptionsAsDoctor               Prescription[]             @relation("PrescriptionDoctor")
-  purchaseOrdersCreated               PurchaseOrder[]            @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersApproved              PurchaseOrder[]            @relation("PurchaseOrderApprovedBy")
-  goodsReceiptsReceived               GoodsReceipt[]             @relation("GoodsReceiptReceivedBy")
-  stockTransfersCreated               StockTransfer[]            @relation("StockTransferCreatedBy")
-  stockTransfersApproved              StockTransfer[]            @relation("StockTransferApprovedBy")
-  drugsCreated                        Drug[]                     @relation("DrugCreatedBy")
-  drugsUpdated                        Drug[]                     @relation("DrugUpdatedBy")
-  inventoryMovementsPerformed         InventoryMovement[]        @relation("InventoryMovementPerformedBy")
-  consumableMovementsPerformed        ConsumableMovement[]       @relation("ConsumableMovementPerformedBy")
-  dispensationsAsPharmacist           Dispensation[]             @relation("DispensationPharmacist")
-  controlledApprovals                 ControlledApproval[]       @relation("ControlledApprovalApprover")
-  auditLogsPerformed                  AuditLog[]                 @relation("AuditLogPerformedBy")
-  pharmacyLocationsCreated            PharmacyLocation[]         @relation("PharmacyLocationCreatedBy")
-  pharmacyLocationsUpdated            PharmacyLocation[]         @relation("PharmacyLocationUpdatedBy")
-  pharmacyLocationAssigned            PharmacyLocation?          @relation("PharmacyLocationStaff")
-  admissionsAsAttendingDoctor         Admission[]                @relation("AdmissionAttendingDoctor")
-  wardRoundNotes                      WardRoundNote[]
-  pregnanciesCreated                  Pregnancy[]                @relation("PregnancyCreatedBy")
-  pregnanciesUpdated                  Pregnancy[]                @relation("PregnancyUpdatedBy")
-  antenatalVisitsRecorded             AntenatalVisit[]
-  labourDeliveriesDeliveredBy         LabourDelivery[]
-  partogramEntriesRecorded            PartogramEntry[]
-  babiesCreated                       Baby[]                     @relation("BabyCreatedBy")
-  babiesUpdated                       Baby[]                     @relation("BabyUpdatedBy")
-  postnatalVisitsRecorded             PostnatalVisit[]
-  gynaeProceduresAsSurgeon            GynaeProcedure[]           @relation("GynaeProcedureSurgeon")
-  gynaeProceduresAsAssistant          GynaeProcedure[]           @relation("GynaeProcedureAssistant")
-  labOrdersAsDoctor                   LabOrder[]                 @relation("LabOrderDoctor")
-  labSamplesCollected                 LabSample[]                @relation("LabSampleCollectedBy")
-  labResultsEntered                   LabResult[]                @relation("LabResultEnteredBy")
-  chatMessagesSent                    ChatMessage[]              @relation("ChatMessageSender")
-  chatMessagesReceived                ChatMessage[]              @relation("ChatMessageRecipient")
-  radiologySchedulesAsRadiographer    RadiologySchedule[]        @relation("RadiologyScheduleRadiographer")
-  radiologyProceduresPerformed        RadiologyProcedure[]       @relation("RadiologyProcedurePerformedBy")
-  radiologyImagesUploaded             RadiologyImage[]           @relation("RadiologyImageUploadedBy")
-  radiologyReportsSigned              RadiologyStudyReport[]     @relation("RadiologyReportSignedBy")
-  medicationOrders                    MedicationOrder[]
-  purchaseNotesRequested              PurchaseNote[]             @relation("PurchaseNoteRequestedBy")
-  storeStockMovementsCreated          StoreStockMovement[]       @relation("StoreStockMovementCreatedBy")
-  invoiceItemsCreated                 InvoiceItem[]              @relation("InvoiceItemCreatedBy")
-  invoicePaymentsReceived             InvoicePayment[]           @relation("InvoicePaymentReceivedBy")
-  invoicePaymentsCreated              InvoicePayment[]           @relation("InvoicePaymentCreatedBy")
-  invoiceRefundsProcessed             InvoiceRefund[]            @relation("InvoiceRefundProcessedBy")
-  invoiceRefundsCreated               InvoiceRefund[]            @relation("InvoiceRefundCreatedBy")
-  walletTransactionsCreated           WalletTransaction[]        @relation("WalletTransactionCreatedBy")
-  invoiceAuditLogsPerformed           InvoiceAuditLog[]          @relation("InvoiceAuditLogPerformedBy")
-  invoiceDrugReturnsPerformed         InvoiceDrugReturn[]        @relation("InvoiceDrugReturnPerformedBy")
+  admissionsAdmitted               Admission[]                @relation("AdmissionAdmittedByDoctor")
+  ivFluidOrdersOrdered             IVFluidOrder[]
+  auditTrailsPerformed             AuditTrail[]
+  alertLogs                        AlertLog[]
+  nurseAssignments                 NurseAssignment[]          @relation("NurseAssignmentNurse")
+  medicationAdministrations        MedicationAdministration[] @relation("MedicationAdministrationNurse")
+  ivMonitorings                    IVMonitoring[]             @relation("IVMonitoringNurse")
+  intakeOutputRecords              IntakeOutputRecord[]       @relation("IntakeOutputRecordNurse")
+  nursingNotes                     NursingNote[]              @relation("NursingNoteNurse")
+  procedureRecords                 ProcedureRecord[]          @relation("ProcedureRecordNurse")
+  woundAssessments                 WoundAssessment[]          @relation("WoundAssessmentNurse")
+  carePlans                        CarePlan[]                 @relation("CarePlanNurse")
+  monitoringCharts                 MonitoringChart[]          @relation("MonitoringChartNurse")
+  handoverReports                  HandoverReport[]           @relation("HandoverReportNurse")
+  patientVitalsRecorded            PatientVitals[]            @relation("PatientVitalsRecordedByNurse")
+  encountersAsDoctor               Encounter[]                @relation("EncounterDoctor")
+  encountersCreated                Encounter[]                @relation("EncounterCreatedBy")
+  encountersUpdated                Encounter[]                @relation("EncounterUpdatedBy")
+  labRequestsOrdered               LabRequest[]               @relation("LabRequestOrderedBy")
+  radiologyOrdersRequested         RadiologyOrder[]           @relation("RadiologyOrderOrderedBy")
+  prescriptionsAsDoctor            Prescription[]             @relation("PrescriptionDoctor")
+  purchaseOrdersCreated            PurchaseOrder[]            @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersApproved           PurchaseOrder[]            @relation("PurchaseOrderApprovedBy")
+  goodsReceiptsReceived            GoodsReceipt[]             @relation("GoodsReceiptReceivedBy")
+  stockTransfersCreated            StockTransfer[]            @relation("StockTransferCreatedBy")
+  stockTransfersApproved           StockTransfer[]            @relation("StockTransferApprovedBy")
+  drugsCreated                     Drug[]                     @relation("DrugCreatedBy")
+  drugsUpdated                     Drug[]                     @relation("DrugUpdatedBy")
+  inventoryMovementsPerformed      InventoryMovement[]        @relation("InventoryMovementPerformedBy")
+  consumableMovementsPerformed     ConsumableMovement[]       @relation("ConsumableMovementPerformedBy")
+  dispensationsAsPharmacist        Dispensation[]             @relation("DispensationPharmacist")
+  controlledApprovals              ControlledApproval[]       @relation("ControlledApprovalApprover")
+  auditLogsPerformed               AuditLog[]                 @relation("AuditLogPerformedBy")
+  pharmacyLocationsCreated         PharmacyLocation[]         @relation("PharmacyLocationCreatedBy")
+  pharmacyLocationsUpdated         PharmacyLocation[]         @relation("PharmacyLocationUpdatedBy")
+  pharmacyLocationAssigned         PharmacyLocation?          @relation("PharmacyLocationStaff")
+  admissionsAsAttendingDoctor      Admission[]                @relation("AdmissionAttendingDoctor")
+  wardRoundNotes                   WardRoundNote[]
+  pregnanciesCreated               Pregnancy[]                @relation("PregnancyCreatedBy")
+  pregnanciesUpdated               Pregnancy[]                @relation("PregnancyUpdatedBy")
+  antenatalVisitsRecorded          AntenatalVisit[]
+  labourDeliveriesDeliveredBy      LabourDelivery[]
+  partogramEntriesRecorded         PartogramEntry[]
+  babiesCreated                    Baby[]                     @relation("BabyCreatedBy")
+  babiesUpdated                    Baby[]                     @relation("BabyUpdatedBy")
+  postnatalVisitsRecorded          PostnatalVisit[]
+  gynaeProceduresAsSurgeon         GynaeProcedure[]           @relation("GynaeProcedureSurgeon")
+  gynaeProceduresAsAssistant       GynaeProcedure[]           @relation("GynaeProcedureAssistant")
+  labOrdersAsDoctor                LabOrder[]                 @relation("LabOrderDoctor")
+  labSamplesCollected              LabSample[]                @relation("LabSampleCollectedBy")
+  labResultsEntered                LabResult[]                @relation("LabResultEnteredBy")
+  chatMessagesSent                 ChatMessage[]              @relation("ChatMessageSender")
+  chatMessagesReceived             ChatMessage[]              @relation("ChatMessageRecipient")
+  radiologySchedulesAsRadiographer RadiologySchedule[]        @relation("RadiologyScheduleRadiographer")
+  radiologyProceduresPerformed     RadiologyProcedure[]       @relation("RadiologyProcedurePerformedBy")
+  radiologyImagesUploaded          RadiologyImage[]           @relation("RadiologyImageUploadedBy")
+  radiologyReportsSigned           RadiologyStudyReport[]     @relation("RadiologyReportSignedBy")
+  medicationOrders                 MedicationOrder[]
+  purchaseNotesRequested           PurchaseNote[]             @relation("PurchaseNoteRequestedBy")
+  storeStockMovementsCreated       StoreStockMovement[]       @relation("StoreStockMovementCreatedBy")
+  invoiceItemsCreated              InvoiceItem[]              @relation("InvoiceItemCreatedBy")
+  invoicePaymentsReceived          InvoicePayment[]           @relation("InvoicePaymentReceivedBy")
+  invoicePaymentsCreated           InvoicePayment[]           @relation("InvoicePaymentCreatedBy")
+  invoiceRefundsProcessed          InvoiceRefund[]            @relation("InvoiceRefundProcessedBy")
+  invoiceRefundsCreated            InvoiceRefund[]            @relation("InvoiceRefundCreatedBy")
+  walletTransactionsCreated        WalletTransaction[]        @relation("WalletTransactionCreatedBy")
+  invoiceAuditLogsPerformed        InvoiceAuditLog[]          @relation("InvoiceAuditLogPerformedBy")
+  invoiceDrugReturnsPerformed      InvoiceDrugReturn[]        @relation("InvoiceDrugReturnPerformedBy")
+
+  discountPoliciesOwned       DiscountPolicy[]     @relation("DiscountPolicyOwner")
+  discountPoliciesCreated     DiscountPolicy[]     @relation("DiscountPolicyCreatedBy")
+  discountPoliciesUpdated     DiscountPolicy[]     @relation("DiscountPolicyUpdatedBy")
+  invoiceCoveragesAsPayer     InvoiceCoverage[]    @relation("InvoiceCoveragePayer")
+  invoiceCoveragesApplied     InvoiceCoverage[]    @relation("InvoiceCoverageAppliedBy")
+  invoiceCoveragesReversed    InvoiceCoverage[]    @relation("InvoiceCoverageReversedBy")
+  coverageRemittancesAsPayer  CoverageRemittance[] @relation("CoverageRemittancePayer")
+  coverageRemittancesReceived CoverageRemittance[] @relation("CoverageRemittanceReceivedBy")
 
   staffConversationMemberships       StaffConversationMember[]
   staffConversationMessagesSent      StaffConversationMessage[]     @relation("StaffConversationMessageSender")
@@ -1930,33 +2119,33 @@ model DrugCatalog {
 }
 
 model MedicationOrder {
-  id                  String    @id @default(uuid())
-  encounterId         String
-  admissionId         String?
-  drugId              String?
-  drugName            String // denormalized for display
-  dose                String?
-  frequency           String?
-  duration            String?
-  route               String?
-  specialInstructions String?
-  startDateTime       DateTime?
-  endDateTime         DateTime?
-  notes               String?
+  id                   String                                  @id @default(uuid())
+  encounterId          String
+  admissionId          String?
+  drugId               String?
+  drugName             String // denormalized for display
+  dose                 String?
+  frequency            String?
+  duration             String?
+  route                String?
+  specialInstructions  String?
+  startDateTime        DateTime?
+  endDateTime          DateTime?
+  notes                String?
   administrationStatus MedicationAdministrationLifecycleStatus @default(ACTIVE)
-  patientId           String
-  patient             Patient   @relation(fields: [patientId], references: [id])
-  doctorId            String
-  doctor              Staff     @relation(fields: [doctorId], references: [id])
-  status              String    @default("Pending Dispense") // Pending Dispense, Dispensed, Cancelled
-  createdAt           DateTime? @default(now())
-  updatedAt           DateTime? @updatedAt
+  patientId            String
+  patient              Patient                                 @relation(fields: [patientId], references: [id])
+  doctorId             String
+  doctor               Staff                                   @relation(fields: [doctorId], references: [id])
+  status               String                                  @default("Pending Dispense") // Pending Dispense, Dispensed, Cancelled
+  createdAt            DateTime?                               @default(now())
+  updatedAt            DateTime?                               @updatedAt
 
-  encounter     Encounter    @relation(fields: [encounterId], references: [id], onDelete: Cascade)
-  admission     Admission?   @relation(fields: [admissionId], references: [id], onDelete: SetNull)
-  drug          Drug?        @relation(fields: [drugId], references: [id], onDelete: Restrict)
-  drugCatalog   DrugCatalog? @relation(fields: [drugCatalogId], references: [id])
-  drugCatalogId String?
+  encounter       Encounter                  @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  admission       Admission?                 @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  drug            Drug?                      @relation(fields: [drugId], references: [id], onDelete: Restrict)
+  drugCatalog     DrugCatalog?               @relation(fields: [drugCatalogId], references: [id])
+  drugCatalogId   String?
   administrations MedicationAdministration[]
 
   @@index([encounterId])
@@ -2164,12 +2353,12 @@ model NurseAssignment {
 }
 
 model MedicationAdministration {
-  id                    String                   @id @default(uuid())
-  medicationOrder       MedicationOrder          @relation(fields: [medicationOrderId], references: [id])
+  id                    String          @id @default(uuid())
+  medicationOrder       MedicationOrder @relation(fields: [medicationOrderId], references: [id])
   medicationOrderId     String
-  admission             Admission                @relation(fields: [admissionId], references: [id])
+  admission             Admission       @relation(fields: [admissionId], references: [id])
   admissionId           String
-  nurse                 Staff                    @relation("MedicationAdministrationNurse", fields: [administeredByNurseId], references: [id])
+  nurse                 Staff           @relation("MedicationAdministrationNurse", fields: [administeredByNurseId], references: [id])
   administeredByNurseId String
 
   scheduledTime    DateTime

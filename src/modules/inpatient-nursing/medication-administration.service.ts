@@ -64,7 +64,6 @@ export class MedicationAdministrationService {
         'Medication order does not belong to this admission.',
       );
     }
-    console.log('order', order);
     return this.prisma.medicationAdministration.create({
       data: {
         admissionId,

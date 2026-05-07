@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -38,6 +39,18 @@ export class HmoServicePriceItemDto {
   @IsNumber()
   @Min(0)
   patientPays!: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional per-service coverage percent override (0-100). When provided, overrides HMO default coverage for this service.',
+    example: 50,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  coveragePercent?: number;
 }
 
 // ─── Create HMO ───────────────────────────────────────────────────────────────
@@ -62,6 +75,18 @@ export class CreateHmoDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Default coverage percent (0-100) applied at billing time when no per-service override exists.',
+    example: 50,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  defaultCoveragePercent?: number;
 
   @ApiPropertyOptional({
     type: [HmoServicePriceItemDto],
@@ -91,6 +116,17 @@ export class UpdateHmoDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'Default coverage percent (0-100)',
+    example: 50,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  defaultCoveragePercent?: number;
 
   @ApiPropertyOptional({
     type: [HmoServicePriceItemDto],
