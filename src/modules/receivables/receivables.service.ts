@@ -21,7 +21,7 @@ import {
 
 @Injectable()
 export class ReceivablesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private asDecimal(value: number | string | Prisma.Decimal): Prisma.Decimal {
     return value instanceof Prisma.Decimal ? value : new Prisma.Decimal(value);
@@ -294,8 +294,11 @@ export class ReceivablesService {
     return { data, total, skip, take };
   }
 
-  async getRemittance(id: string) {
-    const row = await this.prisma.coverageRemittance.findUnique({
+  private async getRemittanceWithClient(
+    client: PrismaService | Prisma.TransactionClient,
+    id: string,
+  ) {
+    const row = await client.coverageRemittance.findUnique({
       where: { id },
       include: {
         hmo: { select: { id: true, name: true } },
@@ -323,10 +326,14 @@ export class ReceivablesService {
     return row;
   }
 
+  async getRemittance(id: string) {
+    return this.getRemittanceWithClient(this.prisma, id);
+  }
+
   async createRemittance(dto: CreateRemittanceDto, authStaffId?: string) {
     return this.prisma.$transaction(async (tx) => {
       if (dto.payerType === CoverageRemittancePayerType.HMO) {
-        if (!dto.hmoId) throw new BadRequestException('hmoId is required when payerType=HMO');
+        if (!dto.hmoId) throw new BadRequestException('HmoId is required when payerType=HMO');
       } else {
         if (!dto.payerStaffId)
           throw new BadRequestException('payerStaffId is required when payerType=STAFF');
@@ -352,7 +359,6 @@ export class ReceivablesService {
       if (coverageIds.length !== dto.lines.length) {
         throw new BadRequestException('Duplicate coverageId in remittance lines');
       }
-
       const coverages = await tx.invoiceCoverage.findMany({
         where: { id: { in: coverageIds } },
         select: {
@@ -430,7 +436,7 @@ export class ReceivablesService {
         });
       }
 
-      return this.getRemittance(remittance.id);
+      return this.getRemittanceWithClient(tx, remittance.id);
     });
   }
 }
