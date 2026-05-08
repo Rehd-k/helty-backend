@@ -2801,7 +2801,46 @@ export class InvoiceService {
   }
 
   /**
-   * Add a drug as a line item to an invoice. Uses selling price from an available batch.
+   * Resolve drug price multiplier using patient's ward and HMO/OPD override rule.
+   */
+  private async resolveDrugPriceMultiplierForInvoice(
+    invoiceId: string,
+  ): Promise<Prisma.Decimal> {
+    const invoiceWithPatient = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        patient: {
+          select: {
+            hmoId: true,
+            ward: { select: { name: true, drugPricePercentage: true } },
+          },
+        },
+      },
+    });
+
+    const patient = invoiceWithPatient?.patient;
+    const defaultMultiplier = new Prisma.Decimal(1);
+    if (!patient) return defaultMultiplier;
+
+    let multiplier = patient.ward?.drugPricePercentage
+      ? this.asDecimal(patient.ward.drugPricePercentage)
+      : defaultMultiplier;
+
+    if (patient.hmoId && patient.ward?.name === 'OPD') {
+      const inpatientWard = await this.prisma.ward.findFirst({
+        where: { name: 'Inpatient Ward' },
+        select: { drugPricePercentage: true },
+      });
+      if (inpatientWard?.drugPricePercentage) {
+        multiplier = this.asDecimal(inpatientWard.drugPricePercentage);
+      }
+    }
+
+    return multiplier;
+  }
+
+  /**
+   * Add a drug as a line item to an invoice. Uses cost price with ward-based multiplier.
    */
   async addDrugItem(params: {
     invoiceId: string;
@@ -2829,8 +2868,11 @@ export class InvoiceService {
     });
     if (!drug) throw new NotFoundException(`Drug ${params.drugId} not found`);
     const batch = drug.batches?.[0];
+    const multiplier = await this.resolveDrugPriceMultiplierForInvoice(
+      params.invoiceId,
+    );
     const unitPrice = batch
-      ? new Prisma.Decimal(batch.sellingPrice)
+      ? this.asDecimal(batch.costPrice).mul(multiplier)
       : new Prisma.Decimal(0);
     const quantity = params.quantity ?? 1;
     const creator = await this.resolveOptionalInvoiceItemCreator(

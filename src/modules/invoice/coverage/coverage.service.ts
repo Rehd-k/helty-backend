@@ -154,6 +154,22 @@ export class InvoiceCoverageService {
   async applyHmoCoverage(invoiceId: string, dto: ApplyHmoCoverageDto, staffId: string) {
     await this.prisma.$transaction(async (tx) => {
       const invoice = await this.assertInvoiceOpen(tx, invoiceId);
+      if (dto.scope === InvoiceCoverageScope.ITEM) {
+        throw new BadRequestException(
+          'HMO coverage can only be applied once per invoice; ITEM scope is not allowed.',
+        );
+      }
+
+      const existingHmoCoverage = await tx.invoiceCoverage.findFirst({
+        where: { invoiceId, kind: InvoiceCoverageKind.HMO },
+        select: { id: true },
+      });
+      if (existingHmoCoverage) {
+        throw new BadRequestException(
+          'HMO coverage has already been applied to this invoice. Only one HMO coverage is allowed per invoice.',
+        );
+      }
+
       const patient = await tx.patient.findUnique({
         where: { id: invoice.patientId },
         select: { id: true, hmoId: true },
@@ -169,79 +185,6 @@ export class InvoiceCoverageService {
         .sub(existingCovered);
       if (maxCoverable.lte(0)) {
         throw new BadRequestException('This invoice has no outstanding balance to cover.');
-      }
-
-      if (dto.scope === InvoiceCoverageScope.ITEM) {
-        const ids = dto.itemIds ?? [];
-        if (ids.length === 0) {
-          throw new BadRequestException('itemIds is required when scope=ITEM.');
-        }
-        const items = await tx.invoiceItem.findMany({
-          where: { invoiceId, id: { in: ids } },
-          include: { usageSegments: { orderBy: { startAt: 'asc' } }, service: { select: { id: true } } },
-        });
-        if (items.length !== ids.length) {
-          throw new BadRequestException('One or more invoice items were not found on this invoice.');
-        }
-
-        const now = new Date();
-        const created: any[] = [];
-        for (const it of items) {
-          const percent = dto.percentOverride !== undefined
-            ? this.asDecimal(dto.percentOverride)
-            : await this.resolveHmoCoveragePercent({ tx, hmoId: patient.hmoId, serviceId: it.serviceId });
-          if (percent.lt(0) || percent.gt(100)) {
-            throw new BadRequestException('Coverage percent must be between 0 and 100.');
-          }
-          const lineGross = this.invoiceLineTotal(it as any, now);
-          const linePaid = this.asDecimal(it.amountPaid);
-          const lineExistingCovered = this.asDecimal(
-            (
-              await tx.invoiceCoverage.aggregate({
-                where: {
-                  invoiceId,
-                  invoiceItemId: it.id,
-                  status: { not: InvoiceCoverageStatus.REVERSED },
-                },
-                _sum: { amount: true },
-              })
-            )._sum.amount ?? 0,
-          );
-          const lineMax = lineGross.sub(linePaid).sub(lineExistingCovered);
-          if (lineMax.lte(0)) continue;
-
-          const proposed = lineGross.mul(percent).div(100);
-          const amount = proposed.gt(lineMax) ? lineMax : proposed;
-          if (amount.lte(0)) continue;
-
-          created.push(
-            await tx.invoiceCoverage.create({
-              data: {
-                invoiceId,
-                invoiceItemId: it.id,
-                scope: InvoiceCoverageScope.ITEM,
-                kind: InvoiceCoverageKind.HMO,
-                hmoId: patient.hmoId,
-                mode: InvoiceCoverageMode.PERCENT,
-                value: percent,
-                amount,
-                status: InvoiceCoverageStatus.APPLIED,
-                notes: dto.notes,
-                appliedById: staffId,
-              },
-            }),
-          );
-        }
-
-        await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
-        await this.logInvoiceAudit(tx, {
-          invoiceId,
-          action: InvoiceAuditAction.COVERAGE_APPLIED,
-          description: `HMO coverage applied to ${created.length} line(s).`,
-          performedById: staffId,
-          metadata: { scope: 'ITEM', count: created.length } as Prisma.InputJsonValue,
-        });
-        return;
       }
 
       const percent = dto.percentOverride !== undefined

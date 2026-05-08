@@ -70,7 +70,7 @@ export class ReceivablesService {
           hmo: { select: { id: true, name: true } },
           invoice: {
             select: {
-              id: true,
+              id: true, 
               invoiceID: true,
               status: true,
               createdAt: true,
@@ -292,6 +292,203 @@ export class ReceivablesService {
       this.prisma.coverageRemittance.count({ where }),
     ]);
     return { data, total, skip, take };
+  }
+
+  async hmoCoverageBreakdown(q: ReceivablesQueryDto) {
+    const { from, to } = this.parseDateWindow(q);
+    const where: Prisma.InvoiceCoverageWhereInput = {
+      kind: InvoiceCoverageKind.HMO,
+      createdAt: { gte: from, lte: to },
+      status: { not: InvoiceCoverageStatus.REVERSED },
+    };
+
+    const [rows, grandTotal] = await Promise.all([
+      this.prisma.invoiceCoverage.groupBy({
+        by: ['hmoId'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.invoiceCoverage.aggregate({
+        where,
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const hmoIds = rows.map((r) => r.hmoId).filter((id): id is string => Boolean(id));
+    const hmos = hmoIds.length
+      ? await this.prisma.hmo.findMany({
+          where: { id: { in: hmoIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const hmoById = new Map(hmos.map((h) => [h.id, h]));
+
+    const data = rows
+      .map((r) => ({
+        hmoId: r.hmoId,
+        hmoName: r.hmoId ? (hmoById.get(r.hmoId)?.name ?? 'Unknown HMO') : 'Unassigned HMO',
+        totalAmount: (r._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+        count: r._count._all,
+      }))
+      .sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount));
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalAmount: (grandTotal._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+      totalCount: data.reduce((acc, row) => acc + row.count, 0),
+      data,
+    };
+  }
+
+  async discountCoverageBreakdown(q: ReceivablesQueryDto) {
+    const { from, to } = this.parseDateWindow(q);
+    const where: Prisma.InvoiceCoverageWhereInput = {
+      kind: InvoiceCoverageKind.DISCOUNT,
+      createdAt: { gte: from, lte: to },
+      status: { not: InvoiceCoverageStatus.REVERSED },
+    };
+
+    const [byReason, byPolicy, grandTotal] = await Promise.all([
+      this.prisma.invoiceCoverage.groupBy({
+        by: ['reason'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.invoiceCoverage.groupBy({
+        by: ['policyId'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.invoiceCoverage.aggregate({
+        where,
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const policyIds = byPolicy
+      .map((r) => r.policyId)
+      .filter((id): id is string => Boolean(id));
+    const policies = policyIds.length
+      ? await this.prisma.discountPolicy.findMany({
+          where: { id: { in: policyIds } },
+          select: { id: true, name: true, reason: true },
+        })
+      : [];
+    const policyById = new Map(policies.map((p) => [p.id, p]));
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalAmount: (grandTotal._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+      byReason: byReason
+        .map((r) => ({
+          reason: r.reason,
+          totalAmount: (r._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+          count: r._count._all,
+        }))
+        .sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount)),
+      byPolicy: byPolicy
+        .map((r) => ({
+          policyId: r.policyId,
+          policyName: r.policyId
+            ? (policyById.get(r.policyId)?.name ?? 'Unknown policy')
+            : 'No policy',
+          reason: r.policyId ? (policyById.get(r.policyId)?.reason ?? null) : null,
+          totalAmount: (r._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+          count: r._count._all,
+        }))
+        .sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount)),
+    };
+  }
+
+  async remittanceCollectionsSummary(q: ReceivablesQueryDto) {
+    const { from, to } = this.parseDateWindow(q);
+    const where: Prisma.CoverageRemittanceWhereInput = {
+      paidAt: { gte: from, lte: to },
+    };
+
+    const [grandTotal, byPayerType, byHmo, byStaff] = await Promise.all([
+      this.prisma.coverageRemittance.aggregate({
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.coverageRemittance.groupBy({
+        by: ['payerType'],
+        where,
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.coverageRemittance.groupBy({
+        by: ['hmoId'],
+        where: { ...where, payerType: CoverageRemittancePayerType.HMO },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.coverageRemittance.groupBy({
+        by: ['payerStaffId'],
+        where: { ...where, payerType: CoverageRemittancePayerType.STAFF },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const hmoIds = byHmo.map((r) => r.hmoId).filter((id): id is string => Boolean(id));
+    const staffIds = byStaff
+      .map((r) => r.payerStaffId)
+      .filter((id): id is string => Boolean(id));
+
+    const hmos = hmoIds.length
+      ? await this.prisma.hmo.findMany({
+          where: { id: { in: hmoIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const staff = staffIds.length
+      ? await this.prisma.staff.findMany({
+          where: { id: { in: staffIds } },
+          select: { id: true, firstName: true, lastName: true, staffId: true },
+        })
+      : [];
+
+    const hmoById = new Map(hmos.map((h) => [h.id, h] as const));
+    const staffById = new Map(staff.map((s) => [s.id, s] as const));
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      totalAmount: (grandTotal._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+      totalCount: grandTotal._count._all,
+      byPayerType: byPayerType.map((r) => ({
+        payerType: r.payerType,
+        totalAmount: (r._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+        count: r._count._all,
+      })),
+      byHmo: byHmo
+        .map((r) => ({
+          hmoId: r.hmoId,
+          hmoName: r.hmoId ? (hmoById.get(r.hmoId)?.name ?? 'Unknown HMO') : 'Unassigned HMO',
+          totalAmount: (r._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+          count: r._count._all,
+        }))
+        .sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount)),
+      byStaff: byStaff
+        .map((r) => {
+          const owner = r.payerStaffId ? staffById.get(r.payerStaffId) : null;
+          return {
+            payerStaffId: r.payerStaffId,
+            payerStaffName: owner ? `${owner.firstName} ${owner.lastName}`.trim() : 'Unknown staff',
+            payerStaffCode: owner?.staffId ?? null,
+            totalAmount: (r._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+            count: r._count._all,
+          };
+        })
+        .sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount)),
+    };
   }
 
   private async getRemittanceWithClient(

@@ -79,5 +79,26 @@ export class ReceivablesController {
   createRemittance(@Body() dto: CreateRemittanceDto, @Req() req: any) {
     return this.receivablesService.createRemittance(dto, req?.user?.sub);
   }
+
+  @Get('analytics/hmo-coverage')
+  @ApiOperation({ summary: 'HMO invoice coverage breakdown by HMO' })
+  @AccountTypes('ACCOUNTING', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN', 'HMO')
+  hmoCoverageBreakdown(@Query() q: ReceivablesQueryDto) {
+    return this.receivablesService.hmoCoverageBreakdown(q);
+  }
+
+  @Get('analytics/discount-coverage')
+  @ApiOperation({ summary: 'Discount coverage breakdown by reason and policy' })
+  @AccountTypes('ACCOUNTING', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN')
+  discountCoverageBreakdown(@Query() q: ReceivablesQueryDto) {
+    return this.receivablesService.discountCoverageBreakdown(q);
+  }
+
+  @Get('analytics/remittance-collections')
+  @ApiOperation({ summary: 'Coverage remittance collections summary by payer' })
+  @AccountTypes('ACCOUNTING', 'SUPER_ADMIN')
+  remittanceCollectionsSummary(@Query() q: ReceivablesQueryDto) {
+    return this.receivablesService.remittanceCollectionsSummary(q);
+  }
 }
 
