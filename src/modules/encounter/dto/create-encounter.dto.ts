@@ -303,13 +303,6 @@ export class UpdateEncounterDto {
   @IsEnum(EncounterStatus)
   @IsOptional()
   status?: EncounterStatus;
-
-  @ApiPropertyOptional({
-    description: 'Staff UUID of the user updating the record',
-  })
-  @IsUUID()
-  @IsOptional()
-  updatedById?: string;
 }
 
 export class QueryEncounterDto {

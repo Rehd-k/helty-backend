@@ -76,7 +76,7 @@ export class PregnancyService {
     return pregnancy;
   }
 
-  async update(id: string, dto: UpdatePregnancyDto) {
+  async update(id: string, dto: UpdatePregnancyDto, staffId: string) {
     await this.findOne(id);
     return this.prisma.pregnancy.update({
       where: { id },
@@ -90,6 +90,7 @@ export class PregnancyService {
         }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.outcome !== undefined && { outcome: dto.outcome }),
+        updatedById: staffId,
       },
       include: {
         patient: { select: { id: true, firstName: true, surname: true } },

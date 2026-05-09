@@ -70,8 +70,9 @@ export class AdmissionController {
   update(
     @Param('id') id: string,
     @Body() updateAdmissionDto: UpdateAdmissionDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.admissionService.update(id, updateAdmissionDto);
+    return this.admissionService.update(id, updateAdmissionDto, req.user.sub);
   }
 
   @Delete(':id')

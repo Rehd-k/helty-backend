@@ -49,7 +49,11 @@ export class PregnancyController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update pregnancy' })
-  update(@Param('id') id: string, @Body() dto: UpdatePregnancyDto) {
-    return this.pregnancyService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdatePregnancyDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.pregnancyService.update(id, dto, req.user.sub);
   }
 }

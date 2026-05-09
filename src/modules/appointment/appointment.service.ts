@@ -47,7 +47,10 @@ export class AppointmentService {
         }
         await tx.encounter.update({
           where: { id: encounterId },
-          data: { appointmentId: appointment.id },
+          data: {
+            appointmentId: appointment.id,
+            updatedById: createdById,
+          },
         });
       }
 
@@ -117,7 +120,11 @@ export class AppointmentService {
     });
   }
 
-  async update(id: string, updateAppointmentDto: UpdateAppointmentDto) {
+  async update(
+    id: string,
+    updateAppointmentDto: UpdateAppointmentDto,
+    staffId: string,
+  ) {
     return this.prisma.appointment.update({
       where: { id },
       data: {
@@ -127,6 +134,12 @@ export class AppointmentService {
         status: updateAppointmentDto.status,
         notes: updateAppointmentDto.notes,
         referral: updateAppointmentDto.referral,
+        updatedById: staffId,
+      },
+      include: {
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
     });
   }

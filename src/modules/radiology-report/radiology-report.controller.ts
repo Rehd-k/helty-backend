@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { RadiologyReportService } from './radiology-report.service';
 import {
@@ -59,8 +60,13 @@ export class RadiologyReportController {
   update(
     @Param('id') id: string,
     @Body() updateRadiologyReportDto: UpdateRadiologyReportDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.radiologyReportService.update(id, updateRadiologyReportDto);
+    return this.radiologyReportService.update(
+      id,
+      updateRadiologyReportDto,
+      req.user.sub,
+    );
   }
 
   @Delete(':id')

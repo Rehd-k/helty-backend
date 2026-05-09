@@ -79,7 +79,11 @@ export class PrescriptionService {
     });
   }
 
-  async update(id: string, updatePrescriptionDto: UpdatePrescriptionDto) {
+  async update(
+    id: string,
+    updatePrescriptionDto: UpdatePrescriptionDto,
+    staffId: string,
+  ) {
     const existing = await this.prisma.prescription.findUnique({
       where: { id },
     });
@@ -99,6 +103,12 @@ export class PrescriptionService {
         ...(updatePrescriptionDto.endDate && {
           endDate: new Date(updatePrescriptionDto.endDate),
         }),
+        updatedById: staffId,
+      },
+      include: {
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
     });
   }

@@ -62,13 +62,17 @@ export class StaffController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a staff member' })
-  update(@Param('id') id: string, @Body() dto: UpdateStaffDto) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateStaffDto,
+    @Req() req: { user: { sub: string } },
+  ) {
     const { departmentId, ...rest } = dto as any;
     const data: any = { ...rest };
     if (departmentId) {
       data.department = { connect: { id: departmentId } };
     }
-    return this.staffService.update(id, data);
+    return this.staffService.update(id, data, req.user.sub);
   }
 
   @Delete(':id')

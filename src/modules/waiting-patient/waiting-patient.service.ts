@@ -17,7 +17,7 @@ import { CONSULTATION_BILLING_CATEGORY } from '../invoice/invoice-link.constants
 
 @Injectable()
 export class WaitingPatientService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private queueBaseWhere(
     dateRange?: { from: Date; to: Date },
@@ -25,12 +25,12 @@ export class WaitingPatientService {
   ): Prisma.InvoiceWhereInput {
     const patientWhere: Prisma.PatientWhereInput = opts?.unregisteredOnly
       ? {
-          OR: [{ patientId: null }, { patientId: '' }],
-        }
+        OR: [{ patientId: null }, { patientId: '' }],
+      }
       : {
-          patientId: { not: null },
-          NOT: { patientId: '' },
-        };
+        patientId: { not: null },
+        NOT: { patientId: '' },
+      };
 
     return {
       ...(dateRange
@@ -67,6 +67,7 @@ export class WaitingPatientService {
     consultingRoom: { select: { id: true, name: true } },
     vitals: true,
     encounter: { select: { id: true, status: true, startTime: true } },
+    updatedBy: { select: { id: true, firstName: true, lastName: true } },
     invoiceItems: {
       where: {
         settled: false,
@@ -108,6 +109,7 @@ export class WaitingPatientService {
         settled: Boolean(it.settled),
         name: it.service?.name ?? null,
       })),
+      updatedBy: inv.updatedBy ?? null,
       invoice: inv,
     };
   }
@@ -147,7 +149,6 @@ export class WaitingPatientService {
     if (seen === true) where.encounterId = { not: null };
     if (seen === false) where.encounterId = null;
     if (patientId) where.patientId = patientId;
-
     const [rows, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
@@ -158,7 +159,7 @@ export class WaitingPatientService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
-
+    console.log({ data: rows.map((r) => this.toQueueRow(r)), total, skip, take })
     return { data: rows.map((r) => this.toQueueRow(r)), total, skip, take };
   }
 
@@ -173,7 +174,11 @@ export class WaitingPatientService {
     return this.toQueueRow(inv);
   }
 
-  async sendToConsultingRoom(id: string, dto: SendToConsultingRoomDto) {
+  async sendToConsultingRoom(
+    id: string,
+    dto: SendToConsultingRoomDto,
+    staffId: string,
+  ) {
     const row = await this.findOne(id);
     if (!row.vitals) {
       throw new BadRequestException(
@@ -201,7 +206,8 @@ export class WaitingPatientService {
       where: { id },
       data: {
         consultingRoomId: dto.consultingRoomId,
-        ...(dto.staffId ? { updatedById: dto.staffId } : {}),
+        updatedById: staffId,
+        ...(dto.staffId ? { staffId: dto.staffId } : {}),
       },
       include: this.queueInclude,
     });
@@ -229,7 +235,7 @@ export class WaitingPatientService {
     return rows.map((r) => this.toQueueRow(r));
   }
 
-  async update(id: string, dto: UpdateWaitingPatientDto) {
+  async update(id: string, dto: UpdateWaitingPatientDto, staffId: string) {
     await this.findOne(id);
     if (dto.seen !== undefined) {
       throw new BadRequestException(
@@ -253,7 +259,8 @@ export class WaitingPatientService {
         ...(dto.consultingRoomId !== undefined && {
           consultingRoomId: dto.consultingRoomId,
         }),
-        ...(dto.staffId ? { updatedById: dto.staffId } : {}),
+        updatedById: staffId,
+        ...(dto.staffId ? { staffId: dto.staffId } : {}),
       },
       include: this.queueInclude,
     });

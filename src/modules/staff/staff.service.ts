@@ -112,8 +112,16 @@ export class StaffService {
     });
   }
 
-  async update(id: string, data: Partial<any>) {
-    return this.prisma.staff.update({ where: { id }, data });
+  async update(
+    id: string,
+    data: Partial<any>,
+    updatedByStaffId?: string,
+  ) {
+    const payload: Record<string, unknown> = { ...data };
+    if (updatedByStaffId) {
+      payload.updatedById = updatedByStaffId;
+    }
+    return this.prisma.staff.update({ where: { id }, data: payload as any });
   }
 
   async remove(id: string) {

@@ -136,7 +136,11 @@ export class ConsultingRoomService {
     return room;
   }
 
-  async update(id: string, dto: UpdateConsultingRoomDto) {
+  async update(
+    id: string,
+    dto: UpdateConsultingRoomDto,
+    updatedByStaffId: string,
+  ) {
     await this.findOne(id);
 
     if (dto.staffId) {
@@ -157,11 +161,15 @@ export class ConsultingRoomService {
         ...(description !== undefined && { description }),
         ...(location !== undefined && { location }),
         ...(capacity !== undefined && { capacity }),
+        updatedBy: { connect: { id: updatedByStaffId } },
         ...(staffId && {
           staff: { connect: { id: staffId } },
         }),
       },
       include: {
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
         staff: {
           select: {
             id: true,

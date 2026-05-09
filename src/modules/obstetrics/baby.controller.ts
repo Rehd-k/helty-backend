@@ -59,8 +59,12 @@ export class BabyController {
 
   @Patch('babies/:id')
   @ApiOperation({ summary: 'Update baby' })
-  update(@Param('id') id: string, @Body() dto: UpdateBabyDto) {
-    return this.babyService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateBabyDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.babyService.update(id, dto, req.user.sub);
   }
 
   @Post('babies/:id/register-patient')

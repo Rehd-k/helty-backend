@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { WaitingPatientService } from './waiting-patient.service';
@@ -65,8 +66,13 @@ export class WaitingPatientController {
   sendToConsultingRoom(
     @Param('id') id: string,
     @Body() dto: SendToConsultingRoomDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.waitingPatientService.sendToConsultingRoom(id, dto);
+    return this.waitingPatientService.sendToConsultingRoom(
+      id,
+      dto,
+      req.user.sub,
+    );
   }
 
   @Get(':id')
@@ -82,8 +88,12 @@ export class WaitingPatientController {
       'Update invoice-backed queue assignment (consulting room only; seen is encounter-driven)',
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
-  update(@Param('id') id: string, @Body() dto: UpdateWaitingPatientDto) {
-    return this.waitingPatientService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateWaitingPatientDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.waitingPatientService.update(id, dto, req.user.sub);
   }
 
   @Delete(':id')

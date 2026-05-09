@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { PrescriptionService } from './prescription.service';
 import {
@@ -67,8 +68,13 @@ export class PrescriptionController {
   update(
     @Param('id') id: string,
     @Body() updatePrescriptionDto: UpdatePrescriptionDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.prescriptionService.update(id, updatePrescriptionDto);
+    return this.prescriptionService.update(
+      id,
+      updatePrescriptionDto,
+      req.user.sub,
+    );
   }
 
   @Delete(':id')

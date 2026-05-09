@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { ConsultingRoomService } from './consulting-room.service';
@@ -50,8 +51,12 @@ export class ConsultingRoomController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update a consulting room' })
   @ApiParam({ name: 'id', description: 'Consulting room UUID' })
-  update(@Param('id') id: string, @Body() dto: UpdateConsultingRoomDto) {
-    return this.consultingRoomService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateConsultingRoomDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.consultingRoomService.update(id, dto, req.user.sub);
   }
 
   @Delete(':id')

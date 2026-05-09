@@ -9,9 +9,12 @@ import {
 export class MedicalHistoryService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createMedicalHistoryDto: CreateMedicalHistoryDto) {
+  async create(
+    createMedicalHistoryDto: CreateMedicalHistoryDto,
+    staffId: string,
+  ) {
     return this.prisma.medicalHistory.create({
-      data: { ...createMedicalHistoryDto, createdById: '' },
+      data: { ...createMedicalHistoryDto, createdById: staffId },
     });
   }
 
@@ -50,10 +53,23 @@ export class MedicalHistoryService {
     });
   }
 
-  async update(id: string, updateMedicalHistoryDto: UpdateMedicalHistoryDto) {
+  async update(
+    id: string,
+    updateMedicalHistoryDto: UpdateMedicalHistoryDto,
+    staffId: string,
+  ) {
     return this.prisma.medicalHistory.update({
       where: { id },
-      data: updateMedicalHistoryDto,
+      data: {
+        ...updateMedicalHistoryDto,
+        updatedById: staffId,
+      },
+      include: {
+        patient: true,
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+      },
     });
   }
 

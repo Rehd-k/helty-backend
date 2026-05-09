@@ -41,11 +41,17 @@ export class WardService {
             status: true,
             admissionDate: true,
             dischargeDate: true,
+            encounter: {
+              select: {
+                id: true,
+              }
+            },
             ward: true,
             room: true,
             reason: true,
             patient: {
               select: {
+                id: true,
                 firstName: true,
                 surname: true,
                 patientId: true,

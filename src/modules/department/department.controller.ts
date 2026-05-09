@@ -47,13 +47,17 @@ export class DepartmentController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a department' })
-  update(@Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateDepartmentDto,
+    @Req() req: { user: { sub: string } },
+  ) {
     const { headId, ...rest } = dto as any;
     const data: any = { ...rest };
     if (headId) {
       data.head = { connect: { id: headId } };
     }
-    return this.departmentService.update(id, data);
+    return this.departmentService.update(id, data, req.user.sub);
   }
 
   @Delete(':id')

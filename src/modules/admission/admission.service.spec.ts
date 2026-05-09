@@ -39,7 +39,11 @@ describe('AdmissionService', () => {
 
     const service = new AdmissionService(prisma);
     await expect(
-      service.update('adm-1', { dischargeDate: '2026-03-27T11:00:00.000Z' }),
+      service.update(
+        'adm-1',
+        { dischargeDate: '2026-03-27T11:00:00.000Z', outcome: 'Recovered' },
+        'staff-1',
+      ),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -47,6 +51,11 @@ describe('AdmissionService', () => {
     const tx: any = {
       patient: {
         update: jest.fn().mockResolvedValue({}),
+      },
+      ward: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'opd-ward-1', name: 'OPD' }]),
       },
       admission: {
         findUnique: jest.fn().mockResolvedValue({
@@ -76,11 +85,26 @@ describe('AdmissionService', () => {
     };
 
     const service = new AdmissionService(prisma);
-    const result = await service.update('adm-1', {
-      dischargeDate: '2026-03-27T11:00:00.000Z',
-    });
+    const result = await service.update(
+      'adm-1',
+      {
+        dischargeDate: '2026-03-27T11:00:00.000Z',
+        outcome: 'Recovered',
+      },
+      'staff-1',
+    );
 
     expect(result.id).toBe('adm-1');
     expect(tx.invoiceItemUsageSegment.updateMany).toHaveBeenCalled();
+    expect(tx.patient.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ updatedById: 'staff-1' }),
+      }),
+    );
+    expect(tx.admission.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ updatedById: 'staff-1' }),
+      }),
+    );
   });
 });

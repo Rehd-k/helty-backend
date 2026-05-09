@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { PatientVitalsService } from './patient-vitals.service';
@@ -26,8 +27,11 @@ export class PatientVitalsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Record a new set of vitals for a patient' })
-  create(@Body() dto: CreatePatientVitalsDto) {
-    return this.patientVitalsService.create(dto);
+  create(
+    @Body() dto: CreatePatientVitalsDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.patientVitalsService.create(dto, req.user.sub);
   }
 
   @Get()

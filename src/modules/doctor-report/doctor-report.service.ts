@@ -72,7 +72,11 @@ export class DoctorReportService {
     });
   }
 
-  async update(id: string, updateDoctorReportDto: UpdateDoctorReportDto) {
+  async update(
+    id: string,
+    updateDoctorReportDto: UpdateDoctorReportDto,
+    staffId: string,
+  ) {
     const existing = await this.prisma.doctorReport.findUnique({
       where: { id },
     });
@@ -87,7 +91,12 @@ export class DoctorReportService {
     }
     return this.prisma.doctorReport.update({
       where: { id },
-      data: updateDoctorReportDto,
+      data: { ...updateDoctorReportDto, updatedById: staffId },
+      include: {
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+      },
     });
   }
 

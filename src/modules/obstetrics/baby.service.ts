@@ -105,7 +105,7 @@ export class BabyService {
     return baby;
   }
 
-  async update(id: string, dto: UpdateBabyDto) {
+  async update(id: string, dto: UpdateBabyDto, staffId: string) {
     await this.findOne(id);
     return this.prisma.baby.update({
       where: { id },
@@ -121,6 +121,7 @@ export class BabyService {
         ...(dto.resuscitation !== undefined && {
           resuscitation: dto.resuscitation,
         }),
+        updatedById: staffId,
       },
       include: {
         mother: { select: { id: true, firstName: true, surname: true } },

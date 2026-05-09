@@ -4,7 +4,17 @@ import {
   IsOptional,
   IsNotEmpty,
   IsUUID,
+  IsIn,
+  ValidateIf,
 } from 'class-validator';
+
+/** Allowed discharge outcomes when `dischargeDate` is set. */
+export const DISCHARGE_OUTCOMES = [
+  'Duly Discharged',
+  'Discharged against Medical Advice',
+  'Referred out',
+  'Death',
+] as const;
 
 export class CreateAdmissionDto {
   @IsUUID()
@@ -56,6 +66,22 @@ export class UpdateAdmissionDto {
   @IsDateString()
   @IsOptional()
   dischargeDate?: string;
+
+  @ValidateIf(
+    (o) => o.dischargeDate != null && String(o.dischargeDate).trim() !== '',
+  )
+  @IsNotEmpty({ message: 'outcome is required when discharging' })
+  @IsIn(DISCHARGE_OUTCOMES, {
+    message: `outcome must be one of: ${DISCHARGE_OUTCOMES.join(', ')}`,
+  })
+  outcome?: string;
+
+  @ValidateIf(
+    (o) => o.dischargeDate != null && String(o.dischargeDate).trim() !== '',
+  )
+  @IsOptional()
+  @IsString()
+  dischargeSummary?: string;
 
   @IsString()
   @IsOptional()

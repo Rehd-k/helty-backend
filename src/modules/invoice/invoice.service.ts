@@ -2557,12 +2557,14 @@ export class InvoiceService {
       );
     }
 
-    const staffId = dto.staffId ?? authStaffId;
-    if (staffId) {
+    const auditStaffId = authStaffId;
+    if (auditStaffId) {
       const staff = await this.prisma.staff.findUnique({
-        where: { id: staffId },
+        where: { id: auditStaffId },
       });
-      if (!staff) throw new NotFoundException(`Staff "${staffId}" not found.`);
+      if (!staff) {
+        throw new NotFoundException(`Staff "${auditStaffId}" not found.`);
+      }
     }
 
     return this.prisma.insuranceClaim.update({
@@ -2577,7 +2579,7 @@ export class InvoiceService {
           : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-        ...(staffId ? { updatedById: staffId } : {}),
+        ...(auditStaffId ? { updatedById: auditStaffId } : {}),
       },
     });
   }

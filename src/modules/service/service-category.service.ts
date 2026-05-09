@@ -27,8 +27,20 @@ export class ServiceCategoryService {
     });
   }
 
-  async update(id: string, dto: UpdateServiceCategoryDto) {
-    return this.prisma.serviceCategory.update({ where: { id }, data: dto });
+  async update(
+    id: string,
+    dto: UpdateServiceCategoryDto,
+    staffId: string,
+  ) {
+    return this.prisma.serviceCategory.update({
+      where: { id },
+      data: { ...dto, updatedById: staffId },
+      include: {
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+      },
+    });
   }
 
   async remove(id: string) {

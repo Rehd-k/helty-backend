@@ -15,7 +15,7 @@ import {
 export class PatientVitalsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreatePatientVitalsDto) {
+  async create(dto: CreatePatientVitalsDto, staffId?: string) {
     try {
       const {
         patientId,
@@ -62,6 +62,7 @@ export class PatientVitalsService {
           waitingPatientId,
           patientId,
           vitalsPayload,
+          staffId,
         );
       }
 
@@ -146,6 +147,7 @@ export class PatientVitalsService {
       painScore?: number;
       notes?: string;
     },
+    staffId?: string,
   ) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -200,6 +202,7 @@ export class PatientVitalsService {
       where: { id: waitingPatientId },
       data: {
         vitals: { connect: { id: vitals.id } },
+        ...(staffId ? { updatedById: staffId } : {}),
       },
     });
     return vitals;

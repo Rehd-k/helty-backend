@@ -46,8 +46,12 @@ export class ServiceCategoryController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a service category' })
-  update(@Param('id') id: string, @Body() dto: UpdateServiceCategoryDto) {
-    return this.serviceCategoryService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateServiceCategoryDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.serviceCategoryService.update(id, dto, req.user.sub);
   }
 
   @Delete(':id')

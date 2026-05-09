@@ -70,7 +70,11 @@ export class LabReportService {
     });
   }
 
-  async update(id: string, updateLabReportDto: UpdateLabReportDto) {
+  async update(
+    id: string,
+    updateLabReportDto: UpdateLabReportDto,
+    staffId: string,
+  ) {
     const existing = await this.prisma.labReport.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Lab report "${id}" not found.`);
@@ -83,7 +87,12 @@ export class LabReportService {
     }
     return this.prisma.labReport.update({
       where: { id },
-      data: updateLabReportDto,
+      data: { ...updateLabReportDto, updatedById: staffId },
+      include: {
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+      },
     });
   }
 

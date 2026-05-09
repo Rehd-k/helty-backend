@@ -128,6 +128,12 @@ export class InvoiceDrugController {
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID' })
+  @ApiQuery({
+    name: 'locationId',
+    required: false,
+    description:
+      'Optional pharmacy location UUID. When provided and settling a drug line, FIFO stock deduction is scoped to this location only.',
+  })
   @ApiOkResponse({ description: 'Line item updated' })
   @ApiNotFoundResponse({
     description:
@@ -137,8 +143,14 @@ export class InvoiceDrugController {
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() dto: UpdateInvoiceItemDto,
+    @Query('locationId') locationId?: string,
   ) {
-    return this.invoiceDrugService.updateDrugInvoiceItem(id, itemId, dto);
+    return this.invoiceDrugService.updateDrugInvoiceItem(
+      id,
+      itemId,
+      dto,
+      locationId,
+    );
   }
 
   @Post(':id/items/:itemId/substitute')

@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { MedicalHistoryService } from './medical-history.service';
 import {
@@ -25,8 +26,14 @@ export class MedicalHistoryController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Add medical history entry' })
-  create(@Body() createMedicalHistoryDto: CreateMedicalHistoryDto) {
-    return this.medicalHistoryService.create(createMedicalHistoryDto);
+  create(
+    @Body() createMedicalHistoryDto: CreateMedicalHistoryDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.medicalHistoryService.create(
+      createMedicalHistoryDto,
+      req.user.sub,
+    );
   }
 
   @Get()
@@ -55,8 +62,13 @@ export class MedicalHistoryController {
   update(
     @Param('id') id: string,
     @Body() updateMedicalHistoryDto: UpdateMedicalHistoryDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.medicalHistoryService.update(id, updateMedicalHistoryDto);
+    return this.medicalHistoryService.update(
+      id,
+      updateMedicalHistoryDto,
+      req.user.sub,
+    );
   }
 
   @Delete(':id')

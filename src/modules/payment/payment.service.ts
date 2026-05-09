@@ -113,10 +113,17 @@ export class PaymentService {
     };
   }
 
-  async update(id: string, updatePaymentDto: UpdatePaymentDto) {
+  async update(
+    id: string,
+    updatePaymentDto: UpdatePaymentDto,
+    staffId?: string,
+  ) {
     return this.prisma.payment.update({
       where: { id },
-      data: updatePaymentDto,
+      data: {
+        ...updatePaymentDto,
+        ...(staffId ? { updatedById: staffId } : {}),
+      },
     });
   }
 

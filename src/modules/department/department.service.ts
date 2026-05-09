@@ -31,8 +31,23 @@ export class DepartmentService {
     return dep;
   }
 
-  async update(id: string, data: Prisma.DepartmentUpdateInput) {
-    return this.prisma.department.update({ where: { id }, data });
+  async update(
+    id: string,
+    data: Prisma.DepartmentUpdateInput,
+    staffId: string,
+  ) {
+    return this.prisma.department.update({
+      where: { id },
+      data: {
+        ...data,
+        updatedBy: { connect: { id: staffId } },
+      },
+      include: {
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+      },
+    });
   }
 
   async remove(id: string) {

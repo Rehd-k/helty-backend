@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  Req,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -10,6 +9,7 @@ import {
   UpdateAdmissionDto,
 } from './dto/create-admission.dto';
 import {
+  AdmissionStatus,
   EncounterStatus,
   InvoiceStatus,
   PatientStatus,
@@ -18,9 +18,25 @@ import {
 
 @Injectable()
 export class AdmissionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
+
+  /** Ward whose trimmed name is `OPD` (same rule as `PatientService`). */
+  private async resolveOpdWardId(
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<string> {
+    const wards = await client.ward.findMany({
+      select: { id: true, name: true },
+    });
+    const opd = wards.find((w) => w.name?.trim().toUpperCase() === 'OPD');
+    if (!opd) {
+      throw new BadRequestException(
+        'No ward named "OPD" exists. Create it before discharging a patient to outpatient.',
+      );
+    }
+    return opd.id;
+  }
 
   private computeRecurringAmount(
     segments: Array<{ startAt: Date; endAt: Date | null }>,
@@ -41,6 +57,7 @@ export class AdmissionService {
     invoiceId: string,
     now: Date = new Date(),
     tx: Prisma.TransactionClient = this.prisma,
+    updatedByStaffId?: string,
   ) {
     const invoice = await tx.invoice.findUnique({
       where: { id: invoiceId },
@@ -70,11 +87,18 @@ export class AdmissionService {
 
     return tx.invoice.update({
       where: { id: invoice.id },
-      data: { totalAmount, status },
+      data: {
+        totalAmount,
+        status,
+        ...(updatedByStaffId ? { updatedById: updatedByStaffId } : {}),
+      },
     });
   }
 
-  async create(createAdmissionDto: CreateAdmissionDto, @Req() req: any) {
+  async create(
+    createAdmissionDto: CreateAdmissionDto,
+    req: { user: { sub: string } },
+  ) {
     const [patient, encounter] = await Promise.all([
       this.prisma.patient.findUnique({
         where: { id: createAdmissionDto.patientId },
@@ -126,7 +150,11 @@ export class AdmissionService {
 
     await this.prisma.encounter.update({
       where: { id: createAdmissionDto.encounterId },
-      data: { admissionId: admission.id, status: EncounterStatus.COMPLETED },
+      data: {
+        admissionId: admission.id,
+        status: EncounterStatus.COMPLETED,
+        updatedById: req.user.sub,
+      },
     });
 
     await this.prisma.patient.update({
@@ -134,6 +162,7 @@ export class AdmissionService {
       data: {
         status: PatientStatus.ADMITED,
         wardId: createAdmissionDto.wardId ?? null,
+        updatedById: req.user.sub,
       },
     });
 
@@ -309,7 +338,11 @@ export class AdmissionService {
     });
   }
 
-  async update(id: string, updateAdmissionDto: UpdateAdmissionDto) {
+  async update(
+    id: string,
+    updateAdmissionDto: UpdateAdmissionDto,
+    staffId: string,
+  ) {
     if (!updateAdmissionDto.dischargeDate) {
       return this.prisma.admission.update({
         where: { id },
@@ -317,14 +350,30 @@ export class AdmissionService {
           ward: updateAdmissionDto.ward,
           room: updateAdmissionDto.room,
           reason: updateAdmissionDto.reason,
+          updatedById: staffId,
           ...(updateAdmissionDto.attendingDoctorId !== undefined && {
             attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
           }),
         },
+        include: {
+          updatedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          patient: true,
+          wardEntity: true,
+          bed: true,
+          encounter: true,
+        },
       });
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const outcome = updateAdmissionDto.outcome;
+    if (!outcome) {
+      throw new BadRequestException('outcome is required when discharging.');
+    }
+    const isDeath = outcome === 'Death';
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const admission = await tx.admission.findUnique({
         where: { id },
         include: { encounter: true },
@@ -345,9 +394,14 @@ export class AdmissionService {
         },
       });
 
-      const now = new Date();
+      const dischargedAt = new Date(updateAdmissionDto.dischargeDate!);
       for (const invoice of admissionInvoices) {
-        await this.recalculateInvoiceTotalsForDischarge(invoice.id, now, tx);
+        await this.recalculateInvoiceTotalsForDischarge(
+          invoice.id,
+          dischargedAt,
+          tx,
+          staffId,
+        );
       }
 
       const unpaidCount = await tx.invoice.count({
@@ -372,30 +426,64 @@ export class AdmissionService {
             },
           },
         },
-        data: { endAt: now },
+        data: { endAt: dischargedAt },
       });
 
-      await tx.patient.update({
-        where: { id: admission.patientId },
-        data: {
-          wardId: null,
-          status: PatientStatus.OUTPATIENT,
-        },
-      });
+      if (isDeath) {
+        await tx.patient.update({
+          where: { id: admission.patientId },
+          data: {
+            wardId: null,
+            status: PatientStatus.DECEASED,
+            updatedById: staffId,
+          },
+        });
+      } else {
+        const opdWardId = await this.resolveOpdWardId(tx);
+        await tx.patient.update({
+          where: { id: admission.patientId },
+          data: {
+            wardId: opdWardId,
+            status: PatientStatus.OUTPATIENT,
+            updatedById: staffId,
+          },
+        });
+      }
+
+      const dischargeSummary =
+        updateAdmissionDto.dischargeSummary?.trim() || null;
 
       return tx.admission.update({
         where: { id },
         data: {
-          dischargeDate: new Date(updateAdmissionDto.dischargeDate!),
+          dischargeDate: dischargedAt,
+          dischargeDateTime: dischargedAt,
+          status: isDeath
+            ? AdmissionStatus.DECEASED
+            : AdmissionStatus.DISCHARGED,
+          bedId: null,
+          outcome,
+          dischargeSummary,
           ward: updateAdmissionDto.ward,
           room: updateAdmissionDto.room,
           reason: updateAdmissionDto.reason,
+          updatedById: staffId,
           ...(updateAdmissionDto.attendingDoctorId !== undefined && {
             attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
           }),
         },
+        include: {
+          updatedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          patient: true,
+          wardEntity: true,
+          bed: true,
+          encounter: true,
+        },
       });
     });
+    return result;
   }
 
   async remove(id: string) {

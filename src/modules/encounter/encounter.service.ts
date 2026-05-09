@@ -135,7 +135,10 @@ export class EncounterService {
         });
         await tx.invoice.update({
           where: { id: consultationItem.invoiceId },
-          data: { encounterId: encounter.id },
+          data: {
+            encounterId: encounter.id,
+            updatedById: req.user.sub,
+          },
         });
         return encounter;
       });
@@ -181,7 +184,10 @@ export class EncounterService {
   }
 
   /** Start an outpatient encounter; optionally mark a waiting-patient entry as seen. */
-  async startOutpatient(dto: StartOutpatientEncounterDto) {
+  async startOutpatient(
+    dto: StartOutpatientEncounterDto,
+    req: { user: { sub: string } },
+  ) {
     await this.validatePatientAndDoctor(dto.patientId, dto.doctorId);
 
     const existing = await this.prisma.encounter.findFirst({
@@ -206,7 +212,7 @@ export class EncounterService {
         try {
           await this.prisma.waitingPatient.update({
             where: { id: dto.waitingPatientId },
-            data: { seen: true },
+            data: { seen: true, updatedById: req.user.sub },
           });
         } catch {
           // Don't fail if waiting patient update fails (e.g. wrong id)
@@ -215,7 +221,7 @@ export class EncounterService {
       return { encounter: existing, reused: true };
     }
 
-    const createdById = dto.createdById ?? dto.doctorId;
+    const createdById = req.user.sub;
 
     const encounter = await this.prisma.$transaction(async (tx) => {
       const consultationItem =
@@ -272,7 +278,10 @@ export class EncounterService {
       });
       await tx.invoice.update({
         where: { id: consultationItem.invoiceId },
-        data: { encounterId: createdEncounter.id },
+        data: {
+          encounterId: createdEncounter.id,
+          updatedById: req.user.sub,
+        },
       });
       return createdEncounter;
     });
@@ -281,7 +290,7 @@ export class EncounterService {
       try {
         await this.prisma.waitingPatient.update({
           where: { id: dto.waitingPatientId },
-          data: { seen: true },
+          data: { seen: true, updatedById: req.user.sub },
         });
       } catch {
         // Don't fail the encounter creation if waiting patient update fails (e.g. wrong id)
@@ -308,13 +317,13 @@ export class EncounterService {
       doctorId?: string;
       encounterType?: EncounterType;
       status?: EncounterStatus;
-      startTime?: { gte: Date; lte: Date };
+      updatedAt?: { gte: Date; lte: Date };
     } = {};
     if (patientId) where.patientId = patientId;
     if (doctorId) where.doctorId = doctorId;
     if (encounterType) where.encounterType = encounterType;
     if (status) where.status = status;
-    where.startTime = { gte: from, lte: to };
+    where.updatedAt = { gte: from, lte: to };
 
     const [data, total] = await Promise.all([
       this.prisma.encounter.findMany({
@@ -433,7 +442,11 @@ export class EncounterService {
     });
   }
 
-  async update(id: string, dto: UpdateEncounterDto) {
+  async update(
+    id: string,
+    dto: UpdateEncounterDto,
+    staffId: string,
+  ) {
     await this.findOne(id);
 
     const data: {
@@ -453,8 +466,8 @@ export class EncounterService {
       soapPlan?: string;
       triageNotes?: string;
       status?: EncounterStatus;
-      updatedById?: string;
-    } = {};
+      updatedById: string;
+    } = { updatedById: staffId };
     if (dto.endTime !== undefined) data.endTime = new Date(dto.endTime);
     if (dto.chiefComplaint !== undefined)
       data.chiefComplaint = dto.chiefComplaint;
@@ -479,7 +492,6 @@ export class EncounterService {
     dto.status === undefined
       ? (data.status = 'ONGOING')
       : (data.status = dto.status);
-    if (dto.updatedById !== undefined) data.updatedById = dto.updatedById;
 
     return this.prisma.encounter.update({
       where: { id },
@@ -492,12 +504,15 @@ export class EncounterService {
           select: { id: true, firstName: true, lastName: true, staffId: true },
         },
         admission: { select: { id: true, status: true } },
+        updatedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
     });
   }
 
   /** Set encounter status to COMPLETED and endTime to now. */
-  async complete(id: string, updatedById?: string) {
+  async complete(id: string, staffId: string) {
     await this.findOne(id);
     return this.prisma.$transaction(async (tx) => {
       const encounter = await tx.encounter.update({
@@ -505,7 +520,7 @@ export class EncounterService {
         data: {
           status: EncounterStatus.COMPLETED,
           endTime: new Date(),
-          ...(updatedById && { updatedById }),
+          updatedById: staffId,
         },
         include: {
           patient: {
@@ -523,6 +538,9 @@ export class EncounterService {
               lastName: true,
               staffId: true,
             },
+          },
+          updatedBy: {
+            select: { id: true, firstName: true, lastName: true },
           },
         },
       });

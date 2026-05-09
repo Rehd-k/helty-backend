@@ -59,6 +59,7 @@ export class InvoiceDrugService {
     tx: Prisma.TransactionClient,
     drugId: string,
     quantityToDeduct: number,
+    locationId?: string,
   ) {
     if (quantityToDeduct <= 0) return;
 
@@ -67,6 +68,7 @@ export class InvoiceDrugService {
       where: mergeDrugBatchWhere(sellableWhere, {
         drugId,
         quantityRemaining: { gt: 0 },
+        ...(locationId ? { toLocationId: locationId } : {}),
       }),
       orderBy: [{ manufacturingDate: 'asc' }, { createdAt: 'asc' }],
     });
@@ -467,6 +469,7 @@ export class InvoiceDrugService {
     invoiceId: string,
     itemId: string,
     dto: UpdateInvoiceItemDto,
+    locationId?: string,
   ) {
     try {
       const hasDrugs = await this.hasDrugItems(invoiceId);
@@ -492,6 +495,17 @@ export class InvoiceDrugService {
           `Invoice item ${itemId} not found on invoice ${invoiceId}`,
         );
       }
+      if (locationId) {
+        const location = await this.prisma.pharmacyLocation.findUnique({
+          where: { id: locationId },
+          select: { id: true },
+        });
+        if (!location) {
+          throw new NotFoundException(
+            `Pharmacy location ${locationId} not found`,
+          );
+        }
+      }
 
       const nextQuantity = dto.quantity ?? existing.quantity;
       const nextSettled = dto.settled ?? existing.settled;
@@ -500,7 +514,12 @@ export class InvoiceDrugService {
 
       return await this.prisma.$transaction(async (tx) => {
         if (settlingNow) {
-          await this.deductDrugStockFifo(tx, existing.drugId!, nextQuantity);
+          await this.deductDrugStockFifo(
+            tx,
+            existing.drugId!,
+            nextQuantity,
+            locationId,
+          );
         }
         const updatedItem = await tx.invoiceItem.update({
           where: { id: itemId },

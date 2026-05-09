@@ -58,10 +58,13 @@ export class EncounterController {
   })
   async startOutpatient(
     @Body() dto: StartOutpatientEncounterDto,
+    @Req() req: { user: { sub: string } },
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { encounter, reused } =
-      await this.encounterService.startOutpatient(dto);
+    const { encounter, reused } = await this.encounterService.startOutpatient(
+      dto,
+      req,
+    );
     res.status(reused ? HttpStatus.OK : HttpStatus.CREATED);
     return encounter;
   }
@@ -126,8 +129,12 @@ export class EncounterController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update encounter' })
-  update(@Param('id') id: string, @Body() updateEncounterDto: any) {
-    return this.encounterService.update(id, updateEncounterDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateEncounterDto: any,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.encounterService.update(id, updateEncounterDto, req.user.sub);
   }
 
   @Patch(':id/complete')
@@ -136,8 +143,8 @@ export class EncounterController {
     description:
       'For outpatient encounters, consultation invoice lines linked to this encounter are marked settled.',
   })
-  complete(@Param('id') id: string, @Body() body: { updatedById?: string }) {
-    return this.encounterService.complete(id, body?.updatedById);
+  complete(@Param('id') id: string, @Req() req: { user: { sub: string } }) {
+    return this.encounterService.complete(id, req.user.sub);
   }
 
   @Delete(':id')

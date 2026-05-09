@@ -63,8 +63,13 @@ export class AppointmentController {
   update(
     @Param('id') id: string,
     @Body() updateAppointmentDto: UpdateAppointmentDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.appointmentService.update(id, updateAppointmentDto);
+    return this.appointmentService.update(
+      id,
+      updateAppointmentDto,
+      req.user.sub,
+    );
   }
 
   @Delete(':id')

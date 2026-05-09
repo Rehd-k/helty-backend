@@ -114,7 +114,7 @@ export class PharmacyLocationService {
     return location;
   }
 
-  async getDrugQuantityByLocation(drugId: string) {
+  async getDrugQuantityByLocation(drugId: string, locationId?: string) {
     const drug = await this.prisma.drug.findFirst({
       where: { id: drugId, deletedAt: null },
       select: { id: true },
@@ -130,6 +130,7 @@ export class PharmacyLocationService {
     const excludedSet = new Set(excludedLocationIds);
 
     const locations = await this.prisma.pharmacyLocation.findMany({
+      where: locationId ? { id: locationId } : undefined,
       select: {
         id: true,
         name: true,
