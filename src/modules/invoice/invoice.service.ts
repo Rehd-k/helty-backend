@@ -35,6 +35,7 @@ import {
   RADIOLOGY_BILLING_CATEGORY,
   CONSULTATION_BILLING_CATEGORY,
 } from './invoice-link.constants';
+import { ConsumableStockService } from '../store/consumable-stock.service';
 
 const INVOICE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -49,7 +50,10 @@ function generateInvoiceHumanId(): string {
 
 @Injectable()
 export class InvoiceService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly consumableStock: ConsumableStockService,
+  ) {}
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
@@ -1302,16 +1306,94 @@ export class InvoiceService {
       });
       if (!drug) throw new NotFoundException(`Drug ${dto.drugId} not found`);
     }
+    if (dto.drugId && dto.consumableId) {
+      throw new BadRequestException(
+        'An invoice line cannot reference both a drug and a consumable.',
+      );
+    }
+    if (dto.consumableId) {
+      if (!dto.storeLocationId) {
+        throw new BadRequestException(
+          'storeLocationId is required when adding a consumable invoice line.',
+        );
+      }
+      const c = await this.prisma.consumable.findUnique({
+        where: { id: dto.consumableId },
+      });
+      if (!c) {
+        throw new NotFoundException(`Consumable "${dto.consumableId}" not found.`);
+      }
+      if (!c.isBillable) {
+        throw new BadRequestException(
+          'This consumable is not billable; record usage from nursing/procedures instead.',
+        );
+      }
+    }
 
     const creator =
       await this.resolveOptionalInvoiceItemCreator(createdByStaffId);
+    const performedById =
+      createdByStaffId ?? invoice.createdById ?? invoice.staffId;
+
+    const qty = dto.quantity ?? 1;
+
+    if (dto.consumableId && dto.storeLocationId) {
+      const item = await this.prisma.$transaction(async (tx) => {
+        await this.consumableStock.assertStoreLocation(tx, dto.storeLocationId!);
+        await this.consumableStock.assertEnoughStock(
+          tx,
+          dto.consumableId!,
+          dto.storeLocationId!,
+          qty,
+        );
+
+        const row = await tx.invoiceItem.create({
+          data: {
+            invoiceId,
+            serviceId: dto.serviceId ?? null,
+            drugId: null,
+            consumableId: dto.consumableId!,
+            storeLocationId: dto.storeLocationId!,
+            quantity: qty,
+            unitPrice: this.asDecimal(dto.unitPrice ?? 0),
+            isRecurringDaily: dto.isRecurringDaily ?? false,
+            ...creator,
+          },
+          include: {
+            service: {
+              select: { id: true, name: true, description: true, cost: true },
+            },
+            consumable: { select: { id: true, name: true } },
+            invoice: { select: { id: true, status: true, patientId: true } },
+            createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+          },
+        });
+
+        await this.consumableStock.applyFifoOut(tx, {
+          consumableId: dto.consumableId!,
+          storeLocationId: dto.storeLocationId!,
+          quantity: qty,
+          performedById,
+          ctx: {
+            kind: 'invoice',
+            invoiceItemId: row.id,
+            referenceId: row.id,
+          },
+        });
+
+        await this.recalculateInvoiceTotals(invoiceId, tx);
+        return row;
+      });
+
+      return item;
+    }
 
     const item = await this.prisma.invoiceItem.create({
       data: {
         invoiceId,
         serviceId: dto.serviceId,
         drugId: dto.drugId,
-        quantity: dto.quantity ?? 1,
+        quantity: qty,
         unitPrice: this.asDecimal(dto.unitPrice ?? 0),
         isRecurringDaily: dto.isRecurringDaily ?? false,
         ...creator,
@@ -1365,6 +1447,62 @@ export class InvoiceService {
       );
     }
 
+    const performedById = invoice.staffId;
+
+    if (existing.consumableId && existing.storeLocationId) {
+      const consumableId = existing.consumableId;
+      const storeLocationId = existing.storeLocationId;
+      const nextQty = dto.quantity ?? existing.quantity;
+      const nextPrice =
+        dto.unitPrice !== undefined
+          ? this.asDecimal(dto.unitPrice)
+          : existing.unitPrice;
+
+      return this.prisma.$transaction(async (tx) => {
+        await this.consumableStock.releaseFifoOutForInvoiceItem(
+          tx,
+          itemId,
+          performedById,
+        );
+
+        const updated = await tx.invoiceItem.update({
+          where: { id: itemId },
+          data: {
+            quantity: nextQty,
+            unitPrice: nextPrice,
+          },
+          include: {
+            service: { select: { id: true, name: true, cost: true } },
+            consumable: { select: { id: true, name: true } },
+            createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+          },
+        });
+
+        if (nextQty > 0) {
+          await this.consumableStock.assertEnoughStock(
+            tx,
+            consumableId,
+            storeLocationId,
+            nextQty,
+          );
+          await this.consumableStock.applyFifoOut(tx, {
+            consumableId,
+            storeLocationId,
+            quantity: nextQty,
+            performedById,
+            ctx: {
+              kind: 'invoice',
+              invoiceItemId: itemId,
+              referenceId: itemId,
+            },
+          });
+        }
+
+        await this.recalculateInvoiceTotals(invoiceId, tx);
+        return updated;
+      });
+    }
+
     const updated = await this.prisma.invoiceItem.update({
       where: { id: itemId },
       data: {
@@ -1401,6 +1539,21 @@ export class InvoiceService {
         `Invoice item ${itemId} not found on invoice ${invoiceId}`,
       );
     }
+
+    if (existing.consumableId) {
+      const performedById = invoice.staffId;
+      return this.prisma.$transaction(async (tx) => {
+        await this.consumableStock.releaseFifoOutForInvoiceItem(
+          tx,
+          itemId,
+          performedById,
+        );
+        const deleted = await tx.invoiceItem.delete({ where: { id: itemId } });
+        await this.recalculateInvoiceTotals(invoiceId, tx);
+        return deleted;
+      });
+    }
+
     const deleted = await this.prisma.invoiceItem.delete({
       where: { id: itemId },
     });

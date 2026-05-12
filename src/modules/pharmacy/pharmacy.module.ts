@@ -12,8 +12,6 @@ import { PharmacySupplierController } from './pharmacy.supplier.controller';
 import { PharmacySupplierService } from './pharmacy.supplier.service';
 import { PharmacyLocationController } from './pharmacy.location.controller';
 import { PharmacyLocationService } from './pharmacy.location.service';
-import { PharmacyConsumableController } from './pharmacy.consumable.controller';
-import { PharmacyConsumableService } from './pharmacy.consumable.service';
 import { PharmacyDrugInteractionController } from './pharmacy.drug-interaction.controller';
 import { PharmacyDrugInteractionService } from './pharmacy.drug-interaction.service';
 import { PharmacyPurchaseOrderController } from './pharmacy.purchase-order.controller';
@@ -34,7 +32,6 @@ import { PharmacyDashboardService } from './pharmacy.dashboard.service';
     PharmacyManufacturerController,
     PharmacySupplierController,
     PharmacyLocationController,
-    PharmacyConsumableController,
     PharmacyDrugInteractionController,
     PharmacyPurchaseOrderController,
     PharmacyGoodsReceiptController,
@@ -48,7 +45,6 @@ import { PharmacyDashboardService } from './pharmacy.dashboard.service';
     PharmacyManufacturerService,
     PharmacySupplierService,
     PharmacyLocationService,
-    PharmacyConsumableService,
     PharmacyDrugInteractionService,
     PharmacyPurchaseOrderService,
     PharmacyGoodsReceiptService,
@@ -62,7 +58,6 @@ import { PharmacyDashboardService } from './pharmacy.dashboard.service';
     PharmacyManufacturerService,
     PharmacySupplierService,
     PharmacyLocationService,
-    PharmacyConsumableService,
     PharmacyDrugInteractionService,
     PharmacyPurchaseOrderService,
     PharmacyGoodsReceiptService,

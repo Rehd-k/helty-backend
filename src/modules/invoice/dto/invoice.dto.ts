@@ -190,6 +190,22 @@ export class AddInvoiceItemDto {
   drugId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'UUID of a billable consumable (store-managed). Requires storeLocationId; mutually exclusive with drugId.',
+  })
+  @IsUUID()
+  @IsOptional()
+  consumableId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Store location for FIFO stock when adding a consumable line (required with consumableId).',
+  })
+  @IsUUID()
+  @IsOptional()
+  storeLocationId?: string;
+
+  @ApiPropertyOptional({
     description: 'Quantity of the service rendered',
     example: 1,
     default: 1,
@@ -283,6 +299,18 @@ export class UpdateInvoiceItemDto {
 }
 
 export class ReturnDrugInvoiceItemDto {
+  @ApiProperty({ description: 'Units being returned', example: 2 })
+  @IsInt()
+  @IsPositive()
+  quantity!: number;
+
+  @ApiPropertyOptional({ description: 'Optional reason for the return' })
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+
+export class ReturnConsumableInvoiceItemDto {
   @ApiProperty({ description: 'Units being returned', example: 2 })
   @IsInt()
   @IsPositive()

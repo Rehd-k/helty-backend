@@ -16,6 +16,7 @@ import {
   CreateAppointmentDto,
   UpdateAppointmentDto,
 } from './dto/create-appointment.dto';
+import { AppointmentCalendarCountsQueryDto } from './dto/appointment-calendar-counts.query.dto';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
@@ -38,6 +39,15 @@ export class AppointmentController {
   @ApiOperation({ summary: 'Get all appointments' })
   findAll(@Query() query: DateRangeSkipTakeDto) {
     return this.appointmentService.findAll(query);
+  }
+
+  @Get('calendar-counts')
+  @ApiOperation({
+    summary:
+      'Lightweight per-day appointment counts for calendar month grid (UTC date keys; same date window as GET /appointments)',
+  })
+  calendarCounts(@Query() query: AppointmentCalendarCountsQueryDto) {
+    return this.appointmentService.getCalendarCounts(query);
   }
 
   @Get('upcoming')

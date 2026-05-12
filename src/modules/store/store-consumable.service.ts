@@ -17,7 +17,7 @@ import { parseDateRange } from '../../common/utils/date-range';
 const ALLOWED_SORT = new Set(['name', 'category', 'createdAt']);
 
 @Injectable()
-export class PharmacyConsumableService {
+export class StoreConsumableService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateConsumableDto) {
@@ -151,11 +151,19 @@ export class PharmacyConsumableService {
 
   async createBatch(consumableId: string, dto: CreateConsumableBatchDto) {
     await this.findOne(consumableId);
+    const loc = await this.prisma.storeLocation.findUnique({
+      where: { id: dto.storeLocationId },
+    });
+    if (!loc) {
+      throw new NotFoundException(`Store location "${dto.storeLocationId}" not found.`);
+    }
+    if (!loc.isActive) {
+      throw new BadRequestException('Store location is not active.');
+    }
     return this.prisma.consumableBatch.create({
       data: {
         consumableId,
-        locationType: dto.locationType,
-        locationId: dto.locationId,
+        storeLocationId: dto.storeLocationId,
         batchNumber: dto.batchNumber?.trim() || null,
         expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : null,
         quantityReceived: dto.quantityReceived,
@@ -172,7 +180,7 @@ export class PharmacyConsumableService {
       where: { consumableId },
       orderBy: { createdAt: 'desc' },
       include: {
-        location: { select: { id: true, name: true, locationType: true } },
+        storeLocation: { select: { id: true, name: true, code: true } },
       },
     });
   }

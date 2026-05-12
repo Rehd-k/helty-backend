@@ -45,6 +45,7 @@ import { HmoModule } from './modules/hmo/hmo.module';
 import { InpatientNursingModule } from './modules/inpatient-nursing/inpatient-nursing.module';
 import { DiscountModule } from './modules/discount/discount.module';
 import { ReceivablesModule } from './modules/receivables/receivables.module';
+import { ClinicalSpecialtyModule } from './modules/clinical-specialty/clinical-specialty.module';
 
 @Module({
   imports: [
@@ -106,6 +107,7 @@ import { ReceivablesModule } from './modules/receivables/receivables.module';
     InpatientNursingModule,
     DiscountModule,
     ReceivablesModule,
+    ClinicalSpecialtyModule,
   ],
   controllers: [AppController],
   providers: [

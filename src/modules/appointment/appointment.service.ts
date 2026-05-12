@@ -3,11 +3,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateAppointmentDto,
   UpdateAppointmentDto,
 } from './dto/create-appointment.dto';
+import { AppointmentCalendarCountsQueryDto } from './dto/appointment-calendar-counts.query.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 
@@ -73,7 +75,29 @@ export class AppointmentService {
         skip,
         take,
         include: {
-          patient: true,
+          patient: {
+            select: {
+              id: true,
+              patientId: true,
+              firstName: true,
+              surname: true,
+            },
+          },
+          staff: {
+            select: {
+              id: true,
+              staffId: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
         },
         orderBy: { date: 'desc' },
       }),
@@ -83,6 +107,49 @@ export class AppointmentService {
     ]);
 
     return { appointments, total, skip, take };
+  }
+
+  /**
+   * Per-day counts for calendar month grid. Same inclusive `date` filter as {@link findAll}
+   * (`parseDateRange`). Each `date` key is the **UTC** calendar day (YYYY-MM-DD) of
+   * `Appointment.date` (PostgreSQL `to_char(date AT TIME ZONE 'UTC', 'YYYY-MM-DD')`).
+   *
+   * Note: `fromDate`/`toDate` normalization uses the same helpers as list — start/end of
+   * **calendar day in the Node process local timezone** after parsing the ISO strings
+   * (see `parseDateRange` / `startOfDay` / `endOfDay`). Align Flutter query params with
+   * existing GET /appointments calls for consistent windows.
+   */
+  async getCalendarCounts(query: AppointmentCalendarCountsQueryDto) {
+    const { from, to } = parseDateRange(query.fromDate, query.toDate);
+    const includeCancelled = query.includeCancelled === true;
+
+    const rows = includeCancelled
+      ? await this.prisma.$queryRaw<Array<{ day: string; count: bigint }>>(Prisma.sql`
+          SELECT to_char("Appointment"."date" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+                 COUNT(*)::int AS count
+          FROM "Appointment"
+          WHERE "Appointment"."date" >= ${from}
+            AND "Appointment"."date" <= ${to}
+          GROUP BY 1
+          ORDER BY 1
+        `)
+      : await this.prisma.$queryRaw<Array<{ day: string; count: bigint }>>(Prisma.sql`
+          SELECT to_char("Appointment"."date" AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+                 COUNT(*)::int AS count
+          FROM "Appointment"
+          WHERE "Appointment"."date" >= ${from}
+            AND "Appointment"."date" <= ${to}
+            AND LOWER("Appointment"."status") <> 'cancelled'
+          GROUP BY 1
+          ORDER BY 1
+        `);
+
+    return {
+      counts: rows.map((r) => ({
+        date: r.day,
+        count: Number(r.count),
+      })),
+    };
   }
 
   async findOne(id: string) {

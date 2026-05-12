@@ -215,8 +215,6 @@ export class PharmacyLocationService {
             stockTransfersFrom: true,
             stockTransfersTo: true,
             dispensations: true,
-            consumableBatches: true,
-            consumableMovements: true,
           },
         },
       },
@@ -229,9 +227,7 @@ export class PharmacyLocationService {
       location._count.drugBatchesTo +
       location._count.stockTransfersFrom +
       location._count.stockTransfersTo +
-      location._count.dispensations +
-      location._count.consumableBatches +
-      location._count.consumableMovements;
+      location._count.dispensations;
     if (total > 0) {
       throw new BadRequestException(
         'Cannot delete location with linked batches, transfers, or dispensations. Reassign or remove them first.',

@@ -9,8 +9,18 @@ import {
 } from '@prisma/client';
 import { InvoiceService } from './invoice.service';
 
+function createConsumableStockMock() {
+  return {
+    assertStoreLocation: jest.fn().mockResolvedValue(undefined),
+    assertEnoughStock: jest.fn().mockResolvedValue(undefined),
+    applyFifoOut: jest.fn().mockResolvedValue(undefined),
+    releaseFifoOutForInvoiceItem: jest.fn().mockResolvedValue(undefined),
+    releaseOutQuantityForInvoiceItem: jest.fn().mockResolvedValue(undefined),
+  } as any;
+}
+
 function createInvoiceService(prisma: any) {
-  return new InvoiceService(prisma);
+  return new InvoiceService(prisma, createConsumableStockMock());
 }
 
 describe('InvoiceService', () => {

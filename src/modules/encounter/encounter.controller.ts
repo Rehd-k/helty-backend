@@ -121,7 +121,7 @@ export class EncounterController {
   @ApiOperation({
     summary: 'Get encounter by ID',
     description:
-      'Optional query: expand=medicationOrders,labOrders,appointment (or * for all)',
+      'Optional query: expand=medicationOrders,labOrders,appointment,specialtyModules,clinicalSections (or * for all)',
   })
   findOne(@Param('id') id: string, @Query('expand') expand?: string) {
     return this.encounterService.findOne(id, expand);

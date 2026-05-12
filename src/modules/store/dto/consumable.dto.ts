@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
-  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
@@ -11,7 +10,6 @@ import {
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PharmacyLocationType } from '@prisma/client';
 
 export class CreateConsumableDto {
   @ApiProperty({ example: 'Syringe 10ml' })
@@ -63,13 +61,9 @@ export class UpdateConsumableDto {
 }
 
 export class CreateConsumableBatchDto {
-  @ApiProperty({ enum: PharmacyLocationType })
-  @IsEnum(PharmacyLocationType)
-  locationType: PharmacyLocationType;
-
-  @ApiProperty({ description: 'Pharmacy location ID that holds this batch' })
+  @ApiProperty({ description: 'Store location UUID that holds this batch' })
   @IsUUID()
-  locationId: string;
+  storeLocationId: string;
 
   @ApiPropertyOptional()
   @IsOptional()

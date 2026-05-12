@@ -424,6 +424,10 @@ export class EncounterService {
         medicationOrders:
           expandSet.has('medicationorders') || expandSet.has('*'),
         legacyLabOrders: expandSet.has('laborders') || expandSet.has('*'),
+        specialtyModules:
+          expandSet.has('specialtymodules') || expandSet.has('*'),
+        clinicalSections:
+          expandSet.has('clinicalsections') || expandSet.has('*'),
       },
     });
     if (!encounter) throw new NotFoundException(`Encounter "${id}" not found.`);
