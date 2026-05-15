@@ -31,7 +31,7 @@ export class PharmacyBatchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly drugPriceService: PharmacyDrugPriceService,
-  ) {}
+  ) { }
 
   async create(dto: CreateBatchDto) {
     const manufacturingDate = new Date(dto.manufacturingDate);
@@ -39,13 +39,15 @@ export class PharmacyBatchService {
 
     this.validateDates(manufacturingDate, expiryDate);
 
+    // this would be a problem later ,check it out more even more 9:49, 15/05/2026
     const quantityRemaining = dto.quantityRemaining ?? dto.quantityReceived;
     if (quantityRemaining > dto.quantityReceived) {
       throw new BadRequestException(
-        'quantityRemaining cannot be greater than quantityReceived.',
+        'quantity Remaining cannot be greater than quantity Received.',
       );
     }
 
+    const trimmedBatchNumber = dto.batchNumber.trim();
     const fromLocationId =
       dto.fromLocationId ?? (await this.getDefaultPharmacyLocationId());
     const toLocationId =
@@ -65,13 +67,41 @@ export class PharmacyBatchService {
         ? new Prisma.Decimal(Number(dto.sellingPrice))
         : costPrice;
 
+    const existing = await this.prisma.drugBatch.findFirst({
+      where: {
+        drugId: dto.drugId,
+        batchNumber: { equals: trimmedBatchNumber, mode: 'insensitive' },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existing) {
+      return this.update(existing.id, {
+        drugId: dto.drugId,
+        fromLocationId,
+        toLocationId,
+        batchNumber: trimmedBatchNumber,
+        manufacturingDate: dto.manufacturingDate,
+        expiryDate: dto.expiryDate,
+        supplierId: dto.supplierId,
+        grnId: dto.grnId,
+        costPrice: dto.costPrice,
+        sellingPrice:
+          dto.sellingPrice != null && dto.sellingPrice !== ''
+            ? dto.sellingPrice
+            : dto.costPrice,
+        quantityReceived: dto.quantityReceived,
+        quantityRemaining,
+      });
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const batch = await tx.drugBatch.create({
         data: {
           drugId: dto.drugId,
           fromLocationId,
           toLocationId,
-          batchNumber: dto.batchNumber.trim(),
+          batchNumber: trimmedBatchNumber,
           manufacturingDate,
           expiryDate,
           supplierId: dto.supplierId ?? null,

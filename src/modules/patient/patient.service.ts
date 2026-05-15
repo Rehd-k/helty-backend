@@ -105,6 +105,9 @@ export class PatientService {
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
 
     try {
+      if (!createPatientDto.phoneNumber) {
+        delete data.patientId
+      }
       const newPatient = await this.prisma.patient.create({ data });
       this.logger.log(
         `Patient created id=${newPatient.id} patientId=${patientId}`,
