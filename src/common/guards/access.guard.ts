@@ -77,6 +77,8 @@ function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
       );
     case 'DIALYSIS':
       return user.accountType === 'PHYSICIAN';
+    case 'HMO_DESK':
+      return user.accountType === 'HMO' || user.staffRole === 'HMO_STAFF';
     default:
       return false;
   }

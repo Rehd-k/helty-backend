@@ -59,7 +59,7 @@ export class ReceivablesController {
 
   @Get('remittances')
   @ApiOperation({ summary: 'List coverage remittances' })
-  @AccountTypes('ACCOUNTING', 'SUPER_ADMIN')
+  @AccountTypes('ACCOUNTING', 'HMO', 'SUPER_ADMIN')
   listRemittances(@Query() q: ReceivablesQueryDto) {
     return this.receivablesService.listRemittances(q);
   }
@@ -67,7 +67,7 @@ export class ReceivablesController {
   @Get('remittances/:id')
   @ApiOperation({ summary: 'Get one coverage remittance' })
   @ApiParam({ name: 'id', description: 'CoverageRemittance UUID' })
-  @AccountTypes('ACCOUNTING', 'SUPER_ADMIN')
+  @AccountTypes('ACCOUNTING', 'HMO', 'SUPER_ADMIN')
   getRemittance(@Param('id') id: string) {
     return this.receivablesService.getRemittance(id);
   }
@@ -75,7 +75,7 @@ export class ReceivablesController {
   @Post('remittances')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Record a coverage remittance (settle receivables)' })
-  @AccountTypes('ACCOUNTING', 'SUPER_ADMIN')
+  @AccountTypes('ACCOUNTING', 'HMO', 'SUPER_ADMIN')
   createRemittance(@Body() dto: CreateRemittanceDto, @Req() req: any) {
     return this.receivablesService.createRemittance(dto, req?.user?.sub);
   }
@@ -96,7 +96,7 @@ export class ReceivablesController {
 
   @Get('analytics/remittance-collections')
   @ApiOperation({ summary: 'Coverage remittance collections summary by payer' })
-  @AccountTypes('ACCOUNTING', 'SUPER_ADMIN')
+  @AccountTypes('ACCOUNTING', 'HMO', 'SUPER_ADMIN')
   remittanceCollectionsSummary(@Query() q: ReceivablesQueryDto) {
     return this.receivablesService.remittanceCollectionsSummary(q);
   }

@@ -20,6 +20,7 @@ import {
   ApiNotFoundResponse,
   ApiBadRequestResponse,
 } from '@nestjs/swagger';
+import { AccountTypes } from '../../common/decorators/account-types.decorator';
 import { HmoService } from './hmo.service';
 import {
   CreateHmoDto,
@@ -42,6 +43,7 @@ export class HmoController {
   })
   @ApiCreatedResponse({ description: 'HMO created' })
   @ApiBadRequestResponse({ description: 'Validation or unknown service ids' })
+  @AccountTypes('HMO', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN')
   create(@Body() dto: CreateHmoDto, @Req() req: { user: { sub: string } }) {
     return this.hmoService.create(dto, req);
   }
@@ -87,6 +89,7 @@ export class HmoController {
   @ApiParam({ name: 'id', description: 'HMO UUID' })
   @ApiOkResponse({ description: 'Updated HMO' })
   @ApiNotFoundResponse({ description: 'HMO not found' })
+  @AccountTypes('HMO', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateHmoDto,
@@ -103,6 +106,7 @@ export class HmoController {
   @ApiParam({ name: 'id', description: 'HMO UUID' })
   @ApiOkResponse({ description: 'Deleted' })
   @ApiBadRequestResponse({ description: 'Patients still linked' })
+  @AccountTypes('HMO', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN')
   remove(@Param('id') id: string) {
     return this.hmoService.remove(id);
   }
