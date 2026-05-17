@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { LabRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import {
@@ -116,7 +117,34 @@ export class LabRequestService {
   }
 
   async update(id: string, dto: UpdateLabRequestDto) {
-    await this.findOne(id);
+    const existing = await this.prisma.labRequest.findUnique({
+      where: { id },
+      include: {
+        invoiceItem: { include: { labOrder: { select: { id: true } } } },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Lab request "${id}" not found.`);
+    }
+
+    if (dto.status === LabRequestStatus.CANCELLED) {
+      if (existing.status === LabRequestStatus.CANCELLED) {
+        return this.findOne(id);
+      }
+      this.assertLabRequestCancellable(existing);
+      return this.prisma.$transaction(async (tx) => {
+        await this.invoiceService.removeBillableLineForEncounterRequest(
+          existing.invoiceItemId,
+          tx,
+        );
+        return tx.labRequest.update({
+          where: { id },
+          data: { ...dto, status: LabRequestStatus.CANCELLED },
+          include: labRequestWithBillingInclude,
+        });
+      });
+    }
+
     return this.prisma.labRequest.update({
       where: { id },
       data: dto,
@@ -125,14 +153,40 @@ export class LabRequestService {
   }
 
   async remove(id: string) {
-    const found = await this.prisma.labRequest.findUnique({
+    const existing = await this.prisma.labRequest.findUnique({
       where: { id },
-      select: { id: true },
+      include: {
+        invoiceItem: { include: { labOrder: { select: { id: true } } } },
+      },
     });
-    if (!found) {
+    if (!existing) {
       throw new NotFoundException(`Lab request "${id}" not found.`);
     }
-    await this.prisma.labRequest.delete({ where: { id } });
+    this.assertLabRequestCancellable(existing);
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.invoiceService.removeBillableLineForEncounterRequest(
+        existing.invoiceItemId,
+        tx,
+      );
+      await tx.labRequest.delete({ where: { id } });
+    });
     return { message: 'Lab request removed successfully.' };
+  }
+
+  private assertLabRequestCancellable(request: {
+    status: LabRequestStatus;
+    invoiceItem: { labOrder: { id: string } | null } | null;
+  }) {
+    if (request.invoiceItem?.labOrder) {
+      throw new BadRequestException(
+        'Cannot remove this lab request: a lab order has already been created for the billed test.',
+      );
+    }
+    if (request.status === LabRequestStatus.COMPLETED) {
+      throw new BadRequestException(
+        'Cannot remove a completed lab request.',
+      );
+    }
   }
 }

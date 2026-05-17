@@ -3,12 +3,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, RadiologyRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { invoiceLinkException } from '../../common/exceptions/invoice-link.exception';
 import { CreateRadiologyRequestDto } from './dto/create-radiology-request.dto';
 import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
+import { UpdateRadiologyOrderItemDto } from './dto/update-radiology-order-item.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 
@@ -285,7 +286,53 @@ export class RadiologyRequestService {
   }
 
   async update(id: string, dto: UpdateRadiologyRequestDto) {
-    await this.findOne(id);
+    const order = await this.prisma.radiologyOrder.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            procedure: { select: { id: true } },
+            report: { select: { id: true } },
+          },
+        },
+      },
+    });
+    if (!order) {
+      throw new NotFoundException(`Radiology order "${id}" not found.`);
+    }
+
+    if (dto.status === RadiologyRequestStatus.CANCELLED) {
+      if (order.status === RadiologyRequestStatus.CANCELLED) {
+        return this.findOne(id);
+      }
+      for (const item of order.items) {
+        this.assertRadiologyOrderItemCancellable(item);
+      }
+      return this.prisma.$transaction(async (tx) => {
+        for (const item of order.items) {
+          await this.invoiceService.removeBillableLineForEncounterRequest(
+            item.invoiceItemId,
+            tx,
+          );
+        }
+        await tx.radiologyOrderItem.updateMany({
+          where: { orderId: id },
+          data: { status: RadiologyRequestStatus.CANCELLED },
+        });
+        return tx.radiologyOrder.update({
+          where: { id },
+          data: { status: RadiologyRequestStatus.CANCELLED },
+          include: {
+            patient: { select: { id: true, firstName: true, surname: true } },
+            requestedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+            items: true,
+          },
+        });
+      });
+    }
+
     return this.prisma.radiologyOrder.update({
       where: { id },
       data: {
@@ -297,5 +344,173 @@ export class RadiologyRequestService {
         items: true,
       },
     });
+  }
+
+  async updateItem(
+    orderId: string,
+    itemId: string,
+    dto: UpdateRadiologyOrderItemDto,
+  ) {
+    const item = await this.prisma.radiologyOrderItem.findFirst({
+      where: { id: itemId, orderId },
+      include: {
+        procedure: { select: { id: true } },
+        report: { select: { id: true } },
+        order: { select: { id: true, status: true } },
+      },
+    });
+    if (!item) {
+      throw new NotFoundException(
+        `Radiology order item "${itemId}" not found on order "${orderId}".`,
+      );
+    }
+
+    if (dto.status === RadiologyRequestStatus.CANCELLED) {
+      if (item.status === RadiologyRequestStatus.CANCELLED) {
+        return this.findOne(orderId);
+      }
+      this.assertRadiologyOrderItemCancellable(item);
+      return this.prisma.$transaction(async (tx) => {
+        await this.invoiceService.removeBillableLineForEncounterRequest(
+          item.invoiceItemId,
+          tx,
+        );
+        await tx.radiologyOrderItem.update({
+          where: { id: itemId },
+          data: { status: RadiologyRequestStatus.CANCELLED },
+        });
+        await this.syncOrderStatusAfterItemChange(tx, orderId);
+        return this.findOne(orderId);
+      });
+    }
+
+    return this.prisma.radiologyOrderItem
+      .update({
+        where: { id: itemId },
+        data: {
+          ...(dto.status !== undefined && { status: dto.status }),
+        },
+      })
+      .then(() => this.findOne(orderId));
+  }
+
+  async remove(id: string) {
+    const order = await this.prisma.radiologyOrder.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            procedure: { select: { id: true } },
+            report: { select: { id: true } },
+          },
+        },
+      },
+    });
+    if (!order) {
+      throw new NotFoundException(`Radiology order "${id}" not found.`);
+    }
+    for (const item of order.items) {
+      this.assertRadiologyOrderItemCancellable(item);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of order.items) {
+        await this.invoiceService.removeBillableLineForEncounterRequest(
+          item.invoiceItemId,
+          tx,
+        );
+      }
+      await tx.radiologyOrder.delete({ where: { id } });
+    });
+    return { message: 'Radiology order removed successfully.' };
+  }
+
+  async removeItem(orderId: string, itemId: string) {
+    const item = await this.prisma.radiologyOrderItem.findFirst({
+      where: { id: itemId, orderId },
+      include: {
+        procedure: { select: { id: true } },
+        report: { select: { id: true } },
+      },
+    });
+    if (!item) {
+      throw new NotFoundException(
+        `Radiology order item "${itemId}" not found on order "${orderId}".`,
+      );
+    }
+    this.assertRadiologyOrderItemCancellable(item);
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.invoiceService.removeBillableLineForEncounterRequest(
+        item.invoiceItemId,
+        tx,
+      );
+      await tx.radiologyOrderItem.delete({ where: { id: itemId } });
+      const remaining = await tx.radiologyOrderItem.count({
+        where: { orderId },
+      });
+      if (remaining === 0) {
+        await tx.radiologyOrder.delete({ where: { id: orderId } });
+      } else {
+        await this.syncOrderStatusAfterItemChange(tx, orderId);
+      }
+    });
+
+    const orderStillExists = await this.prisma.radiologyOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true },
+    });
+    if (!orderStillExists) {
+      return { message: 'Radiology order item removed; order deleted (no items left).' };
+    }
+    return {
+      message: 'Radiology order item removed successfully.',
+      order: await this.findOne(orderId),
+    };
+  }
+
+  private assertRadiologyOrderItemCancellable(item: {
+    status: RadiologyRequestStatus;
+    procedure: { id: string } | null;
+    report: { id: string } | null;
+  }) {
+    if (item.status === RadiologyRequestStatus.CANCELLED) {
+      return;
+    }
+    if (item.procedure || item.report) {
+      throw new BadRequestException(
+        'Cannot remove this imaging request: the study has already been performed or reported.',
+      );
+    }
+    if (
+      item.status === RadiologyRequestStatus.IN_PROGRESS ||
+      item.status === RadiologyRequestStatus.COMPLETED ||
+      item.status === RadiologyRequestStatus.REPORTED
+    ) {
+      throw new BadRequestException(
+        `Cannot remove an imaging request with status ${item.status}.`,
+      );
+    }
+  }
+
+  private async syncOrderStatusAfterItemChange(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+  ) {
+    const items = await tx.radiologyOrderItem.findMany({
+      where: { orderId },
+      select: { status: true },
+    });
+    if (items.length === 0) return;
+
+    const allCancelled = items.every(
+      (i) => i.status === RadiologyRequestStatus.CANCELLED,
+    );
+    if (allCancelled) {
+      await tx.radiologyOrder.update({
+        where: { id: orderId },
+        data: { status: RadiologyRequestStatus.CANCELLED },
+      });
+    }
   }
 }

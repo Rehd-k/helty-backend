@@ -123,6 +123,31 @@ export class ChatController {
     return { staff, presence };
   }
 
+  @Get('presence/:staffId')
+  @ApiOperation({ summary: 'Presence for a single staff member' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 404, description: 'Staff not found' })
+  async getStaffPresence(@Param('staffId') staffId: string) {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: {
+        id: true,
+        staffId: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+    if (!staff) {
+      throw new NotFoundException('Staff not found');
+    }
+    const presence = await this.presence.getPresence(staffId);
+    return {
+      staffId,
+      ...presence,
+      staff,
+    };
+  }
+
   @Get('conversations')
   @ApiOperation({ summary: 'List conversations for current staff' })
   listConversations(@Req() req: { user?: { sub?: string } }) {

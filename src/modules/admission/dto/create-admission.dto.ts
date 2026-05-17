@@ -89,6 +89,14 @@ export class UpdateAdmissionDto {
 
   @IsString()
   @IsOptional()
+  wardId?: string;
+
+  @IsString()
+  @IsOptional()
+  bedId?: string;
+
+  @IsString()
+  @IsOptional()
   room?: string;
 
   @IsString()

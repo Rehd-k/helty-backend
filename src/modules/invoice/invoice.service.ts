@@ -1522,6 +1522,57 @@ export class InvoiceService {
   }
 
   /**
+   * Removes an encounter-billed service line when a lab or radiology request is
+   * cancelled or deleted. No-op when `invoiceItemId` is empty or the line is already gone.
+   * Blocked for paid invoices, settled lines, lines with payments, or allocations.
+   */
+  async removeBillableLineForEncounterRequest(
+    invoiceItemId: string | null | undefined,
+    tx: Prisma.TransactionClient = this.prisma,
+  ): Promise<void> {
+    if (!invoiceItemId) return;
+
+    const item = await tx.invoiceItem.findUnique({
+      where: { id: invoiceItemId },
+      include: {
+        invoice: { select: { id: true, status: true, staffId: true } },
+        _count: { select: { allocations: true } },
+      },
+    });
+    if (!item) return;
+
+    this.assertInvoiceNotPaid(item.invoice.status);
+
+    if (item.settled) {
+      throw new BadRequestException(
+        'This charge has already been settled and cannot be removed.',
+      );
+    }
+    if (this.asDecimal(item.amountPaid).gt(0)) {
+      throw new BadRequestException(
+        'This charge has a payment applied and cannot be removed.',
+      );
+    }
+    if (item._count.allocations > 0) {
+      throw new BadRequestException(
+        'This charge has payment allocations and cannot be removed.',
+      );
+    }
+
+    if (item.consumableId) {
+      const performedById = item.invoice.staffId;
+      await this.consumableStock.releaseFifoOutForInvoiceItem(
+        tx,
+        invoiceItemId,
+        performedById,
+      );
+    }
+
+    await tx.invoiceItem.delete({ where: { id: invoiceItemId } });
+    await this.recalculateInvoiceTotals(item.invoice.id, tx);
+  }
+
+  /**
    * Remove a line item from an invoice.
    */
   async removeItem(invoiceId: string, itemId: string) {

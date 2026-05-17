@@ -6,7 +6,10 @@ import {
   IsNotEmpty,
   IsIn,
   IsDateString,
+  IsNumber,
+  Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { MedicationAdminStatus } from '@prisma/client';
 
 const MEDICATION_ROUTES = ['IV', 'ORAL', 'IM', 'SC'] as const;
@@ -26,6 +29,17 @@ export class CreateAdmissionMedicationOrderDto {
   @IsString()
   @IsNotEmpty()
   dose: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Ordered quantity per administration (e.g. 2 tablets). Defaults to 1 when omitted.',
+    example: 1,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity?: number;
 
   @ApiProperty()
   @IsString()
@@ -57,6 +71,15 @@ export class UpdateAdmissionMedicationOrderDto {
   @IsOptional()
   @IsString()
   dose?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ordered quantity per administration',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -92,6 +115,16 @@ export class CreateMedicationAdministrationDto {
   @IsIn(Object.values(MedicationAdminStatus))
   status: MedicationAdminStatus;
 
+  @ApiPropertyOptional({
+    description:
+      'Quantity administered. Required when status is GIVEN; compared to the order quantity.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity?: number;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -113,6 +146,15 @@ export class UpdateMedicationAdministrationDto {
   @IsOptional()
   @IsIn(Object.values(MedicationAdminStatus))
   status?: MedicationAdminStatus;
+
+  @ApiPropertyOptional({
+    description: 'Quantity administered (when status is GIVEN)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.001)
+  quantity?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

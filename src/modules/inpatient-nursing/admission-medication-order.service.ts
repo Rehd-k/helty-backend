@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   assertAdmissionExists,
@@ -78,6 +79,7 @@ export class AdmissionMedicationOrderService {
         administrationStatus: 'ACTIVE',
         drugName: dto.drugName.trim(),
         dose: dto.dose.trim(),
+        quantity: new Prisma.Decimal(dto.quantity ?? 1),
         route: dto.route,
         frequency: dto.frequency.trim(),
         startDateTime: new Date(dto.startDateTime),
@@ -113,6 +115,9 @@ export class AdmissionMedicationOrderService {
           administrationStatus: dto.administrationStatus,
         }),
         ...(dto.dose !== undefined && { dose: dto.dose }),
+        ...(dto.quantity !== undefined && {
+          quantity: new Prisma.Decimal(dto.quantity),
+        }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),
         ...(dto.endDateTime !== undefined && {
           endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : null,

@@ -22,7 +22,7 @@ import {
 
 @Injectable()
 export class InvoiceDrugService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private static readonly invoiceItemCreatedBySelect = {
     id: true,
@@ -80,7 +80,7 @@ export class InvoiceDrugService {
     if (totalAvailable < quantityToDeduct) {
       throw new BadRequestException(
         `Insufficient stock for this drug: need ${quantityToDeduct} unit(s), ` +
-          `${totalAvailable} available across batches.`,
+        `${totalAvailable} available across batches.`,
       );
     }
 
@@ -174,26 +174,39 @@ export class InvoiceDrugService {
     });
   }
 
+  private static readonly medicationOrderPrescriptionSelect = {
+    dose: true,
+    frequency: true,
+    duration: true,
+    route: true,
+    quantity: true,
+  } as const;
+
+  private static readonly invoiceDrugItemInclude = {
+    service: {
+      select: { id: true, name: true, cost: true },
+    },
+    drug: {
+      select: {
+        id: true,
+        genericName: true,
+        brandName: true,
+        strength: true,
+        dosageForm: true,
+      },
+    },
+    medicationOrder: {
+      select: InvoiceDrugService.medicationOrderPrescriptionSelect,
+    },
+    createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
+  } satisfies Prisma.InvoiceItemInclude;
+
   private static readonly invoiceDrugInclude = {
     staff: {
       select: { id: true, firstName: true, lastName: true },
     },
     invoiceItems: {
-      include: {
-        service: {
-          select: { id: true, name: true, cost: true },
-        },
-        drug: {
-          select: {
-            id: true,
-            genericName: true,
-            brandName: true,
-            strength: true,
-            dosageForm: true,
-          },
-        },
-        createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
-      },
+      include: InvoiceDrugService.invoiceDrugItemInclude,
     },
     patient: {
       select: {
@@ -206,6 +219,57 @@ export class InvoiceDrugService {
     createdBy: { select: { id: true, firstName: true, lastName: true } },
     _count: { select: { invoiceItems: true } },
   } satisfies Prisma.InvoiceInclude;
+
+  /** Flatten linked medication-order prescribing fields onto drug invoice lines. */
+  private enrichDrugInvoiceItems<
+    T extends {
+      drugId: string | null;
+      medicationOrder?: {
+        dose: string | null;
+        frequency: string | null;
+        duration: string | null;
+        route: string | null;
+        quantity: Prisma.Decimal | null;
+      } | null;
+    },
+  >(items: T[]) {
+    return items.map((item) => {
+      if (!item.drugId) return item;
+      const { medicationOrder, ...rest } = item;
+      return {
+        ...rest,
+        dose: medicationOrder?.dose ?? null,
+        frequency: medicationOrder?.frequency ?? null,
+        duration: medicationOrder?.duration ?? null,
+        route: medicationOrder?.route ?? null,
+        orderQuantity:
+          medicationOrder?.quantity != null
+            ? Number(medicationOrder.quantity)
+            : null,
+        medicationOrder: medicationOrder ?? null,
+      };
+    });
+  }
+
+  private enrichDrugInvoice<
+    T extends {
+      invoiceItems: Array<{
+        drugId: string | null;
+        medicationOrder?: {
+          dose: string | null;
+          frequency: string | null;
+          duration: string | null;
+          route: string | null;
+          quantity: Prisma.Decimal | null;
+        } | null;
+      }>;
+    },
+  >(invoice: T) {
+    return {
+      ...invoice,
+      invoiceItems: this.enrichDrugInvoiceItems(invoice.invoiceItems),
+    };
+  }
 
   async findAllDrugInvoices(
     params: DateRangeSkipTakeDto & {
@@ -297,7 +361,15 @@ export class InvoiceDrugService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
-    return { invoices, total, skip, take };
+    console.log({
+      invoices: invoices.map((invoice) => this.enrichDrugInvoice(invoice))[0].invoiceItems
+    })
+    return {
+      invoices: invoices.map((invoice) => this.enrichDrugInvoice(invoice)),
+      total,
+      skip,
+      take,
+    };
   }
 
   async findOneDrugInvoice(id: string) {
@@ -347,6 +419,8 @@ export class InvoiceDrugService {
         },
         invoiceItems: {
           include: {
+            ...InvoiceDrugService.invoiceDrugItemInclude,
+            usageSegments: true,
             service: {
               select: {
                 id: true,
@@ -356,19 +430,6 @@ export class InvoiceDrugService {
                 category: { select: { id: true, name: true } },
                 department: { select: { id: true, name: true } },
               },
-            },
-            drug: {
-              select: {
-                id: true,
-                genericName: true,
-                brandName: true,
-                strength: true,
-                dosageForm: true,
-              },
-            },
-            usageSegments: true,
-            createdBy: {
-              select: InvoiceDrugService.invoiceItemCreatedBySelect,
             },
           },
         },
@@ -391,15 +452,17 @@ export class InvoiceDrugService {
       invoice.amountPaid,
     );
     const now = new Date();
-    const invoiceItems = invoice.invoiceItems.map((item) => {
-      const lineTotal = this.invoiceLineTotal(item, now);
-      const paid = this.asDecimal(item.amountPaid);
-      return {
-        ...item,
-        lineTotal,
-        lineAmountDue: lineTotal.sub(paid),
-      };
-    });
+    const invoiceItems = this.enrichDrugInvoiceItems(
+      invoice.invoiceItems.map((item) => {
+        const lineTotal = this.invoiceLineTotal(item, now);
+        const paid = this.asDecimal(item.amountPaid);
+        return {
+          ...item,
+          lineTotal,
+          lineAmountDue: lineTotal.sub(paid),
+        };
+      }),
+    );
     return { ...invoice, invoiceItems, amountDue };
   }
 
@@ -548,16 +611,27 @@ export class InvoiceDrugService {
           },
         });
 
-        if (settlingNow && invoice.encounterId) {
-          await tx.medicationOrder.updateMany({
-            where: {
-              encounterId: invoice.encounterId,
-              drugId: existing.drugId!,
-              patientId: invoice.patientId,
-              status: { not: 'Cancelled' },
-            },
-            data: { status: 'Dispensed' },
+        if (settlingNow) {
+          const linkedOrder = await tx.medicationOrder.findFirst({
+            where: { invoiceItemId: itemId },
+            select: { id: true },
           });
+          if (linkedOrder) {
+            await tx.medicationOrder.update({
+              where: { id: linkedOrder.id },
+              data: { status: 'Dispensed' },
+            });
+          } else if (invoice.encounterId) {
+            await tx.medicationOrder.updateMany({
+              where: {
+                encounterId: invoice.encounterId,
+                drugId: existing.drugId!,
+                patientId: invoice.patientId,
+                status: { not: 'Cancelled' },
+              },
+              data: { status: 'Dispensed' },
+            });
+          }
         }
 
         await this.recalculateInvoiceTotals(invoiceId, tx);
@@ -681,13 +755,23 @@ export class InvoiceDrugService {
           },
         });
 
-        const encounterId = invoice.encounterId;
-        const previousDrugId = existing.drugId;
-        if (encounterId && previousDrugId) {
+        const linkedOrder = await tx.medicationOrder.findFirst({
+          where: { invoiceItemId: itemId },
+          select: { id: true },
+        });
+        if (linkedOrder) {
+          await tx.medicationOrder.update({
+            where: { id: linkedOrder.id },
+            data: {
+              drugId: dto.drugId,
+              drugName: drug.genericName,
+            },
+          });
+        } else if (invoice.encounterId && existing.drugId) {
           await tx.medicationOrder.updateMany({
             where: {
-              encounterId,
-              drugId: previousDrugId,
+              encounterId: invoice.encounterId,
+              drugId: existing.drugId,
             },
             data: {
               drugId: dto.drugId,

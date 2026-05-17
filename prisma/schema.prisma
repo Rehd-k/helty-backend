@@ -952,6 +952,7 @@ model InvoiceItem {
   radiologyOrderItem RadiologyOrderItem?
   labOrder           LabOrder?
   labRequest         LabRequest?
+  medicationOrder    MedicationOrder?
   drugReturns        InvoiceDrugReturn[]
   coverages          InvoiceCoverage[]
 
@@ -2293,6 +2294,8 @@ model MedicationOrder {
   drugId               String?
   drugName             String // denormalized for display
   dose                 String?
+  /// Ordered amount per administration (e.g. 2 tablets). Compared when nurses record administrations.
+  quantity             Decimal?                                @db.Decimal(12, 3)
   frequency            String?
   duration             String?
   route                String?
@@ -2314,11 +2317,14 @@ model MedicationOrder {
   drug            Drug?                      @relation(fields: [drugId], references: [id], onDelete: Restrict)
   drugCatalog     DrugCatalog?               @relation(fields: [drugCatalogId], references: [id])
   drugCatalogId   String?
+  invoiceItem     InvoiceItem?               @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId   String?                    @unique
   administrations MedicationAdministration[]
 
   @@index([encounterId])
   @@index([admissionId])
   @@index([patientId])
+  @@index([invoiceItemId])
 }
 
 model LegacyLabCatalog {
@@ -2532,6 +2538,10 @@ model MedicationAdministration {
   scheduledTime    DateTime
   actualTime       DateTime?
   status           MedicationAdminStatus
+  /// Amount actually administered (when status is GIVEN).
+  quantity         Decimal?                @db.Decimal(12, 3)
+  /// True when quantity exceeds the ordered amount on the linked medication order.
+  isOverMedication Boolean                 @default(false)
   reasonIfNotGiven String?
   remarks          String?
 

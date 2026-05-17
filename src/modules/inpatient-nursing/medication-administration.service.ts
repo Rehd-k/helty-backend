@@ -10,10 +10,16 @@ import {
   assertStaffIsNurseOrThrow,
   isSuperAdminStaff,
 } from './inpatient-nursing.utils';
+import { MedicationAdminStatus, Prisma } from '@prisma/client';
 import {
   CreateMedicationAdministrationDto,
   UpdateMedicationAdministrationDto,
 } from './dto/admission-medication.dto';
+import {
+  computeIsOverMedication,
+  resolveOrderedQuantity,
+  toAdministrationQuantity,
+} from './medication-administration.utils';
 
 const nurseSelect = {
   id: true,
@@ -26,13 +32,14 @@ const medicationOrderSelect = {
   id: true,
   drugName: true,
   dose: true,
+  quantity: true,
   route: true,
   frequency: true,
 } as const;
 
 @Injectable()
 export class MedicationAdministrationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async list(admissionId: string) {
     await assertAdmissionExists(this.prisma, admissionId);
@@ -64,6 +71,17 @@ export class MedicationAdministrationService {
         'Medication order does not belong to this admission.',
       );
     }
+
+    // console.log(order)
+
+
+    const { quantity, isOverMedication } = this.buildAdministrationQuantityFields(
+      order,
+      dto.status,
+      dto.quantity,
+    );
+    // console.log(quantity, dto, isOverMedication)
+
     return this.prisma.medicationAdministration.create({
       data: {
         admissionId,
@@ -72,6 +90,8 @@ export class MedicationAdministrationService {
         scheduledTime: new Date(dto.scheduledTime),
         actualTime: dto.actualTime ? new Date(dto.actualTime) : null,
         status: dto.status,
+        quantity,
+        isOverMedication,
         reasonIfNotGiven: dto.reasonIfNotGiven?.trim() || null,
         remarks: dto.remarks?.trim() || null,
       },
@@ -92,6 +112,9 @@ export class MedicationAdministrationService {
 
     const row = await this.prisma.medicationAdministration.findFirst({
       where: { id: administrationId, admissionId },
+      include: {
+        medicationOrder: { select: { quantity: true, dose: true } },
+      },
     });
     if (!row) {
       throw new NotFoundException('Medication administration not found.');
@@ -102,6 +125,16 @@ export class MedicationAdministrationService {
       );
     }
 
+    const nextStatus = dto.status ?? row.status;
+    const quantityPatch =
+      dto.quantity !== undefined || dto.status !== undefined
+        ? this.buildAdministrationQuantityFields(
+          row.medicationOrder,
+          nextStatus,
+          dto.quantity !== undefined ? dto.quantity : row.quantity != null ? Number(row.quantity) : undefined,
+        )
+        : null;
+
     return this.prisma.medicationAdministration.update({
       where: { id: administrationId },
       data: {
@@ -109,6 +142,10 @@ export class MedicationAdministrationService {
           actualTime: dto.actualTime ? new Date(dto.actualTime) : null,
         }),
         ...(dto.status !== undefined && { status: dto.status }),
+        ...(quantityPatch && {
+          quantity: quantityPatch.quantity,
+          isOverMedication: quantityPatch.isOverMedication,
+        }),
         ...(dto.reasonIfNotGiven !== undefined && {
           reasonIfNotGiven: dto.reasonIfNotGiven,
         }),
@@ -119,5 +156,38 @@ export class MedicationAdministrationService {
         nurse: { select: nurseSelect },
       },
     });
+  }
+
+  private buildAdministrationQuantityFields(
+    order: { quantity: Prisma.Decimal | null; dose: string | null },
+    status: MedicationAdminStatus,
+    quantityInput?: number,
+  ): { quantity: ReturnType<typeof toAdministrationQuantity>; isOverMedication: boolean } {
+    if (status === MedicationAdminStatus.GIVEN) {
+      if (quantityInput === undefined || quantityInput === null) {
+        throw new BadRequestException(
+          'quantity is required when recording administration as GIVEN.',
+        );
+      }
+      const ordered = resolveOrderedQuantity(order);
+      if (ordered == null) {
+        throw new BadRequestException(
+          'Cannot record administration: the medication order has no ordered quantity. Set quantity on the order or use a numeric dose (e.g. "2 tablets").',
+        );
+      }
+      const administered = toAdministrationQuantity(status, quantityInput)!;
+      return {
+        quantity: administered,
+        isOverMedication: computeIsOverMedication(administered, ordered),
+      };
+    }
+
+    if (quantityInput !== undefined && quantityInput !== null) {
+      throw new BadRequestException(
+        'quantity should only be provided when status is GIVEN.',
+      );
+    }
+
+    return { quantity: null, isOverMedication: false };
   }
 }

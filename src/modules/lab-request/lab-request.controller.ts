@@ -49,14 +49,20 @@ export class LabRequestController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update lab request (e.g. status)' })
+  @ApiOperation({
+    summary:
+      'Update lab request (e.g. status). Cancelling removes the billed line and recalculates the invoice when allowed.',
+  })
   update(@Param('id') id: string, @Body() dto: UpdateLabRequestDto) {
     return this.labRequestService.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Delete lab request' })
+  @ApiOperation({
+    summary:
+      'Delete lab request and remove its invoice line from open invoices when allowed',
+  })
   remove(@Param('id') id: string) {
     return this.labRequestService.remove(id);
   }

@@ -129,6 +129,11 @@ export class UpdateMedicationOrderDto {
   @MaxLength(500)
   dose?: string;
 
+  @ApiPropertyOptional({ description: 'Ordered quantity per administration' })
+  @IsNumber()
+  @IsOptional()
+  quantity?: number;
+
   @ApiPropertyOptional({ description: 'Frequency (e.g. TID, twice daily)' })
   @IsString()
   @IsOptional()

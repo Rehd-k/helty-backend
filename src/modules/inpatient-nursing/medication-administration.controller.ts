@@ -29,7 +29,7 @@ import {
 // @UseGuards(JwtAuthGuard)
 @Controller('admissions/:admissionId/medication-administrations')
 export class MedicationAdministrationController {
-  constructor(private readonly service: MedicationAdministrationService) {}
+  constructor(private readonly service: MedicationAdministrationService) { }
 
   @Get()
   @AccountTypes(
@@ -56,6 +56,7 @@ export class MedicationAdministrationController {
     @Body() dto: CreateMedicationAdministrationDto,
     @Req() req: { user: { sub: string } },
   ) {
+    console.log(dto)
     const addmi = await this.service.create(admissionId, dto, req.user.sub);
     return addmi;
   }

@@ -348,6 +348,8 @@ export class AdmissionService {
         where: { id },
         data: {
           ward: updateAdmissionDto.ward,
+          wardId: updateAdmissionDto.wardId,
+          bedId: updateAdmissionDto.bedId,
           room: updateAdmissionDto.room,
           reason: updateAdmissionDto.reason,
           updatedById: staffId,

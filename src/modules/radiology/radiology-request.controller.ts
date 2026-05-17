@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  Delete,
   Query,
   HttpCode,
   HttpStatus,
@@ -16,6 +17,7 @@ import { AccountTypes } from '../../common/decorators';
 import { RadiologyRequestService } from './radiology-request.service';
 import { CreateRadiologyRequestDto } from './dto/create-radiology-request.dto';
 import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
+import { UpdateRadiologyOrderItemDto } from './dto/update-radiology-order-item.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
 
 @ApiTags('Radiology - Requests')
@@ -60,11 +62,48 @@ export class RadiologyRequestController {
     return this.radiologyRequestService.findOne(id);
   }
 
+  @Patch(':orderId/items/:itemId')
+  @ApiOperation({
+    summary:
+      'Update a radiology order item. Cancelling removes its invoice line and recalculates when allowed.',
+  })
+  updateItem(
+    @Param('orderId') orderId: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateRadiologyOrderItemDto,
+  ) {
+    return this.radiologyRequestService.updateItem(orderId, itemId, dto);
+  }
+
+  @Delete(':orderId/items/:itemId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Delete one radiology order item and remove its invoice line when allowed',
+  })
+  removeItem(
+    @Param('orderId') orderId: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.radiologyRequestService.removeItem(orderId, itemId);
+  }
+
   @Patch(':id')
   @ApiOperation({
-    summary: 'Update radiology order (e.g. status)',
+    summary:
+      'Update radiology order (e.g. status). Cancelling removes billed lines and recalculates the invoice when allowed.',
   })
   update(@Param('id') id: string, @Body() dto: UpdateRadiologyRequestDto) {
     return this.radiologyRequestService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Delete a radiology order and remove its billed lines from open invoices',
+  })
+  remove(@Param('id') id: string) {
+    return this.radiologyRequestService.remove(id);
   }
 }

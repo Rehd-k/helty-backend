@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import {
@@ -29,13 +30,28 @@ export class MedicationOrderService {
     const drug = await this.validateDrug(dto.drugId);
     const patient = await this.validatePatient(dto.patientId);
     const doctor = await this.validateDoctor(dto.doctorId);
-    const order = await this.prisma.medicationOrder.create({
+    const invoice = await this.invoiceService.ensureInvoiceForEncounter({
+      encounterId: dto.encounterId,
+      patientId: dto.patientId,
+      staffId: dto.doctorId,
+    });
+    const invoiceItem = await this.invoiceService.addDrugItem({
+      invoiceId: invoice.id,
+      drugId: dto.drugId,
+      quantity: dto.quantity != null ? Number(dto.quantity) : 1,
+      createdByStaffId: dto.doctorId,
+    });
+    return this.prisma.medicationOrder.create({
       data: {
         encounterId: dto.encounterId,
         admissionId: dto.admissionId,
         drugId: dto.drugId,
         drugName: drug.genericName,
         dose: dto.dose ?? undefined,
+        quantity:
+          dto.quantity != null
+            ? new Prisma.Decimal(dto.quantity)
+            : undefined,
         frequency: dto.frequency ?? undefined,
         duration: dto.duration ?? undefined,
         route: dto.route ?? undefined,
@@ -48,21 +64,10 @@ export class MedicationOrderService {
         administrationStatus: dto.administrationStatus ?? undefined,
         patientId: patient.id,
         doctorId: doctor.id,
+        invoiceItemId: invoiceItem.id,
       },
       include: this.defaultInclude(),
     });
-    const invoice = await this.invoiceService.ensureInvoiceForEncounter({
-      encounterId: dto.encounterId,
-      patientId: dto.patientId,
-      staffId: dto.doctorId,
-    });
-    await this.invoiceService.addDrugItem({
-      invoiceId: invoice.id,
-      drugId: dto.drugId,
-      quantity: Number(dto.quantity) ?? 1,
-      createdByStaffId: dto.doctorId,
-    });
-    return order;
   }
 
   async findAll(skip = 0, take = 20, encounterId?: string, status?: string) {
@@ -133,6 +138,9 @@ export class MedicationOrderService {
           }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.dose !== undefined && { dose: dto.dose }),
+        ...(dto.quantity !== undefined && {
+          quantity: new Prisma.Decimal(dto.quantity),
+        }),
         ...(dto.frequency !== undefined && { frequency: dto.frequency }),
         ...(dto.duration !== undefined && { duration: dto.duration }),
         ...(dto.route !== undefined && { route: dto.route }),
@@ -256,6 +264,9 @@ export class MedicationOrderService {
           id: true,
           genericName: true,
         },
+      },
+      invoiceItem: {
+        select: { id: true },
       },
     };
   }
