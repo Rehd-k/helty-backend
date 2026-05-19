@@ -84,6 +84,7 @@ model Patient {
   radiologyOrders           RadiologyOrder[]
   medicationOrders          MedicationOrder[]
   consumableUsageEvents     ConsumableUsageEvent[]
+  archivedEncounters        PatientArchivedEncounter[]
 
   @@index([hmoId])
 }
@@ -1750,6 +1751,7 @@ model Staff {
   radiologySchedulesAsRadiographer RadiologySchedule[]        @relation("RadiologyScheduleRadiographer")
   radiologyProceduresPerformed     RadiologyProcedure[]       @relation("RadiologyProcedurePerformedBy")
   radiologyImagesUploaded          RadiologyImage[]           @relation("RadiologyImageUploadedBy")
+  patientArchivedEncountersUploaded PatientArchivedEncounter[] @relation("PatientArchivedEncounterUploadedBy")
   radiologyReportsSigned           RadiologyStudyReport[]     @relation("RadiologyReportSignedBy")
   medicationOrders                 MedicationOrder[]
   purchaseNotesRequested           PurchaseNote[]             @relation("PurchaseNoteRequestedBy")
@@ -3259,4 +3261,34 @@ model HeltyDesktopExternalExecutable {
   createdAt    DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// Scanned historical OPD encounters (pre-digital chart backfill)
+model PatientArchivedEncounter {
+  id                  String   @id @default(uuid())
+  patientId           String
+  patient             Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterOccurredAt DateTime
+  title               String?
+  notes               String?
+  uploadedById        String
+  uploadedBy          Staff    @relation("PatientArchivedEncounterUploadedBy", fields: [uploadedById], references: [id])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  documents           PatientArchivedEncounterDocument[]
+
+  @@index([patientId, encounterOccurredAt])
+}
+
+model PatientArchivedEncounterDocument {
+  id                  String                   @id @default(uuid())
+  archivedEncounterId String
+  archivedEncounter   PatientArchivedEncounter @relation(fields: [archivedEncounterId], references: [id], onDelete: Cascade)
+  fileName            String
+  filePath            String
+  mimeType            String?
+  fileSize            Int?
+  uploadedAt          DateTime                 @default(now())
+
+  @@index([archivedEncounterId])
 }

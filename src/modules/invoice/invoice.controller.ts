@@ -211,13 +211,49 @@ export class InvoiceController {
     return this.invoiceService.listInvoicesForUnregisteredPatients(query);
   }
 
+  @Get('paid-without-encounter')
+  @ApiOperation({
+    summary: 'List PAID invoices with no encounter',
+    description:
+      'Returns paginated invoices where `status` is PAID and `encounterId` is null (paid at counter, not yet linked to a clinical encounter). Same list shape as `GET /invoices`.',
+  })
+  @ApiQuery({ name: 'fromDate', required: false, type: String })
+  @ApiQuery({ name: 'toDate', required: false, type: String })
+  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
+  @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
+  @ApiQuery({
+    name: 'patientId',
+    required: false,
+    type: String,
+    description: 'Patient primary key UUID (`Patient.id`)',
+  })
+  @ApiQuery({
+    name: 'allowIP',
+    required: false,
+    type: Boolean,
+    description: 'When true, include admitted inpatients; otherwise outpatient only',
+  })
+  @ApiOkResponse({ description: 'Paginated list of paid invoices without encounter' })
+  findPaidWithoutEncounter(
+    @Query()
+    params: DateRangeSkipTakeDto & {
+      patientId?: string;
+      allowIP?: boolean;
+    },
+  ) {
+    return this.invoiceService.findPaidWithoutEncounter(params);
+  }
+
   @Get(':id')
   @ApiOperation({
-    summary: 'Get a single invoice by ID',
+    summary: 'Get a single invoice by UUID or human invoiceID',
     description:
-      'Returns the full invoice detail including all line items, associated service snapshots, patient details, staff info, and a computed `totalAmount`.',
+      'Returns the full invoice detail including all line items, associated service snapshots, patient details, staff info, and a computed `totalAmount`. Path param may be the invoice UUID (`id`) or the human bill number (`invoiceID`, e.g. `A1B2C3D4E5`).',
   })
-  @ApiParam({ name: 'id', description: 'Invoice UUID' })
+  @ApiParam({
+    name: 'id',
+    description: 'Invoice UUID or human invoiceID',
+  })
   @ApiOkResponse({ description: 'Invoice detail with computed totalAmount' })
   @ApiNotFoundResponse({ description: 'Invoice not found' })
   findOne(@Param('id') id: string) {

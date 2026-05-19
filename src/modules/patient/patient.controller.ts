@@ -15,14 +15,19 @@ import {
 } from '@nestjs/common';
 import { Public, Roles } from '../../common/decorators';
 import { PatientService } from './patient.service';
+import { PatientChartService } from './patient-chart.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
+import { PatientChartQueryDto } from './dto/patient-chart-query.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('Patient')
 @Controller('patients')
 export class PatientController {
   private readonly log = new Logger(PatientController.name);
-  constructor(private readonly patientService: PatientService) {}
+  constructor(
+    private readonly patientService: PatientService,
+    private readonly patientChartService: PatientChartService,
+  ) {}
 
   private applySelect<T extends Record<string, unknown>>(
     payload: T,
@@ -109,6 +114,15 @@ export class PatientController {
   })
   getHistory(@Param('id') id: string) {
     return this.patientService.getPatientHistory(id);
+  }
+
+  @Get(':id/chart')
+  @ApiOperation({
+    summary: 'Patient chart (profile + summary; opt-in sections via include)',
+  })
+  @ApiResponse({ status: 200, description: 'Patient chart payload' })
+  getChart(@Param('id') id: string, @Query() query: PatientChartQueryDto) {
+    return this.patientChartService.getChart(id, query);
   }
 
   @Get(':id')

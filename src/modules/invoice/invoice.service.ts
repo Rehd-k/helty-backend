@@ -148,6 +148,32 @@ export class InvoiceService {
     return InvoiceService.uuidRe.test(s);
   }
 
+  /** Resolves invoice primary key from UUID or human `invoiceID`. */
+  private async resolveInvoicePrimaryKey(idOrInvoiceID: string): Promise<string> {
+    const key = idOrInvoiceID.trim();
+    if (!key) {
+      throw new NotFoundException('Invoice not found');
+    }
+    if (this.isUuid(key)) {
+      const row = await this.prisma.invoice.findUnique({
+        where: { id: key },
+        select: { id: true },
+      });
+      if (!row) {
+        throw new NotFoundException(`Invoice ${key} not found`);
+      }
+      return row.id;
+    }
+    const row = await this.prisma.invoice.findFirst({
+      where: { invoiceID: { equals: key, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new NotFoundException(`Invoice ${key} not found`);
+    }
+    return row.id;
+  }
+
   private buildBroadInvoiceSearchOr(q: string): Prisma.InvoiceWhereInput[] {
     const or: Prisma.InvoiceWhereInput[] = [
       { invoiceID: { contains: q, mode: 'insensitive' } },
@@ -963,6 +989,44 @@ export class InvoiceService {
     return { invoices, total, skip, take };
   }
 
+  /**
+   * Paginated PAID invoices with no linked encounter (`encounterId` is null).
+   */
+  async findPaidWithoutEncounter(
+    params: DateRangeSkipTakeDto & {
+      allowIP?: boolean;
+      patientId?: string;
+    },
+  ) {
+    const { skip = 0, take = 20, fromDate, toDate, patientId } = params;
+    const { from, to } = parseDateRange(fromDate, toDate);
+    const allowInpatient = this.parseAllowInpatient(params.allowIP);
+    const patientStatus = allowInpatient
+      ? PatientStatus.ADMITED
+      : PatientStatus.OUTPATIENT;
+    const patientPkScope: Prisma.InvoiceWhereInput = patientId?.trim()
+      ? { patientId: patientId.trim() }
+      : {};
+    const where: Prisma.InvoiceWhereInput = {
+      ...patientPkScope,
+      status: InvoiceStatus.PAID,
+      encounterId: null,
+      updatedAt: { gte: from, lte: to },
+      patient: { status: patientStatus },
+    };
+    const [invoices, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { updatedAt: 'desc' },
+        include: InvoiceService.invoiceFindAllInclude,
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+    return { invoices, total, skip, take };
+  }
+
   async findByPatient(patientId: string) {
     const invoices = await this.prisma.invoice.findMany({
       where: { patientId },
@@ -982,8 +1046,10 @@ export class InvoiceService {
 
   /**
    * Full invoice detail with computed `totalAmount`.
+   * Accepts invoice UUID (`id`) or human bill number (`invoiceID`).
    */
-  async findOne(id: string) {
+  async findOne(idOrInvoiceID: string) {
+    const id = await this.resolveInvoicePrimaryKey(idOrInvoiceID);
     await this.recalculateInvoiceTotals(id);
     const invoice = await this.prisma.invoice.findUnique({
       where: { id },
@@ -1068,7 +1134,9 @@ export class InvoiceService {
       },
     });
 
-    if (!invoice) throw new NotFoundException(`Invoice ${id} not found`);
+    if (!invoice) {
+      throw new NotFoundException(`Invoice ${idOrInvoiceID} not found`);
+    }
     const coveredAmount = await this.invoiceCoveredAmount(id);
     const effectivePayable = this.asDecimal(invoice.totalAmount).sub(coveredAmount);
     const amountDue = effectivePayable.sub(invoice.amountPaid);

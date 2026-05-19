@@ -46,6 +46,7 @@ import { InpatientNursingModule } from './modules/inpatient-nursing/inpatient-nu
 import { DiscountModule } from './modules/discount/discount.module';
 import { ReceivablesModule } from './modules/receivables/receivables.module';
 import { ClinicalSpecialtyModule } from './modules/clinical-specialty/clinical-specialty.module';
+import { PatientArchivedEncounterModule } from './modules/patient-archived-encounter/patient-archived-encounter.module';
 
 @Module({
   imports: [
@@ -108,6 +109,7 @@ import { ClinicalSpecialtyModule } from './modules/clinical-specialty/clinical-s
     DiscountModule,
     ReceivablesModule,
     ClinicalSpecialtyModule,
+    PatientArchivedEncounterModule,
   ],
   controllers: [AppController],
   providers: [
