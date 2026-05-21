@@ -19,12 +19,33 @@ import { EncounterType, EncounterStatus } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
 import { labRequestWithBillingInclude } from '../lab-request/lab-request-includes';
 
+type ProcedureConsumableEntry = {
+  id?: string;
+  consumableId?: string;
+  quantity?: number;
+  storeLocationId?: string;
+  invoiceId?: string;
+  invoiceItemId?: string;
+};
+
+type ProcedureEntry = {
+  id?: string;
+  type?: string;
+  consent?: string;
+  notes?: string;
+  complications?: string;
+  serviceId?: string;
+  invoiceId?: string;
+  invoiceItemId?: string;
+  consumables?: ProcedureConsumableEntry[];
+};
+
 @Injectable()
 export class EncounterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) {}
+  ) { }
 
   /** Ongoing encounter for the same patient, type, and admission scope (reuse instead of duplicate create). */
   private async findUnfinishedEncounterForCreate(dto: CreateEncounterDto) {
@@ -451,7 +472,18 @@ export class EncounterService {
     dto: UpdateEncounterDto,
     staffId: string,
   ) {
-    await this.findOne(id);
+    const encounter = await this.prisma.encounter.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        patientId: true,
+        doctorId: true,
+        proceduresJson: true,
+      },
+    });
+    if (!encounter) {
+      throw new NotFoundException(`Encounter "${id}" not found.`);
+    }
 
     const data: {
       endTime?: Date;
@@ -469,6 +501,7 @@ export class EncounterService {
       soapAssessment?: string;
       soapPlan?: string;
       triageNotes?: string;
+      proceduresJson?: string;
       status?: EncounterStatus;
       updatedById: string;
     } = { updatedById: staffId };
@@ -493,6 +526,13 @@ export class EncounterService {
       data.soapAssessment = dto.soapAssessment;
     if (dto.soapPlan !== undefined) data.soapPlan = dto.soapPlan;
     if (dto.triageNotes !== undefined) data.triageNotes = dto.triageNotes;
+    if (dto.proceduresJson !== undefined) {
+      data.proceduresJson = await this.syncEncounterProceduresBilling(
+        encounter,
+        dto.proceduresJson,
+        staffId,
+      );
+    }
     dto.status === undefined
       ? (data.status = 'ONGOING')
       : (data.status = dto.status);
@@ -513,6 +553,203 @@ export class EncounterService {
         },
       },
     });
+  }
+
+  private parseProceduresJson(raw: string | null | undefined): ProcedureEntry[] {
+    if (raw == null || raw.trim() === '') return [];
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new BadRequestException('proceduresJson must be valid JSON.');
+    }
+    if (!Array.isArray(parsed)) {
+      throw new BadRequestException('proceduresJson must be a JSON array.');
+    }
+    return parsed as ProcedureEntry[];
+  }
+
+  private collectProcedureBilledIds(procedures: ProcedureEntry[]): Set<string> {
+    const ids = new Set<string>();
+    for (const proc of procedures) {
+      if (proc.invoiceItemId) ids.add(proc.invoiceItemId);
+      for (const c of proc.consumables ?? []) {
+        if (c.invoiceItemId) ids.add(c.invoiceItemId);
+      }
+    }
+    return ids;
+  }
+
+  private matchProcedureEntry(
+    old: ProcedureEntry[],
+    entry: ProcedureEntry,
+  ): ProcedureEntry | undefined {
+    if (entry.id) return old.find((o) => o.id === entry.id);
+    if (entry.invoiceItemId) {
+      return old.find((o) => o.invoiceItemId === entry.invoiceItemId);
+    }
+    if (entry.serviceId && entry.type) {
+      return old.find(
+        (o) => o.serviceId === entry.serviceId && o.type === entry.type,
+      );
+    }
+    return undefined;
+  }
+
+  private matchConsumableEntry(
+    old: ProcedureConsumableEntry[],
+    entry: ProcedureConsumableEntry,
+  ): ProcedureConsumableEntry | undefined {
+    if (entry.id) return old.find((o) => o.id === entry.id);
+    if (entry.invoiceItemId) {
+      return old.find((o) => o.invoiceItemId === entry.invoiceItemId);
+    }
+    if (entry.consumableId) {
+      return old.find((o) => o.consumableId === entry.consumableId);
+    }
+    return undefined;
+  }
+
+  private mergeProcedureWithPrevious(
+    entry: ProcedureEntry,
+    previous?: ProcedureEntry,
+  ): ProcedureEntry {
+    const merged: ProcedureEntry = { ...entry };
+    if (previous) {
+      if (!merged.invoiceItemId && previous.invoiceItemId) {
+        merged.invoiceItemId = previous.invoiceItemId;
+        merged.invoiceId = previous.invoiceId;
+      }
+      if (merged.consumables?.length) {
+        merged.consumables = merged.consumables.map((c) => {
+          const prevC = previous.consumables
+            ? this.matchConsumableEntry(previous.consumables, c)
+            : undefined;
+          if (!prevC) return { ...c };
+          return {
+            ...c,
+            invoiceItemId: c.invoiceItemId ?? prevC.invoiceItemId,
+            invoiceId: c.invoiceId ?? prevC.invoiceId,
+          };
+        });
+      }
+    }
+    return merged;
+  }
+
+  private async syncEncounterProceduresBilling(
+    encounter: {
+      id: string;
+      patientId: string;
+      doctorId: string;
+      proceduresJson: string | null;
+    },
+    rawProceduresJson: string,
+    staffId: string,
+  ): Promise<string> {
+    const old = this.parseProceduresJson(encounter.proceduresJson);
+    const next = this.parseProceduresJson(rawProceduresJson);
+    const oldIds = this.collectProcedureBilledIds(old);
+    const newIds = this.collectProcedureBilledIds(next);
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const invoiceItemId of oldIds) {
+        if (!newIds.has(invoiceItemId)) {
+          await this.invoiceService.removeBillableLineForEncounterRequest(
+            invoiceItemId,
+            tx,
+          );
+        }
+      }
+    });
+
+    const billingStaffId = staffId || encounter.doctorId;
+    const merged = next.map((entry) =>
+      this.mergeProcedureWithPrevious(
+        entry,
+        this.matchProcedureEntry(old, entry),
+      ),
+    );
+
+    const addsBillableLines = merged.some(
+      (p) =>
+        (p.serviceId && !p.invoiceItemId) ||
+        (p.consumables?.some((c) => c.consumableId && !c.invoiceItemId) ??
+          false),
+    );
+    if (addsBillableLines) {
+      await this.invoiceService.assertInpatientCreditAllowed(
+        this.prisma,
+        encounter.patientId,
+      );
+    }
+
+    for (const proc of merged) {
+      if (proc.serviceId && !proc.invoiceItemId) {
+        await this.invoiceService.assertServiceCategoryForProcedureBilling(
+          proc.serviceId,
+        );
+        const { invoice, invoiceItemId } =
+          await this.invoiceService.createWithServiceItem({
+            patientId: encounter.patientId,
+            encounterId: encounter.id,
+            staffId: billingStaffId,
+            serviceId: proc.serviceId,
+          });
+        proc.invoiceId = invoice.id;
+        proc.invoiceItemId = invoiceItemId;
+      }
+
+      if (proc.consumables?.length) {
+        for (const consumable of proc.consumables) {
+          if (!consumable.consumableId || consumable.invoiceItemId) continue;
+          if (!consumable.storeLocationId) {
+            throw new BadRequestException(
+              'storeLocationId is required for each billable procedure consumable.',
+            );
+          }
+          const unitPrice = await this.resolveConsumableUnitPrice(
+            consumable.consumableId,
+            consumable.storeLocationId,
+          );
+          const invoice = await this.invoiceService.ensureInvoiceForEncounter({
+            encounterId: encounter.id,
+            patientId: encounter.patientId,
+            staffId: billingStaffId,
+          });
+          const item = await this.invoiceService.addItem(
+            invoice.id,
+            {
+              consumableId: consumable.consumableId,
+              storeLocationId: consumable.storeLocationId,
+              quantity: consumable.quantity ?? 1,
+              unitPrice,
+            },
+            billingStaffId,
+          );
+          consumable.invoiceId = invoice.id;
+          consumable.invoiceItemId = item.id;
+        }
+      }
+    }
+
+    return JSON.stringify(merged);
+  }
+
+  private async resolveConsumableUnitPrice(
+    consumableId: string,
+    storeLocationId: string,
+  ): Promise<number> {
+    const batch = await this.prisma.consumableBatch.findFirst({
+      where: {
+        consumableId,
+        storeLocationId,
+        quantityRemaining: { gt: 0 },
+      },
+      orderBy: { expiryDate: 'asc' },
+      select: { sellingPrice: true },
+    });
+    return batch ? Number(batch.sellingPrice) : 0;
   }
 
   /** Set encounter status to COMPLETED and endTime to now. */

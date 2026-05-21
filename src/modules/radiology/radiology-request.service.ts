@@ -89,13 +89,11 @@ export class RadiologyRequestService {
         invoiceId?: string;
         invoiceItemId?: string;
       };
-      skipPaidInvoiceAssert: boolean;
     };
 
     const prepared: PreparedItem[] = [];
     for (const item of dto.items) {
       let resolved: PreparedItem['item'] = { ...item };
-      let skipPaidInvoiceAssert = false;
 
       if (
         dto.encounterId &&
@@ -103,6 +101,10 @@ export class RadiologyRequestService {
         !item.invoiceId &&
         !item.invoiceItemId
       ) {
+        await this.invoiceService.assertInpatientCreditAllowed(
+          this.prisma,
+          dto.patientId,
+        );
         await this.invoiceService.assertServiceCategoryForEncounterBilling(
           item.serviceId,
           'radiology',
@@ -119,7 +121,6 @@ export class RadiologyRequestService {
           invoiceId: invoice.id,
           invoiceItemId,
         };
-        skipPaidInvoiceAssert = true;
       } else {
         const hasAll = !!(
           item.invoiceId &&
@@ -139,17 +140,12 @@ export class RadiologyRequestService {
         }
       }
 
-      prepared.push({ item: resolved, skipPaidInvoiceAssert });
+      prepared.push({ item: resolved });
     }
 
     return this.prisma.$transaction(async (tx) => {
-      for (const { item, skipPaidInvoiceAssert } of prepared) {
-        if (
-          item.invoiceId &&
-          item.invoiceItemId &&
-          item.serviceId &&
-          !skipPaidInvoiceAssert
-        ) {
+      for (const { item } of prepared) {
+        if (item.invoiceId && item.invoiceItemId && item.serviceId) {
           await this.invoiceService.assertPaidInvoiceItemConsumable(tx, {
             invoiceId: item.invoiceId,
             invoiceItemId: item.invoiceItemId,

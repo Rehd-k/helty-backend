@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AdmissionStatus,
   InvoiceAuditAction,
   InvoicePaymentMethod,
   InvoicePaymentSource,
@@ -34,6 +35,7 @@ import {
   LAB_BILLING_CATEGORIES,
   RADIOLOGY_BILLING_CATEGORY,
   CONSULTATION_BILLING_CATEGORY,
+  PROCEDURE_BILLING_CATEGORIES,
 } from './invoice-link.constants';
 import { ConsumableStockService } from '../store/consumable-stock.service';
 
@@ -198,8 +200,32 @@ export class InvoiceService {
     return or;
   }
 
+  /** True when the patient has at least one admission with status ACTIVE. */
+  async hasActiveAdmission(
+    tx: Prisma.TransactionClient,
+    patientId: string,
+  ): Promise<boolean> {
+    const n = await tx.admission.count({
+      where: { patientId, status: AdmissionStatus.ACTIVE },
+    });
+    return n > 0;
+  }
+
+  /** Blocks encounter credit billing when the patient is not actively admitted. */
+  async assertInpatientCreditAllowed(
+    tx: Prisma.TransactionClient,
+    patientId: string,
+  ): Promise<void> {
+    if (!(await this.hasActiveAdmission(tx, patientId))) {
+      throw new BadRequestException(
+        'Only patients with an active admission can receive services on credit.',
+      );
+    }
+  }
+
   /**
-   * Validates a paid invoice line for radiology/lab consumption inside a transaction.
+   * Validates an invoice line for radiology/lab consumption inside a transaction.
+   * Outpatients require a fully paid invoice; actively admitted patients may use pending lines.
    * Call immediately before creating the request/order that sets `invoiceItemId`.
    */
   async assertPaidInvoiceItemConsumable(
@@ -229,10 +255,13 @@ export class InvoiceService {
       );
     }
     if (invoice.status !== InvoiceStatus.PAID) {
-      throw invoiceLinkException(
-        'INVOICE_NOT_PAID',
-        'This invoice is not paid. Only paid invoices can be used for this flow.',
-      );
+      const onCredit = await this.hasActiveAdmission(tx, params.patientId);
+      if (!onCredit) {
+        throw invoiceLinkException(
+          'INVOICE_NOT_PAID',
+          'This invoice is not paid. Only paid invoices can be used for this flow.',
+        );
+      }
     }
 
     const item = await tx.invoiceItem.findFirst({
@@ -439,6 +468,29 @@ export class InvoiceService {
           'Encounter billing for laboratory orders must use a Laboratory service category.',
         );
       }
+    }
+  }
+
+  /** When auto-adding a procedure service line from an encounter, enforce allowed categories. */
+  async assertServiceCategoryForProcedureBilling(
+    serviceId: string,
+  ): Promise<void> {
+    const svc = await this.prisma.service.findUnique({
+      where: { id: serviceId },
+      include: { category: { select: { name: true } } },
+    });
+    if (!svc) {
+      throw new NotFoundException(`Service "${serviceId}" not found.`);
+    }
+    const name = svc.category?.name ?? null;
+    const okCat = PROCEDURE_BILLING_CATEGORIES.some(
+      (c) => !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
+    );
+    if (!okCat) {
+      throw invoiceLinkException(
+        'INVOICE_ITEM_CATEGORY_MISMATCH',
+        'Encounter procedure billing must use a Therapy, Physiotherapy, or Procedures service category.',
+      );
     }
   }
 

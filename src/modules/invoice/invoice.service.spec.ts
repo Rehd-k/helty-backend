@@ -8,6 +8,7 @@ import {
   WalletTransactionType,
 } from '@prisma/client';
 import { InvoiceService } from './invoice.service';
+import { RADIOLOGY_BILLING_CATEGORY } from './invoice-link.constants';
 
 function createConsumableStockMock() {
   return {
@@ -791,5 +792,153 @@ describe('InvoiceService', () => {
         data: { amountPaid: new Prisma.Decimal(200) },
       }),
     );
+  });
+
+  describe('assertPaidInvoiceItemConsumable', () => {
+    const baseParams = {
+      invoiceId: 'inv-1',
+      invoiceItemId: 'item-1',
+      serviceId: 'svc-1',
+      patientId: 'pat-1',
+      mode: 'lab' as const,
+    };
+
+    function labConsumableTx(overrides: {
+      invoiceStatus?: InvoiceStatus;
+      admissionCount?: number;
+      categoryName?: string;
+      labOrderExists?: boolean;
+    }) {
+      return {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            patientId: 'pat-1',
+            status: overrides.invoiceStatus ?? InvoiceStatus.PENDING,
+          }),
+        },
+        admission: {
+          count: jest
+            .fn()
+            .mockResolvedValue(overrides.admissionCount ?? 1),
+        },
+        invoiceItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            serviceId: 'svc-1',
+            settled: false,
+            service: {
+              category: { name: overrides.categoryName ?? 'Laboratory' },
+            },
+          }),
+        },
+        labOrder: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(overrides.labOrderExists ? { id: 'ord-1' } : null),
+        },
+        radiologyOrderItem: { findFirst: jest.fn() },
+      };
+    }
+
+    it('allows unpaid invoice when patient has active admission', async () => {
+      const tx = labConsumableTx({
+        invoiceStatus: InvoiceStatus.PENDING,
+        admissionCount: 1,
+      });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(tx as any, baseParams),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws INVOICE_NOT_PAID when unpaid and no active admission', async () => {
+      const tx = labConsumableTx({
+        invoiceStatus: InvoiceStatus.PENDING,
+        admissionCount: 0,
+      });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(tx as any, baseParams),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'INVOICE_NOT_PAID' }),
+      });
+    });
+
+    it('still validates category for inpatient credit', async () => {
+      const tx = labConsumableTx({
+        invoiceStatus: InvoiceStatus.PENDING,
+        admissionCount: 1,
+        categoryName: 'Consultations & Reviews',
+      });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(tx as any, baseParams),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'INVOICE_ITEM_CATEGORY_MISMATCH',
+        }),
+      });
+    });
+
+    it('allows paid invoice without checking admission', async () => {
+      const tx = labConsumableTx({
+        invoiceStatus: InvoiceStatus.PAID,
+        admissionCount: 0,
+      });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(tx as any, baseParams),
+      ).resolves.toBeUndefined();
+      expect(tx.admission.count).not.toHaveBeenCalled();
+    });
+
+    it('validates radiology category on inpatient credit', async () => {
+      const tx = {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            patientId: 'pat-1',
+            status: InvoiceStatus.PENDING,
+          }),
+        },
+        admission: { count: jest.fn().mockResolvedValue(1) },
+        invoiceItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            serviceId: 'svc-1',
+            settled: false,
+            service: { category: { name: RADIOLOGY_BILLING_CATEGORY } },
+          }),
+        },
+        radiologyOrderItem: { findFirst: jest.fn().mockResolvedValue(null) },
+        labOrder: { findFirst: jest.fn() },
+      };
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(tx as any, {
+          ...baseParams,
+          mode: 'radiology',
+        }),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('assertInpatientCreditAllowed', () => {
+    it('throws when patient has no active admission', async () => {
+      const tx = { admission: { count: jest.fn().mockResolvedValue(0) } };
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertInpatientCreditAllowed(tx as any, 'pat-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('passes when patient has active admission', async () => {
+      const tx = { admission: { count: jest.fn().mockResolvedValue(1) } };
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertInpatientCreditAllowed(tx as any, 'pat-1'),
+      ).resolves.toBeUndefined();
+    });
   });
 });

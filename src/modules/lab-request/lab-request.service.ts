@@ -41,6 +41,10 @@ export class LabRequestService {
       },
     });
     if (dto.serviceId) {
+      await this.invoiceService.assertInpatientCreditAllowed(
+        this.prisma,
+        dto.patientId,
+      );
       await this.invoiceService.assertServiceCategoryForEncounterBilling(
         dto.serviceId,
         'lab',

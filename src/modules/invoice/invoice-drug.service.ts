@@ -19,10 +19,14 @@ import {
   SubstituteDrugInvoiceItemDto,
   ReturnDrugInvoiceItemDto,
 } from './dto/invoice.dto';
+import { InvoiceService } from './invoice.service';
 
 @Injectable()
 export class InvoiceDrugService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) {}
 
   private static readonly invoiceItemCreatedBySelect = {
     id: true,
@@ -576,6 +580,17 @@ export class InvoiceDrugService {
         dto.settled === true && !existing.settled && existing.drugId != null;
 
       return await this.prisma.$transaction(async (tx) => {
+        if (settlingNow && invoice.status !== InvoiceStatus.PAID) {
+          const onCredit = await this.invoiceService.hasActiveAdmission(
+            tx,
+            invoice.patientId,
+          );
+          if (!onCredit) {
+            throw new BadRequestException(
+              'Drug lines can only be dispensed without payment for actively admitted patients.',
+            );
+          }
+        }
         if (settlingNow) {
           await this.deductDrugStockFifo(
             tx,

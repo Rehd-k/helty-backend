@@ -47,6 +47,7 @@ import { DiscountModule } from './modules/discount/discount.module';
 import { ReceivablesModule } from './modules/receivables/receivables.module';
 import { ClinicalSpecialtyModule } from './modules/clinical-specialty/clinical-specialty.module';
 import { PatientArchivedEncounterModule } from './modules/patient-archived-encounter/patient-archived-encounter.module';
+import { Icd10Module } from './modules/icd10/icd10.module';
 
 @Module({
   imports: [
@@ -110,6 +111,7 @@ import { PatientArchivedEncounterModule } from './modules/patient-archived-encou
     ReceivablesModule,
     ClinicalSpecialtyModule,
     PatientArchivedEncounterModule,
+    Icd10Module,
   ],
   controllers: [AppController],
   providers: [

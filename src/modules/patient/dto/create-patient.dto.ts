@@ -17,7 +17,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export enum Title {
   MR = 'Mr',
   MRS = 'Mrs',
-  MS = 'Ms',
+  MS = 'Miss',
   DR = 'Dr',
   PROF = 'Prof',
   CHIEF = 'Chief',

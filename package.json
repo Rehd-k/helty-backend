@@ -10,6 +10,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "seed:db": "npx prisma db seed",
+    "seed:icd10": "npx ts-node ./prisma/seed-icd10.ts",
     "db:backup": "npx ts-node ./prisma/backup-restore/backup.ts",
     "db:restore": "npx ts-node ./prisma/backup-restore/restore.ts",
     "db:reset-restore": "npx ts-node ./prisma/backup-restore/reset-and-restore.ts",

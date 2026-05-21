@@ -131,7 +131,7 @@ export class EncounterController {
   @ApiOperation({ summary: 'Update encounter' })
   update(
     @Param('id') id: string,
-    @Body() updateEncounterDto: any,
+    @Body() updateEncounterDto: UpdateEncounterDto,
     @Req() req: { user: { sub: string } },
   ) {
     return this.encounterService.update(id, updateEncounterDto, req.user.sub);

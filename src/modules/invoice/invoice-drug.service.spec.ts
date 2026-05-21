@@ -1,6 +1,14 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { InvoiceDrugService } from './invoice-drug.service';
+import { InvoiceService } from './invoice.service';
+
+function createDrugService(
+  prisma: any,
+  invoiceService: Partial<InvoiceService> = {},
+) {
+  return new InvoiceDrugService(prisma, invoiceService as InvoiceService);
+}
 
 describe('InvoiceDrugService', () => {
   it('returnDrugInvoiceItem rejects when return quantity exceeds line quantity', async () => {
@@ -32,7 +40,7 @@ describe('InvoiceDrugService', () => {
           return cb(tx);
         }),
     };
-    const service = new InvoiceDrugService(prisma);
+    const service = createDrugService(prisma);
     await expect(
       service.returnDrugInvoiceItem(
         'inv-1',
@@ -60,7 +68,7 @@ describe('InvoiceDrugService', () => {
           return cb(tx);
         }),
     };
-    const service = new InvoiceDrugService(prisma);
+    const service = createDrugService(prisma);
     await expect(
       service.returnDrugInvoiceItem(
         'inv-1',
@@ -152,7 +160,7 @@ describe('InvoiceDrugService', () => {
         }),
     };
 
-    const service = new InvoiceDrugService(prisma);
+    const service = createDrugService(prisma);
     const result = await service.returnDrugInvoiceItem(
       'inv-1',
       'item-1',
@@ -201,7 +209,7 @@ describe('InvoiceDrugService', () => {
           return cb(tx);
         }),
     };
-    const service = new InvoiceDrugService(prisma);
+    const service = createDrugService(prisma);
     await expect(
       service.returnDrugInvoiceItem(
         'inv-1',
@@ -212,11 +220,57 @@ describe('InvoiceDrugService', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('updateDrugInvoiceItem rejects settle without payment when not admitted', async () => {
+    const invoiceService = {
+      hasActiveAdmission: jest.fn().mockResolvedValue(false),
+    };
+    const prisma: any = {
+      invoiceItem: { count: jest.fn().mockResolvedValue(1) },
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          patientId: 'pat-1',
+          status: InvoiceStatus.PENDING,
+          encounterId: null,
+        }),
+      },
+      pharmacyLocation: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'loc-1' }),
+      },
+      invoiceItem_findFirst: {
+        id: 'item-1',
+        invoiceId: 'inv-1',
+        drugId: 'drug-1',
+        quantity: 1,
+        settled: false,
+        unitPrice: new Prisma.Decimal(10),
+      },
+      $transaction: jest
+        .fn()
+        .mockImplementation(async (cb: (tx: any) => unknown) => {
+          const tx = {};
+          return cb(tx);
+        }),
+    };
+    prisma.invoiceItem = {
+      count: jest.fn().mockResolvedValue(1),
+      findFirst: jest.fn().mockResolvedValue(prisma.invoiceItem_findFirst),
+    };
+    const service = createDrugService(prisma, invoiceService);
+
+    await expect(
+      service.updateDrugInvoiceItem('inv-1', 'item-1', { settled: true }),
+    ).rejects.toThrow(
+      'Drug lines can only be dispensed without payment for actively admitted patients.',
+    );
+    expect(invoiceService.hasActiveAdmission).toHaveBeenCalled();
+  });
+
   it('returnDrugInvoiceItem throws NotFound when invoice has no drug items', async () => {
     const prisma: any = {
       invoiceItem: { count: jest.fn().mockResolvedValue(0) },
     };
-    const service = new InvoiceDrugService(prisma);
+    const service = createDrugService(prisma);
     await expect(
       service.returnDrugInvoiceItem(
         'inv-1',

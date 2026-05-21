@@ -303,6 +303,14 @@ export class UpdateEncounterDto {
   @IsEnum(EncounterStatus)
   @IsOptional()
   status?: EncounterStatus;
+
+  @ApiPropertyOptional({
+    description:
+      'JSON array of procedures: { id?, type, consent?, notes?, complications?, serviceId?, invoiceId?, invoiceItemId?, consumables?: [{ id?, consumableId, quantity?, storeLocationId, invoiceItemId? }] }',
+  })
+  @IsString()
+  @IsOptional()
+  proceduresJson?: string;
 }
 
 export class QueryEncounterDto {
