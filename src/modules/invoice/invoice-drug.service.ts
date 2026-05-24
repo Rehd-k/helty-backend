@@ -365,9 +365,7 @@ export class InvoiceDrugService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
-    console.log({
-      invoices: invoices.map((invoice) => this.enrichDrugInvoice(invoice))[0].invoiceItems
-    })
+
     return {
       invoices: invoices.map((invoice) => this.enrichDrugInvoice(invoice)),
       total,

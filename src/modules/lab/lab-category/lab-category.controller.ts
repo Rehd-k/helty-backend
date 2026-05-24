@@ -50,7 +50,11 @@ export class LabCategoryController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a lab category' })
+  @ApiOperation({
+    summary: 'Delete a lab category (cascade)',
+    description:
+      'Permanently deletes the category, all its tests, versions, fields, related order line items, samples, results, and lab orders that become empty.',
+  })
   remove(@Param('id') id: string) {
     return this.labCategoryService.remove(id);
   }

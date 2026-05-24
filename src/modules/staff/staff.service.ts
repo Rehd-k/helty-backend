@@ -2,10 +2,11 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { activeStaffPasswordResetInclude } from './staff-password-reset.query';
 
 @Injectable()
 export class StaffService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(data: Prisma.StaffCreateInput) {
     // hash password if provided
@@ -37,12 +38,7 @@ export class StaffService {
       include: {
         department: true,
         headedDepartment: true,
-        passwordResets: {
-          where: { usedAt: null, expiresAt: { gt: new Date() } },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: { id: true, code: true, expiresAt: true, createdAt: true },
-        },
+        passwordResets: activeStaffPasswordResetInclude(),
       },
     });
     if (!user) throw new NotFoundException('Staff member not found');

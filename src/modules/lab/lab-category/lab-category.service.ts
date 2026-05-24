@@ -1,10 +1,6 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { cascadeDeleteLabTests } from '../lab-catalog-cascade.util';
 import { CreateLabCategoryDto } from './dto/create-lab-category.dto';
 import { UpdateLabCategoryDto } from './dto/update-lab-category.dto';
 
@@ -57,22 +53,16 @@ export class LabCategoryService {
   async remove(id: string) {
     const existing = await this.prisma.labCategory.findUnique({
       where: { id },
+      include: { tests: { select: { id: true } } },
     });
     if (!existing) {
       throw new NotFoundException(`Lab category "${id}" not found.`);
     }
-    try {
-      await this.prisma.labCategory.delete({ where: { id } });
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2003'
-      ) {
-        throw new ConflictException(
-          `Cannot delete lab category "${id}" while tests are assigned to it.`,
-        );
-      }
-      throw e;
-    }
+    const testIds = existing.tests.map((t) => t.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      await cascadeDeleteLabTests(tx, testIds);
+      await tx.labCategory.delete({ where: { id } });
+    });
   }
 }

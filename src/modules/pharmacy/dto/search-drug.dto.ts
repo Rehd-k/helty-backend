@@ -119,6 +119,14 @@ export class SearchDrugDto {
   @IsOptional()
   cursorCreatedAt?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Sort-field value from previous nextCursor.sortValue (required when sortBy is genericName or brandName)',
+  })
+  @IsString()
+  @IsOptional()
+  cursorSortValue?: string;
+
   @ApiPropertyOptional({ enum: DRUG_SEARCH_SORT_FIELDS, default: 'createdAt' })
   @IsIn(DRUG_SEARCH_SORT_FIELDS)
   @IsOptional()

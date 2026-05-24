@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { LabTestFieldType, Prisma } from '@prisma/client';
+import { isValidReferenceRange } from '../lab-reference-range.util';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateLabTestFieldDto } from './dto/create-lab-test-field.dto';
 import { UpdateLabTestFieldDto } from './dto/update-lab-test-field.dto';
@@ -11,6 +13,19 @@ import { UpdateLabTestFieldDto } from './dto/update-lab-test-field.dto';
 @Injectable()
 export class LabTestFieldService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private assertReferenceRangeForField(
+    fieldType: LabTestFieldType,
+    referenceRange?: string | null,
+  ) {
+    if (fieldType !== LabTestFieldType.NUMBER) return;
+    if (referenceRange == null || !referenceRange.trim()) return;
+    if (!isValidReferenceRange(referenceRange)) {
+      throw new BadRequestException(
+        'referenceRange must be a supported format for NUMBER fields (e.g. "80-120", "<1.2", ">5", "<=10", ">=5").',
+      );
+    }
+  }
 
   async create(dto: CreateLabTestFieldDto) {
     const version = await this.prisma.labTestVersion.findUnique({
@@ -21,6 +36,7 @@ export class LabTestFieldService {
         `Lab test version "${dto.testVersionId}" not found.`,
       );
     }
+    this.assertReferenceRangeForField(dto.fieldType, dto.referenceRange);
     return this.prisma.labTestField.create({
       data: {
         testVersionId: dto.testVersionId,
@@ -73,6 +89,12 @@ export class LabTestFieldService {
         );
       }
     }
+    const fieldType = dto.fieldType ?? field.fieldType;
+    const referenceRange =
+      dto.referenceRange !== undefined
+        ? dto.referenceRange
+        : field.referenceRange;
+    this.assertReferenceRangeForField(fieldType, referenceRange);
     return this.prisma.labTestField.update({
       where: { id },
       data: dto,

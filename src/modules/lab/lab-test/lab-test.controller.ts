@@ -48,7 +48,11 @@ export class LabTestController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete a lab test' })
+  @ApiOperation({
+    summary: 'Delete a lab test (cascade)',
+    description:
+      'Permanently deletes the test, all versions and fields, related order line items, samples, results, and lab orders that become empty.',
+  })
   remove(@Param('id') id: string) {
     return this.labTestService.remove(id);
   }

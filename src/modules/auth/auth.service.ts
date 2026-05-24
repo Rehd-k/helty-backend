@@ -1,15 +1,26 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
 import { StaffService } from '../staff/staff.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import {
+  activeStaffPasswordResetWhere,
+  normalizePasswordResetCode,
+  normalizePasswordResetEmail,
+} from '../staff/staff-password-reset.query';
 
 const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly staffService: StaffService,
     private readonly jwtService: JwtService,
@@ -54,16 +65,15 @@ export class AuthService {
         'If an account exists for this email, a verification code has been issued.',
     };
 
-    const staff =
-      await this.staffService.findActiveByEmailForPasswordReset(email);
+    const staff = await this.staffService.findActiveByEmailForPasswordReset(
+      normalizePasswordResetEmail(email),
+    );
     if (!staff?.email) {
       return generic;
     }
 
     const code = String(randomInt(100_000, 1_000_000));
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-
-    await this.mailService.sendStaffPasswordResetCode(staff.email, code);
 
     await this.prisma.$transaction([
       this.prisma.staffPasswordReset.deleteMany({
@@ -74,6 +84,16 @@ export class AuthService {
       }),
     ]);
 
+    try {
+      await this.mailService.sendStaffPasswordResetCode(staff.email, code);
+    } catch (err) {
+      this.logger.warn(
+        `Password reset code saved for staff ${staff.id} but email was not sent: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
     return generic;
   }
 
@@ -82,8 +102,10 @@ export class AuthService {
     code: string,
     newPassword: string,
   ) {
-    const staff =
-      await this.staffService.findActiveByEmailForPasswordReset(email);
+    const normalizedCode = normalizePasswordResetCode(code);
+    const staff = await this.staffService.findActiveByEmailForPasswordReset(
+      normalizePasswordResetEmail(email),
+    );
     if (!staff) {
       throw new UnauthorizedException('Invalid or expired code');
     }
@@ -91,13 +113,12 @@ export class AuthService {
     const row = await this.prisma.staffPasswordReset.findFirst({
       where: {
         staffId: staff.id,
-        usedAt: null,
-        expiresAt: { gt: new Date() },
+        code: normalizedCode,
+        ...activeStaffPasswordResetWhere(),
       },
-      orderBy: { createdAt: 'desc' },
     });
 
-    if (!row || row.code !== code) {
+    if (!row) {
       throw new UnauthorizedException('Invalid or expired code');
     }
 

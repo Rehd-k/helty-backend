@@ -32,7 +32,10 @@ export class CreateLabTestFieldDto {
   @IsOptional()
   unit?: string;
 
-  @ApiPropertyOptional({ description: 'Reference range (e.g. 12-16)' })
+  @ApiPropertyOptional({
+    description:
+      'Reference range for NUMBER fields. Supported: closed interval "80-120", less-than "<1.2", less-or-equal "<=1.2" or "≤1.2", greater-than ">5", greater-or-equal ">=5" or "≥5". Spaces and en-dashes are allowed.',
+  })
   @IsString()
   @IsOptional()
   referenceRange?: string;

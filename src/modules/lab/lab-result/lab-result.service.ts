@@ -3,11 +3,20 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { LabRequestStatus } from '@prisma/client';
+import { LabRequestStatus, LabTestFieldType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InvoiceService } from '../../invoice/invoice.service';
 import { CreateLabResultDto } from './dto/create-lab-result.dto';
 import { CreateLabResultBatchDto } from './dto/create-lab-result-batch.dto';
+import { evaluateReferenceRange } from '../lab-reference-range.util';
+
+type LabResultWithField = {
+  value: string | null;
+  field: {
+    referenceRange: string | null;
+    fieldType: LabTestFieldType;
+  };
+};
 
 @Injectable()
 export class LabResultService {
@@ -15,6 +24,20 @@ export class LabResultService {
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
   ) {}
+
+  private enrichResult<T extends LabResultWithField>(result: T) {
+    const { field, value, ...rest } = result;
+    return {
+      ...rest,
+      value,
+      field,
+      referenceEvaluation: evaluateReferenceRange(
+        value,
+        field.referenceRange,
+        field.fieldType,
+      ),
+    };
+  }
 
   private async validateFieldBelongsToOrderItem(
     orderItemId: string,
@@ -133,7 +156,7 @@ export class LabResultService {
       });
     });
     await this.maybeCompleteLabRequestIfOrderResultsComplete(link.orderId);
-    return out;
+    return this.enrichResult(out);
   }
 
   async createBatch(dto: CreateLabResultBatchDto) {
@@ -189,7 +212,7 @@ export class LabResultService {
       );
     });
     await this.maybeCompleteLabRequestIfOrderResultsComplete(link.orderId);
-    return created;
+    return created.map((r) => this.enrichResult(r));
   }
 
   async findAllByOrderItemId(orderItemId: string) {
@@ -199,7 +222,7 @@ export class LabResultService {
     if (!orderItem) {
       throw new NotFoundException(`Lab order item "${orderItemId}" not found.`);
     }
-    return this.prisma.labResult.findMany({
+    const results = await this.prisma.labResult.findMany({
       where: { orderItemId },
       include: {
         field: true,
@@ -207,5 +230,6 @@ export class LabResultService {
       },
       orderBy: { field: { position: 'asc' } },
     });
+    return results.map((r) => this.enrichResult(r));
   }
 }

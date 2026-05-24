@@ -12,6 +12,16 @@ import {
   getSellableDrugBatchWhere,
   mergeDrugBatchWhere,
 } from './pharmacy-sellable-stock.util';
+import {
+  appendDrugSearchCursor,
+  buildDrugSearchCursor,
+  buildDrugSearchOrderBy,
+  hasNumberFilter,
+  isDrugSearchComputedSort,
+  resolveDrugSearchDbSort,
+  sortDrugSearchPage,
+  summarizeDrugBatches,
+} from './pharmacy.drug-search.util';
 
 @Injectable()
 export class PharmacyDrugService {
@@ -233,12 +243,28 @@ export class PharmacyDrugService {
       isControlled,
       search,
       limit = '20',
+      cursorId,
+      cursorCreatedAt,
+      cursorSortValue,
       sortBy,
       sortOrder = 'desc',
     } = dto;
 
+    const hasCursor = Boolean(cursorId || cursorCreatedAt);
+    if (hasCursor && (!cursorId || !cursorCreatedAt)) {
+      throw new BadRequestException(
+        'cursorId and cursorCreatedAt must be provided together.',
+      );
+    }
+    if (hasCursor && isDrugSearchComputedSort(sortBy)) {
+      throw new BadRequestException(
+        'Cursor pagination is not supported when sorting by quantity, sellingPrice, or expiryDate.',
+      );
+    }
+
     const take = Math.min(parseInt(limit, 10) || 20, 100);
     const sellableWhere = await getSellableDrugBatchWhere(this.prisma);
+    const dbSortBy = resolveDrugSearchDbSort(sortBy);
 
     const where: Prisma.DrugWhereInput = {
       deletedAt: null,
@@ -257,14 +283,12 @@ export class PharmacyDrugService {
       where.isControlled = isControlled === 'true';
     }
 
-    // Batch-related filters via some (DrugBatch has fromLocation/toLocation, not locationType)
     const batchFilters: Prisma.DrugBatchWhereInput = {};
 
     if (locationType) {
-      const locType = locationType;
       batchFilters.OR = [
-        { fromLocation: { locationType: locType } },
-        { toLocation: { locationType: locType } },
+        { fromLocation: { locationType } },
+        { toLocation: { locationType } },
       ];
     }
 
@@ -305,52 +329,76 @@ export class PharmacyDrugService {
       }
     }
 
-    if (minCostPrice || maxCostPrice) {
+    if (hasNumberFilter(minCostPrice) || hasNumberFilter(maxCostPrice)) {
       batchFilters.costPrice = {};
-      if (minCostPrice) {
+      if (hasNumberFilter(minCostPrice)) {
         (batchFilters.costPrice as Prisma.DecimalFilter).gte =
           new Prisma.Decimal(minCostPrice);
       }
-      if (maxCostPrice) {
+      if (hasNumberFilter(maxCostPrice)) {
         (batchFilters.costPrice as Prisma.DecimalFilter).lte =
           new Prisma.Decimal(maxCostPrice);
       }
     }
 
-    if (minSellingPrice || maxSellingPrice) {
+    if (hasNumberFilter(minSellingPrice) || hasNumberFilter(maxSellingPrice)) {
       batchFilters.sellingPrice = {};
-      if (minSellingPrice) {
+      if (hasNumberFilter(minSellingPrice)) {
         (batchFilters.sellingPrice as Prisma.DecimalFilter).gte =
           new Prisma.Decimal(minSellingPrice);
       }
-      if (maxSellingPrice) {
+      if (hasNumberFilter(maxSellingPrice)) {
         (batchFilters.sellingPrice as Prisma.DecimalFilter).lte =
           new Prisma.Decimal(maxSellingPrice);
       }
     }
 
-    if (inStock !== undefined) {
-      const positive = inStock === 'true';
-      batchFilters.quantityRemaining = positive ? { gt: 0 } : { equals: 0 };
-    }
+    const hasBatchFilters = Object.keys(batchFilters).length > 0;
+    const sellableWithStock = mergeDrugBatchWhere(sellableWhere);
 
-    if (Object.keys(batchFilters).length) {
+    if (inStock === 'true') {
       where.batches = {
-        some: batchFilters,
+        some: hasBatchFilters
+          ? mergeDrugBatchWhere(sellableWhere, batchFilters)
+          : sellableWithStock,
+      };
+    } else if (inStock === 'false') {
+      const andParts: Prisma.DrugWhereInput[] = [
+        { batches: { none: sellableWithStock } },
+      ];
+      if (hasBatchFilters) {
+        andParts.push({ batches: { some: batchFilters } });
+      }
+      const existingAnd = where.AND;
+      where.AND = [
+        ...(Array.isArray(existingAnd)
+          ? existingAnd
+          : existingAnd
+            ? [existingAnd]
+            : []),
+        ...andParts,
+      ];
+    } else if (hasBatchFilters) {
+      where.batches = {
+        some: mergeDrugBatchWhere(sellableWhere, batchFilters),
       };
     }
 
-    const batchesIncludeWhere =
-      Object.keys(batchFilters).length > 0
-        ? mergeDrugBatchWhere(sellableWhere, batchFilters)
-        : sellableWhere;
+    const batchesIncludeWhere = hasBatchFilters
+      ? mergeDrugBatchWhere(sellableWhere, batchFilters)
+      : sellableWhere;
 
-    const orderBy: Prisma.DrugOrderByWithRelationInput[] = [];
-    if (sortBy) {
-      orderBy.push({ [sortBy]: sortOrder });
+    if (cursorId && cursorCreatedAt) {
+      appendDrugSearchCursor(where, {
+        cursorId,
+        cursorCreatedAt: new Date(cursorCreatedAt),
+        cursorSortValue,
+        dbSortBy,
+        sortOrder,
+      });
     }
-    orderBy.push({ createdAt: sortOrder });
-    orderBy.push({ id: sortOrder });
+
+    const orderBy = buildDrugSearchOrderBy(dbSortBy, sortOrder);
 
     const drugs = await this.prisma.drug.findMany({
       where,
@@ -371,51 +419,34 @@ export class PharmacyDrugService {
       },
     });
 
-    let nextCursor: { id: string; createdAt: Date } | null = null;
+    let nextCursor: ReturnType<typeof buildDrugSearchCursor> | null = null;
     if (drugs.length > take) {
       const last = drugs.pop()!;
-      nextCursor = { id: last.id, createdAt: last.createdAt };
+      nextCursor = buildDrugSearchCursor(last, dbSortBy);
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const data = drugs.map((drug) => {
-      const batches = drug.batches ?? [];
-      const quantity = batches.reduce(
-        (sum, b) => sum + (b.quantityRemaining ?? 0),
-        0,
+    let data = drugs.map((drug) => {
+      const { quantity, sellingPrice, expiryDate } = summarizeDrugBatches(
+        drug.batches ?? [],
       );
-      const earliestBatch = batches.length
-        ? batches.reduce((earliest, b) =>
-            b.createdAt < earliest.createdAt ? b : earliest,
-          )
-        : null;
-      const sellingPrice = earliestBatch?.sellingPrice ?? null;
-      const expiryDateClosest = batches.length
-        ? batches.reduce((closest, b) => {
-            const diff = Math.abs(
-              new Date(b.expiryDate).getTime() - today.getTime(),
-            );
-            const closestDiff = Math.abs(
-              new Date(closest.expiryDate).getTime() - today.getTime(),
-            );
-            return diff < closestDiff ? b : closest;
-          }).expiryDate
-        : null;
-
-      const { batches: _batches, ...rest } = drug;
       return {
-        ...rest,
-        batches: _batches,
+        ...drug,
         quantity,
         sellingPrice,
-        expiryDate: expiryDateClosest,
+        expiryDate,
       };
     });
+
+    if (sortBy && isDrugSearchComputedSort(sortBy)) {
+      data = sortDrugSearchPage(data, sortBy, sortOrder);
+    }
+
     return {
       data,
       nextCursor,
+      nextCursorId: nextCursor?.id ?? null,
+      nextCursorCreatedAt: nextCursor?.createdAt?.toISOString() ?? null,
+      nextCursorSortValue: nextCursor?.sortValue ?? null,
     };
   }
 }

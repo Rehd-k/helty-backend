@@ -1,11 +1,6 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { cascadeDeleteLabTests } from '../lab-catalog-cascade.util';
 import { CreateLabTestDto } from './dto/create-lab-test.dto';
 import { ListTestsQueryDto } from './dto/list-tests-query.dto';
 import { UpdateLabTestDto } from './dto/update-lab-test.dto';
@@ -105,18 +100,8 @@ export class LabTestService {
     if (!existing) {
       throw new NotFoundException(`Lab test "${id}" not found.`);
     }
-    try {
-      await this.prisma.labTest.delete({ where: { id } });
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2003'
-      ) {
-        throw new ConflictException(
-          `Cannot delete lab test "${id}" while orders or related data reference its versions.`,
-        );
-      }
-      throw e;
-    }
+    await this.prisma.$transaction(async (tx) => {
+      await cascadeDeleteLabTests(tx, [id]);
+    });
   }
 }
