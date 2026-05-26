@@ -79,13 +79,17 @@ export class LabOrderService {
         );
       }
       return this.prisma.$transaction(async (tx) => {
-        await this.invoiceService.assertPaidInvoiceItemConsumable(tx, {
-          invoiceId: dto.invoiceId!,
-          invoiceItemId: dto.invoiceItemId!,
-          serviceId: dto.serviceId!,
-          patientId: dto.patientId,
-          mode: 'lab',
-        });
+        await this.invoiceService.assertPaidInvoiceItemConsumable(
+          tx,
+          {
+            invoiceId: dto.invoiceId!,
+            invoiceItemId: dto.invoiceItemId!,
+            serviceId: dto.serviceId!,
+            patientId: dto.patientId,
+            mode: 'lab',
+          },
+          { requirePayment: false },
+        );
         const order = await tx.labOrder.create({
           data: {
             patientId: dto.patientId,

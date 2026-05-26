@@ -129,12 +129,23 @@ export class LabResultService {
     const out = await this.prisma.$transaction(async (tx) => {
       const orderItem = await tx.labOrderItem.findUnique({
         where: { id: dto.orderItemId },
-        select: { order: { select: { invoiceItemId: true } } },
+        select: {
+          order: {
+            select: { invoiceItemId: true, patientId: true },
+          },
+        },
       });
-      await this.invoiceService.settleInvoiceItemIfPresent(
-        tx,
-        orderItem?.order?.invoiceItemId,
-      );
+      const invoiceItemId = orderItem?.order?.invoiceItemId;
+      if (invoiceItemId && orderItem?.order?.patientId) {
+        await this.invoiceService.assertInvoiceItemPaidOrInpatientCredit(
+          tx,
+          {
+            invoiceItemId,
+            patientId: orderItem.order.patientId,
+          },
+        );
+      }
+      await this.invoiceService.settleInvoiceItemIfPresent(tx, invoiceItemId);
       return tx.labResult.upsert({
         where: {
           orderItemId_fieldId: {
@@ -184,12 +195,23 @@ export class LabResultService {
     const created = await this.prisma.$transaction(async (tx) => {
       const orderItem = await tx.labOrderItem.findUnique({
         where: { id: dto.orderItemId },
-        select: { order: { select: { invoiceItemId: true } } },
+        select: {
+          order: {
+            select: { invoiceItemId: true, patientId: true },
+          },
+        },
       });
-      await this.invoiceService.settleInvoiceItemIfPresent(
-        tx,
-        orderItem?.order?.invoiceItemId,
-      );
+      const invoiceItemId = orderItem?.order?.invoiceItemId;
+      if (invoiceItemId && orderItem?.order?.patientId) {
+        await this.invoiceService.assertInvoiceItemPaidOrInpatientCredit(
+          tx,
+          {
+            invoiceItemId,
+            patientId: orderItem.order.patientId,
+          },
+        );
+      }
+      await this.invoiceService.settleInvoiceItemIfPresent(tx, invoiceItemId);
       return Promise.all(
         dto.results.map((r) =>
           tx.labResult.upsert({

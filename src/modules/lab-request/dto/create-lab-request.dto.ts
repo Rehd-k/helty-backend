@@ -37,7 +37,7 @@ export class CreateLabRequestDto {
 
   @ApiPropertyOptional({
     description:
-      'Service UUID to bill for this lab request (creates invoice with this service)',
+      'Laboratory service UUID — creates a pending encounter invoice line for any patient. Outpatients must pay before lab results are entered; actively admitted inpatients may receive results on credit.',
   })
   @IsUUID()
   @IsOptional()

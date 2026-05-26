@@ -40,7 +40,7 @@ export class CreateLabOrderDto {
 
   @ApiPropertyOptional({
     description:
-      'Invoice UUID — use with invoiceItemId and serviceId. Outpatients: line must be on a paid invoice. Actively admitted inpatients: pending encounter-billed lines are allowed.',
+      'Invoice UUID — use with invoiceItemId and serviceId. Links a billed lab request line; payment is enforced when results are entered (outpatients must pay first).',
   })
   @IsUUID()
   @IsOptional()
@@ -48,7 +48,7 @@ export class CreateLabOrderDto {
 
   @ApiPropertyOptional({
     description:
-      'Laboratory invoice line item UUID (paid for outpatients; pending or paid for actively admitted inpatients)',
+      'Laboratory invoice line item UUID from the lab request or paid counter flow',
   })
   @IsUUID()
   @IsOptional()

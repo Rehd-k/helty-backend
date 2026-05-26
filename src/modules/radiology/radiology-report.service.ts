@@ -25,7 +25,10 @@ export class RadiologyReportService {
   ) {
     const orderItem = await this.prisma.radiologyOrderItem.findUnique({
       where: { id: orderItemId },
-      include: { report: true },
+      include: {
+        report: true,
+        order: { select: { patientId: true } },
+      },
     });
     if (!orderItem) {
       throw new NotFoundException(
@@ -47,6 +50,15 @@ export class RadiologyReportService {
     const signedAt = new Date();
 
     return this.prisma.$transaction(async (tx) => {
+      if (orderItem.invoiceItemId) {
+        await this.invoiceService.assertInvoiceItemPaidOrInpatientCredit(
+          tx,
+          {
+            invoiceItemId: orderItem.invoiceItemId,
+            patientId: orderItem.order.patientId,
+          },
+        );
+      }
       const report = await tx.radiologyStudyReport.create({
         data: {
           radiologyOrderItemId: orderItemId,

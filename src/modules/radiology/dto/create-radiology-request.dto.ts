@@ -51,7 +51,7 @@ export class CreateRadiologyOrderItemDto {
 
   @ApiPropertyOptional({
     description:
-      'Invoice UUID — use with invoiceItemId and serviceId. Outpatients: line must be on a paid invoice. Actively admitted inpatients: pending encounter-billed lines are allowed.',
+      'Invoice UUID — use with invoiceItemId and serviceId for paid counter flow. Outpatients: line must be on a paid invoice at order time.',
   })
   @IsUUID()
   @IsOptional()
@@ -59,7 +59,7 @@ export class CreateRadiologyOrderItemDto {
 
   @ApiPropertyOptional({
     description:
-      'Radiology & Imaging invoice line item UUID (paid for outpatients; pending or paid for actively admitted inpatients)',
+      'Radiology & Imaging invoice line item UUID (paid counter flow)',
   })
   @IsUUID()
   @IsOptional()
@@ -67,7 +67,7 @@ export class CreateRadiologyOrderItemDto {
 
   @ApiPropertyOptional({
     description:
-      'Radiology & Imaging service UUID — with encounterId and active admission, a pending invoice line is created on credit; otherwise use with invoiceId and invoiceItemId (paid counter flow for outpatients)',
+      'Radiology & Imaging service UUID — with encounterId, creates a pending encounter invoice line for any patient. Outpatients must pay before reports/images are entered; inpatients on active admission may receive results on credit. Otherwise use with invoiceId and invoiceItemId (paid counter flow).',
   })
   @IsUUID()
   @IsOptional()

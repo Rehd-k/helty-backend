@@ -224,9 +224,43 @@ export class InvoiceService {
   }
 
   /**
+   * Blocks lab/imaging result delivery for outpatients until the linked invoice is paid.
+   * Actively admitted inpatients may deliver on pending/credit lines.
+   */
+  async assertInvoiceItemPaidOrInpatientCredit(
+    tx: Prisma.TransactionClient,
+    params: { invoiceItemId: string; patientId: string },
+  ): Promise<void> {
+    const item = await tx.invoiceItem.findUnique({
+      where: { id: params.invoiceItemId },
+      include: {
+        invoice: { select: { id: true, patientId: true, status: true } },
+      },
+    });
+    if (!item?.invoice) {
+      throw new BadRequestException('Invoice line item not found.');
+    }
+    if (item.invoice.patientId !== params.patientId) {
+      throw new BadRequestException(
+        'This invoice does not belong to the selected patient.',
+      );
+    }
+    if (item.invoice.status === InvoiceStatus.PAID) {
+      return;
+    }
+    if (!(await this.hasActiveAdmission(tx, params.patientId))) {
+      throw new BadRequestException(
+        'Payment is required before entering results for this patient.',
+      );
+    }
+  }
+
+  /**
    * Validates an invoice line for radiology/lab consumption inside a transaction.
-   * Outpatients require a fully paid invoice; actively admitted patients may use pending lines.
-   * Call immediately before creating the request/order that sets `invoiceItemId`.
+   * Outpatients require a fully paid invoice when `requirePayment` is true (default);
+   * actively admitted patients may use pending lines.
+   * Call before creating orders from paid counter links; defer payment to result delivery
+   * for encounter-billed lines by passing `requirePayment: false`.
    */
   async assertPaidInvoiceItemConsumable(
     tx: Prisma.TransactionClient,
@@ -237,6 +271,7 @@ export class InvoiceService {
       patientId: string;
       mode: 'radiology' | 'lab';
     },
+    options?: { requirePayment?: boolean },
   ): Promise<void> {
     const invoice = await tx.invoice.findUnique({
       where: { id: params.invoiceId },
@@ -254,7 +289,8 @@ export class InvoiceService {
         'This invoice does not belong to the selected patient.',
       );
     }
-    if (invoice.status !== InvoiceStatus.PAID) {
+    const requirePayment = options?.requirePayment !== false;
+    if (requirePayment && invoice.status !== InvoiceStatus.PAID) {
       const onCredit = await this.hasActiveAdmission(tx, params.patientId);
       if (!onCredit) {
         throw invoiceLinkException(

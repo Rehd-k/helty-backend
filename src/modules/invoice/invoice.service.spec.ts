@@ -941,4 +941,147 @@ describe('InvoiceService', () => {
       ).resolves.toBeUndefined();
     });
   });
+
+  describe('assertInvoiceItemPaidOrInpatientCredit', () => {
+    function deliveryTx(overrides: {
+      invoiceStatus?: InvoiceStatus;
+      admissionCount?: number;
+      patientId?: string;
+      itemMissing?: boolean;
+    }) {
+      return {
+        invoiceItem: {
+          findUnique: jest.fn().mockResolvedValue(
+            overrides.itemMissing
+              ? null
+              : {
+                  id: 'item-1',
+                  invoice: {
+                    id: 'inv-1',
+                    patientId: overrides.patientId ?? 'pat-1',
+                    status:
+                      overrides.invoiceStatus ?? InvoiceStatus.PENDING,
+                  },
+                },
+          ),
+        },
+        admission: {
+          count: jest
+            .fn()
+            .mockResolvedValue(overrides.admissionCount ?? 0),
+        },
+      };
+    }
+
+    it('allows paid invoice without checking admission', async () => {
+      const tx = deliveryTx({
+        invoiceStatus: InvoiceStatus.PAID,
+        admissionCount: 0,
+      });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertInvoiceItemPaidOrInpatientCredit(tx as any, {
+          invoiceItemId: 'item-1',
+          patientId: 'pat-1',
+        }),
+      ).resolves.toBeUndefined();
+      expect(tx.admission.count).not.toHaveBeenCalled();
+    });
+
+    it('allows unpaid invoice when patient has active admission', async () => {
+      const tx = deliveryTx({
+        invoiceStatus: InvoiceStatus.PENDING,
+        admissionCount: 1,
+      });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertInvoiceItemPaidOrInpatientCredit(tx as any, {
+          invoiceItemId: 'item-1',
+          patientId: 'pat-1',
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws when unpaid and no active admission', async () => {
+      const tx = deliveryTx({
+        invoiceStatus: InvoiceStatus.PENDING,
+        admissionCount: 0,
+      });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertInvoiceItemPaidOrInpatientCredit(tx as any, {
+          invoiceItemId: 'item-1',
+          patientId: 'pat-1',
+        }),
+      ).rejects.toThrow(
+        'Payment is required before entering results for this patient.',
+      );
+    });
+
+    it('throws when invoice item not found', async () => {
+      const tx = deliveryTx({ itemMissing: true });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertInvoiceItemPaidOrInpatientCredit(tx as any, {
+          invoiceItemId: 'item-1',
+          patientId: 'pat-1',
+        }),
+      ).rejects.toThrow('Invoice line item not found.');
+    });
+
+    it('throws when patient does not match invoice', async () => {
+      const tx = deliveryTx({ patientId: 'other-pat' });
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertInvoiceItemPaidOrInpatientCredit(tx as any, {
+          invoiceItemId: 'item-1',
+          patientId: 'pat-1',
+        }),
+      ).rejects.toThrow(
+        'This invoice does not belong to the selected patient.',
+      );
+    });
+  });
+
+  describe('assertPaidInvoiceItemConsumable requirePayment', () => {
+    const baseParams = {
+      invoiceId: 'inv-1',
+      invoiceItemId: 'item-1',
+      serviceId: 'svc-1',
+      patientId: 'pat-1',
+      mode: 'lab' as const,
+    };
+
+    it('allows unpaid outpatient when requirePayment is false', async () => {
+      const tx = {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            patientId: 'pat-1',
+            status: InvoiceStatus.PENDING,
+          }),
+        },
+        admission: { count: jest.fn() },
+        invoiceItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            serviceId: 'svc-1',
+            settled: false,
+            service: { category: { name: 'Laboratory' } },
+          }),
+        },
+        labOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+        radiologyOrderItem: { findFirst: jest.fn() },
+      };
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(
+          tx as any,
+          baseParams,
+          { requirePayment: false },
+        ),
+      ).resolves.toBeUndefined();
+      expect(tx.admission.count).not.toHaveBeenCalled();
+    });
+  });
 });
