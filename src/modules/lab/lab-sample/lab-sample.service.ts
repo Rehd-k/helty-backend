@@ -33,12 +33,13 @@ export class LabSampleService {
       throw new NotFoundException(`Staff "${dto.collectedBy}" not found.`);
     }
 
-    return this.prisma.labSample.create({
+    const collectionTime = new Date(dto.collectionTime);
+    const sample = await this.prisma.labSample.create({
       data: {
         orderItemId: dto.orderItemId,
         sampleType: dto.sampleType,
         collectedById: dto.collectedBy,
-        collectionTime: new Date(dto.collectionTime),
+        collectionTime,
         barcode: dto.barcode,
       },
       include: {
@@ -52,5 +53,19 @@ export class LabSampleService {
         collectedBy: { select: { id: true, firstName: true, lastName: true } },
       },
     });
+
+    const orderId = orderItem.orderId;
+    await this.prisma.labOrder.updateMany({
+      where: {
+        id: orderId,
+        sampleCollectedAt: null,
+      },
+      data: {
+        sampleCollectedAt: collectionTime,
+        status: 'SAMPLE_COLLECTED',
+      },
+    });
+
+    return sample;
   }
 }

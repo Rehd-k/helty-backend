@@ -1,5 +1,6 @@
 import { LabTestFieldType } from '@prisma/client';
 import {
+  computeLabResultFlags,
   evaluateReferenceRange,
   isValidReferenceRange,
   parseNumericResultValue,
@@ -115,6 +116,20 @@ describe('lab-reference-range.util', () => {
 
     it('rejects invalid ranges', () => {
       expect(isValidReferenceRange('not-a-range')).toBe(false);
+    });
+  });
+
+  describe('computeLabResultFlags', () => {
+    it('marks critical when value is far outside interval', () => {
+      const flags = computeLabResultFlags('200', '80-120', LabTestFieldType.NUMBER);
+      expect(flags.abnormalFlag).toBe('HIGH');
+      expect(flags.isCritical).toBe(true);
+    });
+
+    it('marks non-critical abnormal inside margin', () => {
+      const flags = computeLabResultFlags('125', '80-120', LabTestFieldType.NUMBER);
+      expect(flags.abnormalFlag).toBe('HIGH');
+      expect(flags.isCritical).toBe(false);
     });
   });
 });

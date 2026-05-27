@@ -1,4 +1,4 @@
-import { LabTestFieldType } from '@prisma/client';
+import { LabAbnormalFlag, LabTestFieldType } from '@prisma/client';
 
 export type ReferenceRangeFlag = 'LOW' | 'HIGH';
 
@@ -163,4 +163,69 @@ export function evaluateReferenceRange(
     parsedValue: numericValue,
     referenceRange: rangeText,
   };
+}
+
+/** Values beyond reference by this fraction are flagged critical (20%). */
+export const LAB_CRITICAL_MARGIN = 0.2;
+
+function isValueCritical(
+  parsed: ParsedReferenceRange,
+  value: number,
+  flag: ReferenceRangeFlag,
+): boolean {
+  const margin = LAB_CRITICAL_MARGIN;
+  switch (parsed.kind) {
+    case 'interval': {
+      const span = parsed.max - parsed.min;
+      if (span <= 0) return false;
+      if (flag === 'LOW') {
+        return value <= parsed.min - span * margin;
+      }
+      return value >= parsed.max + span * margin;
+    }
+    case 'lt':
+    case 'lte':
+      if (flag === 'HIGH') {
+        return value >= parsed.limit * (1 + margin);
+      }
+      return false;
+    case 'gt':
+    case 'gte':
+      if (flag === 'LOW') {
+        return value <= parsed.limit * (1 - margin);
+      }
+      return false;
+  }
+}
+
+export type LabResultPersistedFlags = {
+  abnormalFlag: LabAbnormalFlag | null;
+  isCritical: boolean;
+  evaluatedAt: Date;
+};
+
+/** Flags to persist on LabResult from field metadata and value. */
+export function computeLabResultFlags(
+  value: string | null | undefined,
+  referenceRange: string | null | undefined,
+  fieldType: LabTestFieldType,
+): LabResultPersistedFlags {
+  const evaluation = evaluateReferenceRange(
+    value,
+    referenceRange,
+    fieldType,
+  );
+  const evaluatedAt = new Date();
+  if (!evaluation.flag) {
+    return { abnormalFlag: null, isCritical: false, evaluatedAt };
+  }
+  const abnormalFlag = evaluation.flag as LabAbnormalFlag;
+  let isCritical = false;
+  if (evaluation.parsedValue !== null && evaluation.referenceRange) {
+    const parsed = parseReferenceRange(evaluation.referenceRange);
+    if (parsed) {
+      isCritical = isValueCritical(parsed, evaluation.parsedValue, evaluation.flag);
+    }
+  }
+  return { abnormalFlag, isCritical, evaluatedAt };
 }

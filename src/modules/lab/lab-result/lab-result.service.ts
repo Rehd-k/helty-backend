@@ -8,7 +8,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { InvoiceService } from '../../invoice/invoice.service';
 import { CreateLabResultDto } from './dto/create-lab-result.dto';
 import { CreateLabResultBatchDto } from './dto/create-lab-result-batch.dto';
-import { evaluateReferenceRange } from '../lab-reference-range.util';
+import {
+  computeLabResultFlags,
+  evaluateReferenceRange,
+} from '../lab-reference-range.util';
 
 type LabResultWithField = {
   value: string | null;
@@ -104,6 +107,30 @@ export class LabResultService {
       },
       data: { status: LabRequestStatus.COMPLETED },
     });
+
+    const now = new Date();
+    await this.prisma.labOrder.update({
+      where: { id: orderId },
+      data: {
+        status: 'COMPLETED',
+        completedAt: now,
+      },
+    });
+  }
+
+  private async loadFieldForFlags(fieldId: string) {
+    return this.prisma.labTestField.findUnique({
+      where: { id: fieldId },
+      select: { referenceRange: true, fieldType: true },
+    });
+  }
+
+  private async flagsForResult(fieldId: string, value: string | null | undefined) {
+    const field = await this.loadFieldForFlags(fieldId);
+    if (!field) {
+      return { abnormalFlag: null, isCritical: false, evaluatedAt: new Date() };
+    }
+    return computeLabResultFlags(value, field.referenceRange, field.fieldType);
   }
 
   async create(dto: CreateLabResultDto) {
@@ -146,6 +173,7 @@ export class LabResultService {
         );
       }
       await this.invoiceService.settleInvoiceItemIfPresent(tx, invoiceItemId);
+      const flags = await this.flagsForResult(dto.fieldId, dto.value);
       return tx.labResult.upsert({
         where: {
           orderItemId_fieldId: {
@@ -158,8 +186,13 @@ export class LabResultService {
           fieldId: dto.fieldId,
           value: dto.value,
           enteredById: dto.enteredBy,
+          ...flags,
         },
-        update: { value: dto.value, enteredById: dto.enteredBy },
+        update: {
+          value: dto.value,
+          enteredById: dto.enteredBy,
+          ...flags,
+        },
         include: {
           field: true,
           enteredBy: { select: { id: true, firstName: true, lastName: true } },
@@ -213,8 +246,9 @@ export class LabResultService {
       }
       await this.invoiceService.settleInvoiceItemIfPresent(tx, invoiceItemId);
       return Promise.all(
-        dto.results.map((r) =>
-          tx.labResult.upsert({
+        dto.results.map(async (r) => {
+          const flags = await this.flagsForResult(r.fieldId, r.value);
+          return tx.labResult.upsert({
             where: {
               orderItemId_fieldId: {
                 orderItemId: dto.orderItemId,
@@ -226,11 +260,16 @@ export class LabResultService {
               fieldId: r.fieldId,
               value: r.value,
               enteredById: dto.enteredBy,
+              ...flags,
             },
-            update: { value: r.value, enteredById: dto.enteredBy },
+            update: {
+              value: r.value,
+              enteredById: dto.enteredBy,
+              ...flags,
+            },
             include: { field: true },
-          }),
-        ),
+          });
+        }),
       );
     });
     await this.maybeCompleteLabRequestIfOrderResultsComplete(link.orderId);

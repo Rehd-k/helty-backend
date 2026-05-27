@@ -48,8 +48,9 @@ model Patient {
 
   hmoProvider Hmo? @relation(fields: [hmoId], references: [id])
 
-  appointments     Appointment[]
-  admissions       Admission[]
+  appointments              Appointment[]
+  appointmentNotifications  AppointmentNotification[]
+  admissions                Admission[]
   payments         Payment[]
   wallet           PatientWallet?
   medicalHistories MedicalHistory[]
@@ -85,6 +86,10 @@ model Patient {
   medicationOrders          MedicationOrder[]
   consumableUsageEvents     ConsumableUsageEvent[]
   archivedEncounters        PatientArchivedEncounter[]
+  referrals                 Referral[]
+  complaints                PatientComplaint[]
+  safetyIncidents           SafetyIncident[]
+  infectionCases            InfectionCase[]
 
   @@index([hmoId])
 }
@@ -108,6 +113,26 @@ model Icd10Code {
   @@index([specialty, icdGroup])
 }
 
+enum AppointmentNotificationChannel {
+  EMAIL
+  SMS
+}
+
+enum AppointmentNotificationKind {
+  CREATED
+  RESCHEDULED
+  CANCELLED
+  REMINDER_DAY_OF
+}
+
+enum AppointmentNotificationStatus {
+  PENDING
+  SKIPPED_CONFIG
+  SKIPPED_NO_CONTACT
+  SENT
+  FAILED
+}
+
 model Appointment {
   id        String   @id @default(uuid())
   patient   Patient  @relation(fields: [patientId], references: [id])
@@ -120,12 +145,37 @@ model Appointment {
   staffId   String?
   staff     Staff?   @relation(fields: [staffId], references: [id])
 
-  encounters Encounter[]
+  encounters    Encounter[]
+  notifications AppointmentNotification[]
 
   createdBy   Staff   @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
   createdById String
   updatedBy   Staff?  @relation("AppointmentUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+}
+
+model AppointmentNotification {
+  id                String                         @id @default(uuid())
+  appointment       Appointment                    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId     String
+  patient           Patient                        @relation(fields: [patientId], references: [id])
+  patientId         String
+  channel           AppointmentNotificationChannel
+  kind              AppointmentNotificationKind
+  idempotencyKey    String                         @unique
+  scheduledFor      DateTime?
+  sentAt            DateTime?
+  status            AppointmentNotificationStatus  @default(PENDING)
+  provider          String?
+  providerMessageId String?
+  errorMessage      String?
+  payloadSnapshot   Json?
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+
+  @@index([appointmentId])
+  @@index([patientId])
+  @@index([kind, status])
 }
 
 model Admission {
@@ -179,6 +229,9 @@ model Admission {
   attendingDoctorId String?
 
   consumableUsageEvents ConsumableUsageEvent[]
+  referrals             Referral[]
+  safetyIncidents       SafetyIncident[]
+  infectionCases        InfectionCase[]
 
   createdBy   Staff   @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -1627,6 +1680,10 @@ model Department {
   radiologyOrders     RadiologyOrder[]
   purchaseNotes       PurchaseNote[]
   storeStockMovements StoreStockMovement[]
+  referrals           Referral[]
+  complaints          PatientComplaint[]
+  safetyIncidents     SafetyIncident[]
+  infectionCases      InfectionCase[]
 }
 
 model Staff {
@@ -1793,6 +1850,11 @@ model Staff {
   encounterSpecialtyModulesUpdated EncounterSpecialtyModule[] @relation("EncounterSpecialtyModuleUpdatedBy")
   encounterClinicalSectionsCreated EncounterClinicalSection[] @relation("EncounterClinicalSectionCreatedBy")
   encounterClinicalSectionsUpdated EncounterClinicalSection[] @relation("EncounterClinicalSectionUpdatedBy")
+  referralsCreated                 Referral[]                 @relation("ReferralCreatedBy")
+  complaintsCreated                PatientComplaint[]         @relation("ComplaintCreatedBy")
+  complaintsAssigned               PatientComplaint[]         @relation("ComplaintAssignedTo")
+  safetyIncidentsReported          SafetyIncident[]           @relation("SafetyIncidentReportedBy")
+  infectionCasesCreated            InfectionCase[]            @relation("InfectionCaseCreatedBy")
 }
 
 /// One-time 6-digit codes for staff password reset (plain `code` in DB for admin handoff until SMTP).
@@ -2034,6 +2096,9 @@ model Encounter {
   specialtyModules EncounterSpecialtyModule[]
   clinicalSections EncounterClinicalSection[]
   consumableUsageEvents ConsumableUsageEvent[]
+  referrals          Referral[]
+  complaints         PatientComplaint[]
+  safetyIncidents    SafetyIncident[]
 
   createdBy   Staff     @relation("EncounterCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -2369,6 +2434,177 @@ model LegacyLabOrder {
   @@index([encounterId])
 }
 
+// ─── CMAC Quality & Safety ───────────────────────────────────────────────────
+
+enum ReferralDirection {
+  IN
+  OUT
+}
+
+enum ReferralStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum ComplaintSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ComplaintStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  CLOSED
+}
+
+enum SafetyIncidentType {
+  MEDICATION
+  FALL
+  PROCEDURE
+  DOCUMENTATION
+  OTHER
+}
+
+enum SafetyIncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SafetyIncidentStatus {
+  OPEN
+  INVESTIGATING
+  CLOSED
+}
+
+enum InfectionCaseType {
+  HAI
+  SURGICAL_SITE
+  WOUND
+  OTHER
+}
+
+enum InfectionCaseStatus {
+  ACTIVE
+  RESOLVED
+}
+
+enum LabAbnormalFlag {
+  LOW
+  HIGH
+}
+
+model Referral {
+  id                 String            @id @default(uuid())
+  patient            Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId          String
+  direction          ReferralDirection
+  status             ReferralStatus    @default(PENDING)
+  referringFacility  String?
+  receivingFacility  String?
+  reason             String?
+  occurredAt         DateTime          @default(now())
+  encounter          Encounter?        @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  encounterId        String?
+  admission          Admission?        @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId        String?
+  department         Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId       String?
+  createdBy          Staff             @relation("ReferralCreatedBy", fields: [createdById], references: [id])
+  createdById        String
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([patientId])
+  @@index([direction, occurredAt])
+  @@index([departmentId])
+}
+
+model PatientComplaint {
+  id           String            @id @default(uuid())
+  patient      Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId    String
+  category     String
+  description  String
+  severity     ComplaintSeverity @default(MEDIUM)
+  status       ComplaintStatus   @default(OPEN)
+  reportedAt   DateTime          @default(now())
+  resolvedAt   DateTime?
+  encounter    Encounter?        @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  encounterId  String?
+  department   Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId String?
+  assignedTo   Staff?            @relation("ComplaintAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToId String?
+  createdBy    Staff             @relation("ComplaintCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([patientId])
+  @@index([status, reportedAt])
+  @@index([departmentId])
+}
+
+model SafetyIncident {
+  id                String                 @id @default(uuid())
+  patient           Patient                @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId         String
+  type              SafetyIncidentType
+  severity          SafetyIncidentSeverity @default(MEDIUM)
+  status            SafetyIncidentStatus   @default(OPEN)
+  description       String
+  rootCause         String?
+  correctiveAction  String?
+  occurredAt        DateTime               @default(now())
+  encounter         Encounter?             @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  encounterId       String?
+  admission         Admission?             @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId       String?
+  department        Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId      String?
+  reportedBy        Staff                  @relation("SafetyIncidentReportedBy", fields: [reportedById], references: [id])
+  reportedById      String
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([patientId])
+  @@index([type, severity])
+  @@index([status, occurredAt])
+  @@index([departmentId])
+}
+
+model InfectionCase {
+  id           String              @id @default(uuid())
+  patient      Patient             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId    String
+  admission    Admission           @relation(fields: [admissionId], references: [id], onDelete: Restrict)
+  admissionId  String
+  type         InfectionCaseType
+  status       InfectionCaseStatus @default(ACTIVE)
+  organism     String?
+  site         String?
+  isolated     Boolean             @default(false)
+  onsetDate    DateTime
+  resolvedAt   DateTime?
+  department   Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId String?
+  createdBy    Staff               @relation("InfectionCaseCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([patientId])
+  @@index([admissionId])
+  @@index([status, onsetDate])
+  @@index([departmentId])
+}
+
 // ─── Dynamic Lab Module (build-once-use-everywhere) ─────────────────────────
 
 enum LabOrderStatus {
@@ -2451,13 +2687,16 @@ model LabTestField {
 }
 
 model LabOrder {
-  id            String         @id @default(uuid())
-  patientId     String
-  doctorId      String
-  status        LabOrderStatus @default(PENDING)
-  invoiceItem   InvoiceItem?   @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
-  invoiceItemId String?        @unique
-  createdAt     DateTime       @default(now())
+  id                String         @id @default(uuid())
+  patientId         String
+  doctorId          String
+  status            LabOrderStatus @default(PENDING)
+  invoiceItem       InvoiceItem?   @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId     String?        @unique
+  sampleCollectedAt DateTime?
+  completedAt       DateTime?
+  verifiedAt        DateTime?
+  createdAt         DateTime       @default(now())
 
   patient Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
   doctor  Staff          @relation("LabOrderDoctor", fields: [doctorId], references: [id], onDelete: Restrict)
@@ -2467,6 +2706,7 @@ model LabOrder {
   @@index([doctorId])
   @@index([status])
   @@index([invoiceItemId])
+  @@index([completedAt])
 }
 
 model LabOrderItem {
@@ -2502,12 +2742,16 @@ model LabSample {
 }
 
 model LabResult {
-  id          String   @id @default(uuid())
-  orderItemId String
-  fieldId     String
-  value       String?
-  enteredById String
-  createdAt   DateTime @default(now())
+  id            String           @id @default(uuid())
+  orderItemId   String
+  fieldId       String
+  value         String?
+  enteredById   String
+  abnormalFlag  LabAbnormalFlag?
+  isCritical    Boolean          @default(false)
+  evaluatedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   orderItem LabOrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
   field     LabTestField @relation(fields: [fieldId], references: [id], onDelete: Restrict)
@@ -2516,6 +2760,7 @@ model LabResult {
   @@unique([orderItemId, fieldId])
   @@index([orderItemId])
   @@index([fieldId])
+  @@index([isCritical, createdAt])
 }
 
 model NurseAssignment {

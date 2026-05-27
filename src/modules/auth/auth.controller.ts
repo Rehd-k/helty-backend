@@ -48,7 +48,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Request a 6-digit password reset code (emailed when SMTP is set; otherwise stored for admin relay)',
+      'Request a 6-digit password reset code (emailed via Postmark when configured; otherwise stored for admin relay)',
   })
   @ApiResponse({
     status: 200,

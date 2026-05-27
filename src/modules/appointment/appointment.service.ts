@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -12,10 +13,17 @@ import {
 import { AppointmentCalendarCountsQueryDto } from './dto/appointment-calendar-counts.query.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { AppointmentNotificationService } from './notification/appointment-notification.service';
+import { isCancelledStatus } from './notification/appointment-message.util';
 
 @Injectable()
 export class AppointmentService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(AppointmentService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private readonly notificationService: AppointmentNotificationService,
+  ) {}
 
   async create(
     createAppointmentDto: CreateAppointmentDto,
@@ -63,6 +71,11 @@ export class AppointmentService {
           encounters: true,
         },
       });
+    }).then(async (appointment) => {
+      await this.safeNotify(() =>
+        this.notificationService.notifyCreated(appointment.id),
+      );
+      return appointment;
     });
   }
 
@@ -192,7 +205,25 @@ export class AppointmentService {
     updateAppointmentDto: UpdateAppointmentDto,
     staffId: string,
   ) {
-    return this.prisma.appointment.update({
+    const existing = await this.prisma.appointment.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Appointment "${id}" not found.`);
+    }
+
+    const previousDate = existing.date;
+    const dateChanged =
+      !!updateAppointmentDto.date &&
+      new Date(updateAppointmentDto.date).getTime() !==
+        new Date(existing.date).getTime();
+    const statusChanged =
+      updateAppointmentDto.status !== undefined &&
+      updateAppointmentDto.status !== existing.status;
+    const becameCancelled =
+      statusChanged && isCancelledStatus(updateAppointmentDto.status);
+
+    const appointment = await this.prisma.appointment.update({
       where: { id },
       data: {
         ...(updateAppointmentDto.date && {
@@ -209,6 +240,33 @@ export class AppointmentService {
         },
       },
     });
+
+    if (becameCancelled) {
+      await this.safeNotify(() =>
+        this.notificationService.notifyCancelled(appointment.id),
+      );
+    } else if (dateChanged) {
+      await this.safeNotify(() =>
+        this.notificationService.notifyRescheduled(
+          appointment.id,
+          previousDate,
+        ),
+      );
+    }
+
+    return appointment;
+  }
+
+  private async safeNotify(fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+    } catch (err) {
+      this.logger.warn(
+        `Appointment notification failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   async remove(id: string) {
