@@ -29,6 +29,9 @@ import { CmacOverviewService } from './services/cmac-overview.service';
     CmacPatientActivityService,
     CmacClinicalService,
     CmacLaboratoryService,
+    CmacOperationsService,
+    CmacStaffService,
+    CmacOverviewService,
     CmacInsightsService,
   ],
 })

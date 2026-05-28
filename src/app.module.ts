@@ -51,6 +51,7 @@ import { PatientArchivedEncounterModule } from './modules/patient-archived-encou
 import { Icd10Module } from './modules/icd10/icd10.module';
 import { QualitySafetyModule } from './modules/quality-safety/quality-safety.module';
 import { CmacAnalyticsModule } from './modules/cmac-analytics/cmac-analytics.module';
+import { CmdAnalyticsModule } from './modules/cmd-analytics/cmd-analytics.module';
 
 @Module({
   imports: [
@@ -118,6 +119,7 @@ import { CmacAnalyticsModule } from './modules/cmac-analytics/cmac-analytics.mod
     Icd10Module,
     QualitySafetyModule,
     CmacAnalyticsModule,
+    CmdAnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
