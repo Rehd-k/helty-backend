@@ -87,8 +87,13 @@ export class EncounterController {
   addDiagnosis(
     @Param('encounterId') encounterId: string,
     @Body() dto: CreateEncounterDiagnosisDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.encounterService.addDiagnosis(encounterId, dto);
+    return this.encounterService.addDiagnosis(
+      encounterId,
+      dto,
+      req.user.sub,
+    );
   }
 
   @Get(':encounterId/diagnoses')
@@ -103,8 +108,14 @@ export class EncounterController {
     @Param('encounterId') encounterId: string,
     @Param('diagnosisId') diagnosisId: string,
     @Body() dto: UpdateEncounterDiagnosisDto,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.encounterService.updateDiagnosis(encounterId, diagnosisId, dto);
+    return this.encounterService.updateDiagnosis(
+      encounterId,
+      diagnosisId,
+      dto,
+      req.user.sub,
+    );
   }
 
   @Delete(':encounterId/diagnoses/:diagnosisId')
@@ -113,8 +124,36 @@ export class EncounterController {
   removeDiagnosis(
     @Param('encounterId') encounterId: string,
     @Param('diagnosisId') diagnosisId: string,
+    @Query('editReason') editReason: string | undefined,
+    @Req() req: { user: { sub: string } },
   ) {
-    return this.encounterService.removeDiagnosis(encounterId, diagnosisId);
+    return this.encounterService.removeDiagnosis(
+      encounterId,
+      diagnosisId,
+      req.user.sub,
+      editReason,
+    );
+  }
+
+  @Get(':id/edit-history')
+  @ApiOperation({
+    summary: 'List post-completion edit history for an encounter',
+    description:
+      'Newest first. Each row is the clinical state immediately before that edit.',
+  })
+  listEditHistory(@Param('id') id: string) {
+    return this.encounterService.listEditHistory(id);
+  }
+
+  @Get(':id/edit-history/:historyId')
+  @ApiOperation({
+    summary: 'Get one edit history entry with full snapshot',
+  })
+  getEditHistoryEntry(
+    @Param('id') id: string,
+    @Param('historyId') historyId: string,
+  ) {
+    return this.encounterService.getEditHistoryEntry(id, historyId);
   }
 
   @Get(':id')
@@ -123,8 +162,12 @@ export class EncounterController {
     description:
       'Optional query: expand=medicationOrders,labOrders,appointment,specialtyModules,clinicalSections (or * for all)',
   })
-  findOne(@Param('id') id: string, @Query('expand') expand?: string) {
-    return this.encounterService.findOne(id, expand);
+  findOne(
+    @Param('id') id: string,
+    @Query('expand') expand: string | undefined,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.encounterService.findOne(id, expand, req.user.sub);
   }
 
   @Patch(':id')

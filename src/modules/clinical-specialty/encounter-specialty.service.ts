@@ -4,7 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MedicalSpecialty, Prisma } from '@prisma/client';
+import { EncounterStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EncounterEditPolicyService } from '../encounter/encounter-edit-policy.service';
 import {
   CATALOG_VERSION,
   CLINICAL_SPECIALTY_CATALOG,
@@ -18,7 +20,10 @@ import { ListClinicalSectionsQueryDto } from './dto/list-clinical-sections.query
 
 @Injectable()
 export class EncounterSpecialtyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly editPolicy: EncounterEditPolicyService,
+  ) {}
 
   getCatalog() {
     return {
@@ -82,7 +87,7 @@ export class EncounterSpecialtyService {
     dto: SyncSpecialtyModulesDto,
     staffId: string,
   ) {
-    await this.ensureEncounter(encounterId);
+    const access = await this.editPolicy.assertCanEdit(encounterId, staffId);
 
     const incoming = new Map<MedicalSpecialty, string[]>();
     for (const m of dto.modules) {
@@ -90,7 +95,43 @@ export class EncounterSpecialtyService {
       incoming.set(m.specialty, m.enabledSectionKeys);
     }
 
+    const snapshotBefore =
+      access.status === EncounterStatus.COMPLETED
+        ? await this.editPolicy.buildClinicalSnapshot(encounterId)
+        : null;
+
     await this.prisma.$transaction(async (tx) => {
+      if (snapshotBefore) {
+        const incomingModules = dto.modules.map((m) => ({
+          specialty: m.specialty,
+          enabledSectionKeys: m.enabledSectionKeys,
+        }));
+        const enabledKeysBySpecialty = new Map(
+          incomingModules.map((m) => [m.specialty, m.enabledSectionKeys as string[]]),
+        );
+        const afterSections = snapshotBefore.clinicalSections.filter((s) => {
+          const keys = enabledKeysBySpecialty.get(s.specialty);
+          if (!keys) return false;
+          return keys.includes(s.sectionKey);
+        });
+        const afterPreview = {
+          ...snapshotBefore,
+          specialtyModules: incomingModules,
+          clinicalSections: afterSections,
+        };
+        const changedKeys = this.editPolicy.computeChangedKeys(
+          snapshotBefore,
+          afterPreview,
+        );
+        await this.editPolicy.recordEditIfCompleted(
+          access,
+          staffId,
+          snapshotBefore,
+          changedKeys,
+          dto.editReason,
+          tx,
+        );
+      }
       const existing = await tx.encounterSpecialtyModule.findMany({
         where: { encounterId },
       });
@@ -174,7 +215,7 @@ export class EncounterSpecialtyService {
     dto: UpsertClinicalSectionDto,
     staffId: string,
   ) {
-    await this.ensureEncounter(encounterId);
+    const access = await this.editPolicy.assertCanEdit(encounterId, staffId);
 
     if (!isSectionKeyAllowed(specialty, sectionKey)) {
       throw new BadRequestException(
@@ -203,28 +244,67 @@ export class EncounterSpecialtyService {
     const data = dto.data as Prisma.InputJsonValue;
     const schemaVersion = dto.schemaVersion ?? 1;
 
-    return this.prisma.encounterClinicalSection.upsert({
-      where: {
-        encounterId_specialty_sectionKey: {
+    const snapshotBefore =
+      access.status === EncounterStatus.COMPLETED
+        ? await this.editPolicy.buildClinicalSnapshot(encounterId)
+        : null;
+
+    const sectionPath = `${specialty}.${sectionKey}`;
+    const existingSection = snapshotBefore?.clinicalSections.find(
+      (s) => s.specialty === specialty && s.sectionKey === sectionKey,
+    );
+    const dataUnchanged =
+      existingSection != null &&
+      existingSection.schemaVersion === schemaVersion &&
+      JSON.stringify(existingSection.data) === JSON.stringify(dto.data);
+
+    if (snapshotBefore && dataUnchanged) {
+      return this.prisma.encounterClinicalSection.findUniqueOrThrow({
+        where: {
+          encounterId_specialty_sectionKey: {
+            encounterId,
+            specialty,
+            sectionKey,
+          },
+        },
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (snapshotBefore) {
+        await this.editPolicy.recordEditIfCompleted(
+          access,
+          staffId,
+          snapshotBefore,
+          [`clinicalSections.${sectionPath}`],
+          dto.editReason,
+          tx,
+        );
+      }
+
+      return tx.encounterClinicalSection.upsert({
+        where: {
+          encounterId_specialty_sectionKey: {
+            encounterId,
+            specialty,
+            sectionKey,
+          },
+        },
+        create: {
           encounterId,
           specialty,
           sectionKey,
+          schemaVersion,
+          data,
+          createdById: staffId,
+          updatedById: staffId,
         },
-      },
-      create: {
-        encounterId,
-        specialty,
-        sectionKey,
-        schemaVersion,
-        data,
-        createdById: staffId,
-        updatedById: staffId,
-      },
-      update: {
-        schemaVersion,
-        data,
-        updatedById: staffId,
-      },
+        update: {
+          schemaVersion,
+          data,
+          updatedById: staffId,
+        },
+      });
     });
   }
 }

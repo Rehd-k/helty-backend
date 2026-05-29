@@ -1924,6 +1924,7 @@ model Staff {
   encounterSpecialtyModulesUpdated   EncounterSpecialtyModule[]     @relation("EncounterSpecialtyModuleUpdatedBy")
   encounterClinicalSectionsCreated   EncounterClinicalSection[]     @relation("EncounterClinicalSectionCreatedBy")
   encounterClinicalSectionsUpdated   EncounterClinicalSection[]     @relation("EncounterClinicalSectionUpdatedBy")
+  encounterEditHistory               EncounterEditHistory[]         @relation("EncounterEditHistoryEditedBy")
   referralsCreated                   Referral[]                     @relation("ReferralCreatedBy")
   complaintsCreated                  PatientComplaint[]             @relation("ComplaintCreatedBy")
   complaintsAssigned                 PatientComplaint[]             @relation("ComplaintAssignedTo")
@@ -2185,6 +2186,22 @@ model Encounter {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   invoices    Invoice[]
+  editHistory EncounterEditHistory[]
+}
+
+/// Snapshot of full clinical state immediately before a post-completion edit.
+model EncounterEditHistory {
+  id          String    @id @default(uuid())
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  encounterId String
+  editedBy    Staff     @relation("EncounterEditHistoryEditedBy", fields: [editedById], references: [id])
+  editedById  String
+  editedAt    DateTime  @default(now())
+  reason      String?
+  snapshot    Json
+  changedKeys String[]
+
+  @@index([encounterId, editedAt])
 }
 
 /// Per-encounter specialty configuration: which clinical sections the clinician enabled for a given specialty.

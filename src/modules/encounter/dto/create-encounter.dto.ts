@@ -311,6 +311,14 @@ export class UpdateEncounterDto {
   @IsString()
   @IsOptional()
   proceduresJson?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional reason for amending a completed encounter (stored in edit history)',
+  })
+  @IsString()
+  @IsOptional()
+  editReason?: string;
 }
 
 export class QueryEncounterDto {

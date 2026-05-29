@@ -24,6 +24,14 @@ export class CreateEncounterDiagnosisDto {
   @IsBoolean()
   @IsOptional()
   isPrimary?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional reason for amending a completed encounter (stored in edit history)',
+  })
+  @IsString()
+  @IsOptional()
+  editReason?: string;
 }
 
 export class UpdateEncounterDiagnosisDto {
@@ -59,4 +67,12 @@ export class UpdateEncounterDiagnosisDto {
   @IsOptional()
   @IsOptional()
   isPrimary?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional reason for amending a completed encounter (stored in edit history)',
+  })
+  @IsString()
+  @IsOptional()
+  editReason?: string;
 }

@@ -1,6 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MedicalSpecialty } from '@prisma/client';
-import { IsArray, IsEnum, IsString, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SpecialtyModuleInputDto {
@@ -28,4 +34,12 @@ export class SyncSpecialtyModulesDto {
   @ValidateNested({ each: true })
   @Type(() => SpecialtyModuleInputDto)
   modules: SpecialtyModuleInputDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Optional reason for amending a completed encounter (stored in edit history)',
+  })
+  @IsOptional()
+  @IsString()
+  editReason?: string;
 }

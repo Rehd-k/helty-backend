@@ -213,15 +213,17 @@ export class PatientService {
 
     if (search && search.trim() !== '') {
       const trimmedSearch = search.trim();
+      /** Empty filterCategory → search name, hospital id, and phone (directory default). */
+      const category = filterCategory?.trim() || 'nameIdPhonenumber';
 
-      if (filterCategory === 'patientId') {
+      if (category === 'patientId') {
         andParts.push({
           patientId: {
             contains: trimmedSearch.toUpperCase(),
             mode: 'insensitive',
           },
         });
-      } else if (filterCategory === 'fullName') {
+      } else if (category === 'fullName') {
         andParts.push({
           OR: [
             {
@@ -238,7 +240,7 @@ export class PatientService {
             },
           ],
         });
-      } else if (filterCategory === 'nameIdPhonenumber') {
+      } else if (category === 'nameIdPhonenumber') {
         andParts.push({
           OR: [
             {
@@ -267,12 +269,9 @@ export class PatientService {
             },
           ],
         });
-      } else if (
-        filterCategory &&
-        this.ALLOWED_FILTER_FIELDS.has(filterCategory)
-      ) {
+      } else if (this.ALLOWED_FILTER_FIELDS.has(category)) {
         andParts.push({
-          [filterCategory]: {
+          [category]: {
             contains: trimmedSearch,
             mode: 'insensitive',
           },
@@ -354,6 +353,7 @@ export class PatientService {
         where,
       }),
     ]);
+
     return {
       patients,
       total,

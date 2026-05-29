@@ -18,6 +18,8 @@ import {
 import { EncounterType, EncounterStatus } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
 import { labRequestWithBillingInclude } from '../lab-request/lab-request-includes';
+import { EncounterEditPolicyService } from './encounter-edit-policy.service';
+import { ENCOUNTER_CLINICAL_SNAPSHOT_FIELDS } from './encounter-clinical-snapshot.types';
 
 type ProcedureConsumableEntry = {
   id?: string;
@@ -45,7 +47,8 @@ export class EncounterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) { }
+    private readonly editPolicy: EncounterEditPolicyService,
+  ) {}
 
   /** Ongoing encounter for the same patient, type, and admission scope (reuse instead of duplicate create). */
   private async findUnfinishedEncounterForCreate(dto: CreateEncounterDto) {
@@ -377,7 +380,7 @@ export class EncounterService {
     return { data, total, skip, take };
   }
 
-  async findOne(id: string, expand?: string) {
+  async findOne(id: string, expand?: string, staffId?: string) {
     const expandSet = expand
       ? new Set(expand.split(',').map((s) => s.trim().toLowerCase()))
       : new Set<string>();
@@ -452,7 +455,53 @@ export class EncounterService {
       },
     });
     if (!encounter) throw new NotFoundException(`Encounter "${id}" not found.`);
-    return encounter;
+    const editMeta = await this.editPolicy.getEditMeta(id, staffId);
+    return { ...encounter, editMeta };
+  }
+
+  async listEditHistory(encounterId: string) {
+    await this.editPolicy.loadEncounterAccess(encounterId);
+    return this.prisma.encounterEditHistory.findMany({
+      where: { encounterId },
+      orderBy: { editedAt: 'desc' },
+      select: {
+        id: true,
+        editedAt: true,
+        reason: true,
+        changedKeys: true,
+        editedBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffId: true,
+          },
+        },
+      },
+    });
+  }
+
+  async getEditHistoryEntry(encounterId: string, historyId: string) {
+    await this.editPolicy.loadEncounterAccess(encounterId);
+    const entry = await this.prisma.encounterEditHistory.findFirst({
+      where: { id: historyId, encounterId },
+      include: {
+        editedBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffId: true,
+          },
+        },
+      },
+    });
+    if (!entry) {
+      throw new NotFoundException(
+        `Edit history "${historyId}" not found for this encounter.`,
+      );
+    }
+    return entry;
   }
 
   async findByPatientId(patientId: string) {
@@ -472,6 +521,8 @@ export class EncounterService {
     dto: UpdateEncounterDto,
     staffId: string,
   ) {
+    const access = await this.editPolicy.assertCanEdit(id, staffId);
+
     const encounter = await this.prisma.encounter.findUnique({
       where: { id },
       select: {
@@ -479,11 +530,71 @@ export class EncounterService {
         patientId: true,
         doctorId: true,
         proceduresJson: true,
+        status: true,
       },
     });
     if (!encounter) {
       throw new NotFoundException(`Encounter "${id}" not found.`);
     }
+
+    if (
+      access.status === EncounterStatus.COMPLETED &&
+      dto.status === EncounterStatus.ONGOING
+    ) {
+      throw new BadRequestException(
+        'Cannot reopen a completed encounter via update. Status changes are not allowed after completion.',
+      );
+    }
+
+    const snapshotBefore =
+      access.status === EncounterStatus.COMPLETED
+        ? await this.editPolicy.buildClinicalSnapshot(id)
+        : null;
+
+    const patchFields: Partial<
+      Record<(typeof ENCOUNTER_CLINICAL_SNAPSHOT_FIELDS)[number], string>
+    > = {};
+    if (dto.chiefComplaint !== undefined)
+      patchFields.chiefComplaint = dto.chiefComplaint;
+    if (dto.hpi !== undefined) patchFields.hpi = dto.hpi;
+    if (dto.pmh !== undefined) patchFields.pmh = dto.pmh;
+    if (dto.surgicalHistory !== undefined)
+      patchFields.surgicalHistory = dto.surgicalHistory;
+    if (dto.drugHistory !== undefined) patchFields.drugHistory = dto.drugHistory;
+    if (dto.allergyHistory !== undefined)
+      patchFields.allergyHistory = dto.allergyHistory;
+    if (dto.familyHistory !== undefined)
+      patchFields.familyHistory = dto.familyHistory;
+    if (dto.socialHistory !== undefined)
+      patchFields.socialHistory = dto.socialHistory;
+    if (dto.examinationNotes !== undefined)
+      patchFields.examinationNotes = dto.examinationNotes;
+    if (dto.soapSubjective !== undefined)
+      patchFields.soapSubjective = dto.soapSubjective;
+    if (dto.soapObjective !== undefined)
+      patchFields.soapObjective = dto.soapObjective;
+    if (dto.soapAssessment !== undefined)
+      patchFields.soapAssessment = dto.soapAssessment;
+    if (dto.soapPlan !== undefined) patchFields.soapPlan = dto.soapPlan;
+    if (dto.triageNotes !== undefined) patchFields.triageNotes = dto.triageNotes;
+
+    let proceduresJson: string | undefined;
+    if (dto.proceduresJson !== undefined) {
+      proceduresJson = await this.syncEncounterProceduresBilling(
+        encounter,
+        dto.proceduresJson,
+        staffId,
+      );
+      patchFields.proceduresJson = proceduresJson;
+    }
+
+    const changedKeys =
+      snapshotBefore != null
+        ? this.editPolicy.computeEncounterFieldChanges(
+            snapshotBefore,
+            patchFields,
+          )
+        : [];
 
     const data: {
       endTime?: Date;
@@ -526,32 +637,60 @@ export class EncounterService {
       data.soapAssessment = dto.soapAssessment;
     if (dto.soapPlan !== undefined) data.soapPlan = dto.soapPlan;
     if (dto.triageNotes !== undefined) data.triageNotes = dto.triageNotes;
-    if (dto.proceduresJson !== undefined) {
-      data.proceduresJson = await this.syncEncounterProceduresBilling(
-        encounter,
-        dto.proceduresJson,
-        staffId,
-      );
-    }
-    dto.status === undefined
-      ? (data.status = 'ONGOING')
-      : (data.status = dto.status);
+    if (proceduresJson !== undefined) data.proceduresJson = proceduresJson;
+    if (dto.status !== undefined) data.status = dto.status;
 
-    return this.prisma.encounter.update({
-      where: { id },
-      data,
-      include: {
-        patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
+    const hasClinicalPatch = changedKeys.length > 0;
+    const hasOtherPatch =
+      dto.endTime !== undefined ||
+      (dto.status !== undefined && dto.status !== access.status);
+
+    if (
+      snapshotBefore != null &&
+      !hasClinicalPatch &&
+      !hasOtherPatch
+    ) {
+      throw new BadRequestException('No clinical fields were changed.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (snapshotBefore != null && changedKeys.length > 0) {
+        await this.editPolicy.recordEditIfCompleted(
+          access,
+          staffId,
+          snapshotBefore,
+          changedKeys,
+          dto.editReason,
+          tx,
+        );
+      }
+
+      return tx.encounter.update({
+        where: { id },
+        data,
+        include: {
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              surname: true,
+              patientId: true,
+            },
+          },
+          doctor: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffId: true,
+            },
+          },
+          admission: { select: { id: true, status: true } },
+          updatedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
         },
-        doctor: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
-        },
-        admission: { select: { id: true, status: true } },
-        updatedBy: {
-          select: { id: true, firstName: true, lastName: true },
-        },
-      },
+      });
     });
   }
 
@@ -754,7 +893,7 @@ export class EncounterService {
 
   /** Set encounter status to COMPLETED and endTime to now. */
   async complete(id: string, staffId: string) {
-    await this.findOne(id);
+    await this.editPolicy.assertCanEdit(id, staffId);
     return this.prisma.$transaction(async (tx) => {
       const encounter = await tx.encounter.update({
         where: { id },
@@ -835,16 +974,37 @@ export class EncounterService {
   }
 
   // --- Encounter diagnoses (structured diagnosis per encounter) ---
-  async addDiagnosis(encounterId: string, dto: CreateEncounterDiagnosisDto) {
-    await this.findOne(encounterId);
-    return this.prisma.encounterDiagnosis.create({
-      data: {
-        encounterId,
-        primaryIcdCode: dto.primaryIcdCode,
-        primaryIcdDescription: dto.primaryIcdDescription,
-        secondaryDiagnosesJson: dto.secondaryDiagnosesJson,
-      },
-      include: { encounter: { select: { id: true, patientId: true } } },
+  async addDiagnosis(
+    encounterId: string,
+    dto: CreateEncounterDiagnosisDto,
+    staffId: string,
+  ) {
+    const access = await this.editPolicy.assertCanEdit(encounterId, staffId);
+    const snapshotBefore =
+      access.status === EncounterStatus.COMPLETED
+        ? await this.editPolicy.buildClinicalSnapshot(encounterId)
+        : null;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (snapshotBefore) {
+        await this.editPolicy.recordEditIfCompleted(
+          access,
+          staffId,
+          snapshotBefore,
+          ['diagnoses.add'],
+          dto.editReason,
+          tx,
+        );
+      }
+      return tx.encounterDiagnosis.create({
+        data: {
+          encounterId,
+          primaryIcdCode: dto.primaryIcdCode,
+          primaryIcdDescription: dto.primaryIcdDescription,
+          secondaryDiagnosesJson: dto.secondaryDiagnosesJson,
+        },
+        include: { encounter: { select: { id: true, patientId: true } } },
+      });
     });
   }
 
@@ -860,7 +1020,9 @@ export class EncounterService {
     encounterId: string,
     diagnosisId: string,
     dto: UpdateEncounterDiagnosisDto,
+    staffId: string,
   ) {
+    const access = await this.editPolicy.assertCanEdit(encounterId, staffId);
     const diagnosis = await this.prisma.encounterDiagnosis.findFirst({
       where: { id: diagnosisId, encounterId },
     });
@@ -869,13 +1031,39 @@ export class EncounterService {
         `Diagnosis "${diagnosisId}" not found for this encounter.`,
       );
     }
-    return this.prisma.encounterDiagnosis.update({
-      where: { id: diagnosisId },
-      data: dto,
+
+    const snapshotBefore =
+      access.status === EncounterStatus.COMPLETED
+        ? await this.editPolicy.buildClinicalSnapshot(encounterId)
+        : null;
+
+    const { editReason, ...updateData } = dto;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (snapshotBefore) {
+        await this.editPolicy.recordEditIfCompleted(
+          access,
+          staffId,
+          snapshotBefore,
+          [`diagnoses.${diagnosisId}`],
+          editReason,
+          tx,
+        );
+      }
+      return tx.encounterDiagnosis.update({
+        where: { id: diagnosisId },
+        data: updateData,
+      });
     });
   }
 
-  async removeDiagnosis(encounterId: string, diagnosisId: string) {
+  async removeDiagnosis(
+    encounterId: string,
+    diagnosisId: string,
+    staffId: string,
+    editReason?: string,
+  ) {
+    const access = await this.editPolicy.assertCanEdit(encounterId, staffId);
     const diagnosis = await this.prisma.encounterDiagnosis.findFirst({
       where: { id: diagnosisId, encounterId },
     });
@@ -884,7 +1072,25 @@ export class EncounterService {
         `Diagnosis "${diagnosisId}" not found for this encounter.`,
       );
     }
-    await this.prisma.encounterDiagnosis.delete({ where: { id: diagnosisId } });
+
+    const snapshotBefore =
+      access.status === EncounterStatus.COMPLETED
+        ? await this.editPolicy.buildClinicalSnapshot(encounterId)
+        : null;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (snapshotBefore) {
+        await this.editPolicy.recordEditIfCompleted(
+          access,
+          staffId,
+          snapshotBefore,
+          [`diagnoses.${diagnosisId}.removed`],
+          editReason,
+          tx,
+        );
+      }
+      await tx.encounterDiagnosis.delete({ where: { id: diagnosisId } });
+    });
     return { message: 'Diagnosis removed successfully.' };
   }
 }

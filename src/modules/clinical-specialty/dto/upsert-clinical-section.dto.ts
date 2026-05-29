@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsObject, IsOptional, Min } from 'class-validator';
+import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 
 export class UpsertClinicalSectionDto {
   @ApiPropertyOptional({
@@ -18,4 +18,12 @@ export class UpsertClinicalSectionDto {
   @IsInt()
   @Min(1)
   schemaVersion?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional reason for amending a completed encounter (stored in edit history)',
+  })
+  @IsOptional()
+  @IsString()
+  editReason?: string;
 }
