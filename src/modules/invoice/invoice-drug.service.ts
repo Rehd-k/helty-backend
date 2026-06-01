@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   HttpException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma, InvoiceStatus, InvoiceAuditAction } from '@prisma/client';
@@ -203,6 +204,10 @@ export class InvoiceDrugService {
       select: InvoiceDrugService.medicationOrderPrescriptionSelect,
     },
     createdBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
+    dispensedBy: { select: InvoiceDrugService.invoiceItemCreatedBySelect },
+    dispensaryLocation: {
+      select: { id: true, name: true, locationType: true },
+    },
   } satisfies Prisma.InvoiceItemInclude;
 
   private static readonly invoiceDrugInclude = {
@@ -535,6 +540,7 @@ export class InvoiceDrugService {
     itemId: string,
     dto: UpdateInvoiceItemDto,
     locationId?: string,
+    performedByStaffId?: string,
   ) {
     try {
       const hasDrugs = await this.hasDrugItems(invoiceId);
@@ -577,6 +583,19 @@ export class InvoiceDrugService {
       const settlingNow =
         dto.settled === true && !existing.settled && existing.drugId != null;
 
+      if (settlingNow) {
+        if (!performedByStaffId) {
+          throw new UnauthorizedException(
+            'Authenticated staff id required to dispense this drug.',
+          );
+        }
+        if (!locationId) {
+          throw new BadRequestException(
+            'Dispensary location is required to dispense this drug.',
+          );
+        }
+      }
+
       return await this.prisma.$transaction(async (tx) => {
         if (settlingNow && invoice.status !== InvoiceStatus.PAID) {
           const onCredit = await this.invoiceService.hasActiveAdmission(
@@ -589,6 +608,7 @@ export class InvoiceDrugService {
             );
           }
         }
+        const dispensedAt = settlingNow ? new Date() : undefined;
         if (settlingNow) {
           await this.deductDrugStockFifo(
             tx,
@@ -606,22 +626,15 @@ export class InvoiceDrugService {
               dto.unitPrice !== undefined
                 ? this.asDecimal(dto.unitPrice)
                 : existing.unitPrice,
+            ...(settlingNow && performedByStaffId && locationId
+              ? {
+                  dispensedById: performedByStaffId,
+                  dispensaryLocationId: locationId,
+                  dispensedAt,
+                }
+              : {}),
           },
-          include: {
-            service: { select: { id: true, name: true, cost: true } },
-            drug: {
-              select: {
-                id: true,
-                genericName: true,
-                brandName: true,
-                strength: true,
-                dosageForm: true,
-              },
-            },
-            createdBy: {
-              select: InvoiceDrugService.invoiceItemCreatedBySelect,
-            },
-          },
+          include: InvoiceDrugService.invoiceDrugItemInclude,
         });
 
         if (settlingNow) {

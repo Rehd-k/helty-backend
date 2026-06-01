@@ -95,7 +95,7 @@ export class PharmacyDashboardController {
   @Get('dispense-history')
   @ApiOperation({
     summary:
-      'Dispense history from settled invoice drug items with date and drug filters',
+      'Dispense history from invoice drug lines with dispensedAt, dispenser, and dispensary',
   })
   dispenseHistory(@Query() query: PharmacyDashboardQueryDto) {
     return this.service.getDispenseHistory(query);

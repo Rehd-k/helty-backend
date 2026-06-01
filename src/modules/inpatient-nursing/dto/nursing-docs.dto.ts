@@ -80,11 +80,6 @@ export class CreateWoundAssessmentDto {
   @IsString()
   @IsNotEmpty()
   infectionSigns: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  photoUrl?: string;
 }
 
 export class CreateCarePlanDto {

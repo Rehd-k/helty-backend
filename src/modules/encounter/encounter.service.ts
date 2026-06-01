@@ -48,7 +48,7 @@ export class EncounterService {
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
     private readonly editPolicy: EncounterEditPolicyService,
-  ) {}
+  ) { }
 
   /** Ongoing encounter for the same patient, type, and admission scope (reuse instead of duplicate create). */
   private async findUnfinishedEncounterForCreate(dto: CreateEncounterDto) {
@@ -591,9 +591,9 @@ export class EncounterService {
     const changedKeys =
       snapshotBefore != null
         ? this.editPolicy.computeEncounterFieldChanges(
-            snapshotBefore,
-            patchFields,
-          )
+          snapshotBefore,
+          patchFields,
+        )
         : [];
 
     const data: {

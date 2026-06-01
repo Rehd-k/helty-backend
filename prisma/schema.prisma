@@ -707,6 +707,7 @@ model PharmacyLocation {
   staff                  Staff?               @relation("PharmacyLocationStaff", fields: [staffId], references: [id])
   staffId                String?              @unique
   invoiceDrugReturns     InvoiceDrugReturn[]  @relation("InvoiceDrugReturnDispensary")
+  invoiceItemsDispensed  InvoiceItem[]        @relation("InvoiceItemDispensary")
 }
 
 model Dispensation {
@@ -1076,6 +1077,12 @@ model InvoiceItem {
   createdBy         Staff?  @relation("InvoiceItemCreatedBy", fields: [createdById], references: [id])
   createdById       String?
 
+  dispensedAt          DateTime?
+  dispensedBy          Staff?            @relation("InvoiceItemDispensedBy", fields: [dispensedById], references: [id])
+  dispensedById        String?
+  dispensaryLocation   PharmacyLocation? @relation("InvoiceItemDispensary", fields: [dispensaryLocationId], references: [id])
+  dispensaryLocationId String?
+
   quantity                   Int                         @default(1)
   unitPrice                  Decimal                     @default(0) @db.Decimal(12, 2)
   amountPaid                 Decimal                     @default(0) @db.Decimal(12, 2)
@@ -1094,6 +1101,9 @@ model InvoiceItem {
   @@index([createdById])
   @@index([consumableId])
   @@index([storeLocationId])
+  @@index([dispensedById])
+  @@index([dispensaryLocationId])
+  @@index([dispensedAt])
 }
 
 model InvoiceItemPayment {
@@ -1894,6 +1904,7 @@ model Staff {
   purchaseNotesRequested              PurchaseNote[]              @relation("PurchaseNoteRequestedBy")
   storeStockMovementsCreated          StoreStockMovement[]        @relation("StoreStockMovementCreatedBy")
   invoiceItemsCreated                 InvoiceItem[]               @relation("InvoiceItemCreatedBy")
+  invoiceItemsDispensed               InvoiceItem[]               @relation("InvoiceItemDispensedBy")
   invoicePaymentsReceived             InvoicePayment[]            @relation("InvoicePaymentReceivedBy")
   invoicePaymentsCreated              InvoicePayment[]            @relation("InvoicePaymentCreatedBy")
   invoiceRefundsProcessed             InvoiceRefund[]             @relation("InvoiceRefundProcessedBy")
@@ -2185,8 +2196,9 @@ model Encounter {
   updatedById String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  invoices    Invoice[]
-  editHistory EncounterEditHistory[]
+  invoices      Invoice[]
+  editHistory   EncounterEditHistory[]
+  patientVitals PatientVitals[]
 }
 
 /// Snapshot of full clinical state immediately before a post-completion edit.
@@ -2339,6 +2351,8 @@ model PatientVitals {
   waitingPatientId  String?         @unique
   admission         Admission?      @relation(fields: [admissionId], references: [id])
   admissionId       String?
+  encounter         Encounter?      @relation(fields: [encounterId], references: [id])
+  encounterId       String?
   patient           Patient?        @relation(fields: [patientId], references: [id])
   patientId         String?
   nurse             Staff?          @relation("PatientVitalsRecordedByNurse", fields: [recordedByNurseId], references: [id])
@@ -2347,6 +2361,8 @@ model PatientVitals {
 
   shiftType  ShiftType?
   recordedAt DateTime   @default(now())
+
+  @@index([encounterId])
 }
 
 model ConsultingRoom {

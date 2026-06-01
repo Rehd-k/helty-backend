@@ -25,7 +25,7 @@ import {
 @Controller('admissions/:admissionId/monitoring-charts')
 export class MonitoringChartController {
   constructor(private readonly service: MonitoringChartService) {}
-
+ 
   @Get()
   @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
   @ApiOperation({ summary: 'List monitoring chart entries' })

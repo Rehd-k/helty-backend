@@ -956,12 +956,11 @@ export class PharmacyDashboardService {
     const where: Prisma.InvoiceItemWhereInput = {
       settled: true,
       drugId: { not: null },
-      invoice: { updatedAt: { gte: from, lte: to } },
+      dispensedAt: { not: null, gte: from, lte: to },
       ...(q.drugId ? { drugId: q.drugId } : {}),
       ...(patientQuery
         ? {
             invoice: {
-              updatedAt: { gte: from, lte: to },
               patient: {
                 OR: [
                   {
@@ -983,14 +982,19 @@ export class PharmacyDashboardService {
         where,
         skip,
         take,
-        orderBy: { invoice: { updatedAt: 'desc' } },
+        orderBy: { dispensedAt: 'desc' },
         include: {
           drug: { select: { id: true, genericName: true, brandName: true } },
+          dispensedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          dispensaryLocation: {
+            select: { id: true, name: true, locationType: true },
+          },
           invoice: {
             select: {
               id: true,
               invoiceID: true,
-              updatedAt: true,
               encounterId: true,
               patient: {
                 select: {
@@ -1011,7 +1015,7 @@ export class PharmacyDashboardService {
         invoiceItemId: row.id,
         invoiceUUID: row.invoice.id,
         invoiceId: row.invoice.invoiceID,
-        dispensedAt: row.invoice.updatedAt,
+        dispensedAt: row.dispensedAt,
         encounterId: row.invoice.encounterId,
         quantity: row.quantity,
         unitPrice: toNumber(row.unitPrice),
@@ -1025,6 +1029,19 @@ export class PharmacyDashboardService {
           patientId: row.invoice.patient.patientId,
           name: `${row.invoice.patient.firstName ?? ''} ${row.invoice.patient.surname ?? ''}`.trim(),
         },
+        dispensedBy: row.dispensedBy
+          ? {
+              id: row.dispensedBy.id,
+              name: `${row.dispensedBy.firstName ?? ''} ${row.dispensedBy.lastName ?? ''}`.trim(),
+            }
+          : null,
+        dispensary: row.dispensaryLocation
+          ? {
+              id: row.dispensaryLocation.id,
+              name: row.dispensaryLocation.name,
+              locationType: row.dispensaryLocation.locationType,
+            }
+          : null,
       })),
       total,
       skip,

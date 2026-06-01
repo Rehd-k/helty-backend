@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
   IsPositive,
 } from 'class-validator';
@@ -33,11 +34,19 @@ export class CreatePatientVitalsDto {
 
   @ApiPropertyOptional({
     description:
-      'Invoice UUID for outpatient paid queue flow. Mutually exclusive with waitingPatientId and admissionId.',
+      'Invoice UUID for outpatient paid queue flow. Mutually exclusive with other anchor fields.',
   })
-  @IsString()
+  @IsUUID()
   @IsOptional()
   invoiceId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Encounter UUID (e.g. ED triage). Mutually exclusive with waitingPatientId, admissionId, and invoiceId.',
+  })
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
 
   @ApiPropertyOptional({
     description: 'Systolic blood pressure in mmHg',
@@ -236,9 +245,16 @@ export class QueryPatientVitalsDto {
   @ApiPropertyOptional({
     description: 'Filter vitals by patient UUID',
   })
-  @IsString()
+  @IsUUID()
   @IsOptional()
   patientId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter vitals by encounter UUID',
+  })
+  @IsUUID()
+  @IsOptional()
+  encounterId?: string;
 
   @ApiPropertyOptional({ description: 'Number of records to skip', example: 0 })
   @Type(() => Number)

@@ -124,7 +124,7 @@ export class InvoiceDrugController {
   @ApiOperation({
     summary: 'Update an invoice line item in a drug invoice',
     description:
-      'Update the quantity or price snapshot for a specific line item on an invoice that contains drug items.',
+      'Update quantity, price, or settlement for a drug line. When setting `settled: true` (dispense), `locationId` is required and the authenticated staff member is recorded as the dispenser. Response includes `dispensedBy`, `dispensaryLocation`, and `dispensedAt` when dispensed.',
   })
   @ApiParam({ name: 'id', description: 'Invoice UUID' })
   @ApiParam({ name: 'itemId', description: 'InvoiceItem UUID' })
@@ -132,19 +132,39 @@ export class InvoiceDrugController {
     name: 'locationId',
     required: false,
     description:
-      'Optional pharmacy location UUID. When provided and settling a drug line, FIFO stock deduction is scoped to this location only.',
+      'Pharmacy location UUID (dispensary). Required when body includes `settled: true`; FIFO stock deduction is scoped to this location.',
   })
   @ApiOkResponse({ description: 'Line item updated' })
   @ApiNotFoundResponse({
     description:
       'Invoice or InvoiceItem not found, or invoice does not contain drug items',
   })
+  @ApiBadRequestResponse({
+    description:
+      'Missing locationId when settling, insufficient stock, or credit dispense rules',
+  })
   updateItem(
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() dto: UpdateInvoiceItemDto,
     @Query('locationId') locationId?: string,
+    @Req() req?: { user?: { sub: string } },
   ) {
+    if (dto.settled === true) {
+      const staffId = req?.user?.sub;
+      if (!staffId) {
+        throw new UnauthorizedException(
+          'Authenticated staff id required to dispense this drug.',
+        );
+      }
+      return this.invoiceDrugService.updateDrugInvoiceItem(
+        id,
+        itemId,
+        dto,
+        locationId,
+        staffId,
+      );
+    }
     return this.invoiceDrugService.updateDrugInvoiceItem(
       id,
       itemId,
