@@ -29,7 +29,11 @@ export class MedicationOrderController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new medication order' })
+  @ApiOperation({
+    summary: 'Create a new medication order',
+    description:
+      'Creates a clinical medication order and a linked drug invoice line atomically. Use `billingQuantity` for invoice units; `quantity` is the per-administration dose when both billing and clinical amounts are needed. Legacy clients may send `quantity` alone for billing.',
+  })
   @ApiResponse({ status: 201, description: 'Medication order created.' })
   @ApiResponse({
     status: 400,
@@ -50,9 +54,16 @@ export class MedicationOrderController {
     @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
     @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,
     @Query('encounterId') encounterId?: string,
+    @Query('patientId') patientId?: string,
     @Query('status') status?: string,
   ) {
-    return this.medicationOrderService.findAll(skip, take, encounterId, status);
+    return this.medicationOrderService.findAll(
+      skip,
+      take,
+      encounterId,
+      patientId,
+      status,
+    );
   }
 
   @Get('encounter/:encounterId')
@@ -75,7 +86,7 @@ export class MedicationOrderController {
   @ApiOperation({
     summary: 'Update medication order',
     description:
-      'Update status, dosing fields, or replace the drug (`drugId` updates `drugName` from the catalog).',
+      'Update status, dosing fields, or replace the drug. `billingQuantity` syncs the linked invoice line on pending orders. Setting `status` to `Cancelled` removes the unsettled invoice line and keeps the order for audit.',
   })
   @ApiResponse({ status: 200, description: 'Medication order updated.' })
   @ApiResponse({ status: 404, description: 'Medication order not found.' })
@@ -88,7 +99,11 @@ export class MedicationOrderController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete medication order' })
+  @ApiOperation({
+    summary: 'Delete medication order',
+    description:
+      'Deletes a pending order and removes its linked unsettled invoice line. Blocked for dispensed orders or orders with administration records.',
+  })
   @ApiResponse({ status: 204, description: 'Medication order deleted.' })
   @ApiResponse({ status: 404, description: 'Medication order not found.' })
   remove(@Param('id', ParseUUIDPipe) id: string) {

@@ -7,6 +7,8 @@ import {
   MaxLength,
   IsNumber,
   IsDateString,
+  IsInt,
+  IsPositive,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -59,10 +61,25 @@ export class CreateMedicationOrderDto {
   @MaxLength(200)
   frequency?: string;
 
-  @ApiPropertyOptional({ description: 'Quantity (e.g 1 ,2,3)' })
+  @ApiPropertyOptional({
+    description:
+      'Per-administration dose amount (e.g. 2 tablets). Stored on the medication order only when billingQuantity is also sent.',
+  })
   @IsNumber()
+  @IsPositive()
   @IsOptional()
   quantity?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Units to bill on the invoice (integer). When omitted, legacy clients may send quantity instead for billing only.',
+    example: 1,
+    default: 1,
+  })
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  billingQuantity?: number;
 
   @ApiPropertyOptional({ description: 'Duration (e.g. 7 days, 2 weeks)' })
   @IsString()
@@ -129,10 +146,22 @@ export class UpdateMedicationOrderDto {
   @MaxLength(500)
   dose?: string;
 
-  @ApiPropertyOptional({ description: 'Ordered quantity per administration' })
+  @ApiPropertyOptional({
+    description: 'Ordered quantity per administration (clinical dose amount)',
+  })
   @IsNumber()
+  @IsPositive()
   @IsOptional()
   quantity?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Units to bill on the linked invoice line. Syncs the invoice when changed on a pending order.',
+  })
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  billingQuantity?: number;
 
   @ApiPropertyOptional({ description: 'Frequency (e.g. TID, twice daily)' })
   @IsString()

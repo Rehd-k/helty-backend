@@ -39,11 +39,10 @@ export class PharmacyBatchService {
 
     this.validateDates(manufacturingDate, expiryDate);
 
-    // this would be a problem later ,check it out more even more 9:49, 15/05/2026
     const quantityRemaining = dto.quantityRemaining ?? dto.quantityReceived;
     if (quantityRemaining > dto.quantityReceived) {
       throw new BadRequestException(
-        'quantity Remaining cannot be greater than quantity Received.',
+        'quantityRemaining cannot be greater than quantityReceived.',
       );
     }
 
@@ -76,6 +75,17 @@ export class PharmacyBatchService {
     });
 
     if (existing) {
+      const addRemaining = quantityRemaining;
+      const nextQuantityReceived =
+        existing.quantityReceived + dto.quantityReceived;
+      const nextQuantityRemaining =
+        existing.quantityRemaining + addRemaining;
+      if (nextQuantityRemaining > nextQuantityReceived) {
+        throw new BadRequestException(
+          'quantityRemaining cannot be greater than quantityReceived.',
+        );
+      }
+
       return this.update(existing.id, {
         drugId: dto.drugId,
         fromLocationId,
@@ -90,8 +100,8 @@ export class PharmacyBatchService {
           dto.sellingPrice != null && dto.sellingPrice !== ''
             ? dto.sellingPrice
             : dto.costPrice,
-        quantityReceived: dto.quantityReceived,
-        quantityRemaining,
+        quantityReceived: nextQuantityReceived,
+        quantityRemaining: nextQuantityRemaining,
       });
     }
 

@@ -52,6 +52,18 @@ function generateInvoiceHumanId(): string {
   return s;
 }
 
+const drugWithPricingBatchInclude = {
+  batches: {
+    where: { quantityRemaining: { gt: 0 } },
+    orderBy: { expiryDate: 'asc' as const },
+    take: 1,
+  },
+} satisfies Prisma.DrugInclude;
+
+type DrugWithPricingBatch = Prisma.DrugGetPayload<{
+  include: typeof drugWithPricingBatchInclude;
+}>;
+
 @Injectable()
 export class InvoiceService {
   constructor(
@@ -62,8 +74,11 @@ export class InvoiceService {
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
   /** At most one open bill per patient: PENDING or PARTIALLY_PAID (not PAID). */
-  private async findOpenInvoiceForPatient(patientId: string) {
-    return this.prisma.invoice.findFirst({
+  private async findOpenInvoiceForPatient(
+    patientId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    return tx.invoice.findFirst({
       where: {
         patientId,
         status: {
@@ -134,9 +149,10 @@ export class InvoiceService {
    */
   private async resolveOptionalInvoiceItemCreator(
     staffId: string | undefined,
+    tx: Prisma.TransactionClient = this.prisma,
   ): Promise<{ createdById?: string }> {
     if (!staffId) return {};
-    const staff = await this.prisma.staff.findUnique({
+    const staff = await tx.staff.findUnique({
       where: { id: staffId },
     });
     if (!staff) {
@@ -3195,11 +3211,14 @@ export class InvoiceService {
    * Get an open invoice for the encounter, or the patient's single open invoice, or create.
    * Open = PENDING or PARTIALLY_PAID. PAID encounter invoices are not reused.
    */
-  async ensureInvoiceForEncounter(params: {
-    encounterId: string;
-    patientId: string;
-    staffId: string;
-  }) {
+  async ensureInvoiceForEncounter(
+    params: {
+      encounterId: string;
+      patientId: string;
+      staffId: string;
+    },
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
     const encounterInclude = {
       patient: {
         select: { id: true, patientId: true, firstName: true, surname: true },
@@ -3211,7 +3230,7 @@ export class InvoiceService {
       },
     } satisfies Prisma.InvoiceInclude;
 
-    const forEncounterOpen = await this.prisma.invoice.findFirst({
+    const forEncounterOpen = await tx.invoice.findFirst({
       where: {
         encounterId: params.encounterId,
         status: {
@@ -3223,9 +3242,12 @@ export class InvoiceService {
     });
     if (forEncounterOpen) return forEncounterOpen;
 
-    const patientOpen = await this.findOpenInvoiceForPatient(params.patientId);
+    const patientOpen = await this.findOpenInvoiceForPatient(
+      params.patientId,
+      tx,
+    );
     if (patientOpen) {
-      return this.prisma.invoice.update({
+      return tx.invoice.update({
         where: { id: patientOpen.id },
         data: {
           encounterId: params.encounterId,
@@ -3235,7 +3257,7 @@ export class InvoiceService {
       });
     }
 
-    return this.prisma.invoice.create({
+    return tx.invoice.create({
       data: {
         invoiceID: generateInvoiceHumanId(),
         patientId: params.patientId,
@@ -3341,8 +3363,9 @@ export class InvoiceService {
    */
   private async resolveDrugPriceMultiplierForInvoice(
     invoiceId: string,
+    tx: Prisma.TransactionClient = this.prisma,
   ): Promise<Prisma.Decimal> {
-    const invoiceWithPatient = await this.prisma.invoice.findUnique({
+    const invoiceWithPatient = await tx.invoice.findUnique({
       where: { id: invoiceId },
       select: {
         patient: {
@@ -3363,7 +3386,7 @@ export class InvoiceService {
       : defaultMultiplier;
 
     if (patient.hmoId && patient.ward?.name === 'OPD') {
-      const inpatientWard = await this.prisma.ward.findFirst({
+      const inpatientWard = await tx.ward.findFirst({
         where: { name: 'Inpatient Ward' },
         select: { drugPricePercentage: true },
       });
@@ -3375,16 +3398,119 @@ export class InvoiceService {
     return multiplier;
   }
 
+  private resolveDrugUnitPrice(
+    drug: DrugWithPricingBatch,
+    multiplier: Prisma.Decimal,
+  ): Prisma.Decimal {
+    const batch = drug.batches?.[0];
+    return batch
+      ? this.asDecimal(batch.costPrice).mul(multiplier)
+      : new Prisma.Decimal(0);
+  }
+
+  private assertDrugInvoiceLineMutable(item: {
+    settled: boolean;
+    amountPaid: Prisma.Decimal;
+    _count: { allocations: number };
+  }): void {
+    if (item.settled) {
+      throw new BadRequestException(
+        'This charge has already been settled and cannot be modified.',
+      );
+    }
+    if (this.asDecimal(item.amountPaid).gt(0)) {
+      throw new BadRequestException(
+        'This charge has a payment applied and cannot be modified.',
+      );
+    }
+    if (item._count.allocations > 0) {
+      throw new BadRequestException(
+        'This charge has payment allocations and cannot be modified.',
+      );
+    }
+  }
+
+  /**
+   * Update a linked drug invoice line when the medication order changes.
+   */
+  async syncDrugInvoiceLine(
+    invoiceItemId: string,
+    changes: { drugId?: string; billingQuantity?: number },
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    if (changes.drugId === undefined && changes.billingQuantity === undefined) {
+      return null;
+    }
+
+    const existing = await tx.invoiceItem.findUnique({
+      where: { id: invoiceItemId },
+      include: {
+        invoice: { select: { id: true, status: true } },
+        _count: { select: { allocations: true } },
+      },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Invoice item ${invoiceItemId} not found`);
+    }
+    if (!existing.drugId) {
+      throw new BadRequestException(
+        'Invoice item is not a drug line and cannot be synced.',
+      );
+    }
+
+    this.assertInvoiceNotPaid(existing.invoice.status);
+    this.assertDrugInvoiceLineMutable(existing);
+
+    const nextDrugId = changes.drugId ?? existing.drugId;
+    const nextQuantity = changes.billingQuantity ?? existing.quantity;
+
+    let unitPrice = existing.unitPrice;
+    if (changes.drugId !== undefined && changes.drugId !== existing.drugId) {
+      const drug = await tx.drug.findUnique({
+        where: { id: changes.drugId },
+        include: drugWithPricingBatchInclude,
+      });
+      if (!drug) {
+        throw new NotFoundException(`Drug ${changes.drugId} not found`);
+      }
+      const multiplier = await this.resolveDrugPriceMultiplierForInvoice(
+        existing.invoice.id,
+        tx,
+      );
+      unitPrice = this.resolveDrugUnitPrice(drug, multiplier);
+    }
+
+    const updated = await tx.invoiceItem.update({
+      where: { id: invoiceItemId },
+      data: {
+        drugId: nextDrugId,
+        quantity: nextQuantity,
+        unitPrice,
+      },
+      include: {
+        drug: { select: { id: true, genericName: true } },
+        invoice: { select: { id: true, status: true, patientId: true } },
+        createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+      },
+    });
+    await this.recalculateInvoiceTotals(existing.invoice.id, tx);
+    return updated;
+  }
+
   /**
    * Add a drug as a line item to an invoice. Uses cost price with ward-based multiplier.
    */
-  async addDrugItem(params: {
-    invoiceId: string;
-    drugId: string;
-    quantity?: number;
-    createdByStaffId?: string;
-  }) {
-    const invoice = await this.prisma.invoice.findUnique({
+  async addDrugItem(
+    params: {
+      invoiceId: string;
+      drugId: string;
+      quantity?: number;
+      createdByStaffId?: string;
+      preloadedDrug?: DrugWithPricingBatch;
+    },
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    const invoice = await tx.invoice.findUnique({
       where: { id: params.invoiceId },
     });
     if (!invoice) {
@@ -3392,29 +3518,30 @@ export class InvoiceService {
     }
     this.assertInvoiceNotPaid(invoice.status);
 
-    const drug = await this.prisma.drug.findUnique({
-      where: { id: params.drugId },
-      include: {
-        batches: {
-          where: { quantityRemaining: { gt: 0 } },
-          orderBy: { expiryDate: 'asc' },
-          take: 1,
-        },
-      },
-    });
+    const drug =
+      params.preloadedDrug ??
+      (await tx.drug.findUnique({
+        where: { id: params.drugId },
+        include: drugWithPricingBatchInclude,
+      }));
     if (!drug) throw new NotFoundException(`Drug ${params.drugId} not found`);
-    const batch = drug.batches?.[0];
+    if (params.preloadedDrug && params.preloadedDrug.id !== params.drugId) {
+      throw new BadRequestException(
+        'preloadedDrug id does not match params.drugId.',
+      );
+    }
+
     const multiplier = await this.resolveDrugPriceMultiplierForInvoice(
       params.invoiceId,
+      tx,
     );
-    const unitPrice = batch
-      ? this.asDecimal(batch.costPrice).mul(multiplier)
-      : new Prisma.Decimal(0);
+    const unitPrice = this.resolveDrugUnitPrice(drug, multiplier);
     const quantity = params.quantity ?? 1;
     const creator = await this.resolveOptionalInvoiceItemCreator(
       params.createdByStaffId,
+      tx,
     );
-    const item = await this.prisma.invoiceItem.create({
+    const item = await tx.invoiceItem.create({
       data: {
         invoiceId: params.invoiceId,
         drugId: params.drugId,
@@ -3428,7 +3555,7 @@ export class InvoiceService {
         createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
       },
     });
-    await this.recalculateInvoiceTotals(params.invoiceId);
+    await this.recalculateInvoiceTotals(params.invoiceId, tx);
     return item;
   }
 }

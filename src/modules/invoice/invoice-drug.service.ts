@@ -27,7 +27,7 @@ export class InvoiceDrugService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) {}
+  ) { }
 
   private static readonly invoiceItemCreatedBySelect = {
     id: true,
@@ -225,7 +225,7 @@ export class InvoiceDrugService {
         surname: true,
       },
     },
-    createdBy: { select: { id: true, firstName: true, lastName: true } },
+    createdBy: { select: { id: true, firstName: true, lastName: true, accountType: true } },
     _count: { select: { invoiceItems: true } },
   } satisfies Prisma.InvoiceInclude;
 
@@ -628,10 +628,10 @@ export class InvoiceDrugService {
                 : existing.unitPrice,
             ...(settlingNow && performedByStaffId && locationId
               ? {
-                  dispensedById: performedByStaffId,
-                  dispensaryLocationId: locationId,
-                  dispensedAt,
-                }
+                dispensedById: performedByStaffId,
+                dispensaryLocationId: locationId,
+                dispensedAt,
+              }
               : {}),
           },
           include: InvoiceDrugService.invoiceDrugItemInclude,
