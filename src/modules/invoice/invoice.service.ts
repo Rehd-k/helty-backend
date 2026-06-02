@@ -1262,6 +1262,7 @@ export class InvoiceService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
+    console.log('invoices', invoices);
     return { invoices, total, skip, take };
   }
 
