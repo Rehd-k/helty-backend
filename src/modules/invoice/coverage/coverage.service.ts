@@ -214,7 +214,17 @@ export class InvoiceCoverageService {
         },
       });
 
-      await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
+      const updatedInvoice = await this.invoiceService.recalculateInvoiceTotals(
+        invoiceId,
+        tx,
+      );
+      if (updatedInvoice.status === InvoiceStatus.PAID) {
+        await this.invoiceService.stampConsultationCreditExpiry(
+          tx,
+          invoiceId,
+          new Date(),
+        );
+      }
       await this.logInvoiceAudit(tx, {
         invoiceId,
         action: InvoiceAuditAction.COVERAGE_APPLIED,

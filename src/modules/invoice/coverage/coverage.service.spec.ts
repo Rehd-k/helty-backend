@@ -32,6 +32,7 @@ describe('InvoiceCoverageService', () => {
         findUnique: jest.fn().mockResolvedValue({ defaultCoveragePercent: new Prisma.Decimal(100) }),
       },
       invoiceCoverage: {
+        findFirst: jest.fn().mockResolvedValue(null),
         aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null } }),
         create: jest.fn().mockResolvedValue({ id: 'cov-1' }),
       },
@@ -43,6 +44,7 @@ describe('InvoiceCoverageService', () => {
     };
     const invoiceService: any = {
       recalculateInvoiceTotals: jest.fn().mockResolvedValue({ status: InvoiceStatus.PAID }),
+      stampConsultationCreditExpiry: jest.fn().mockResolvedValue(undefined),
       findOne: jest.fn().mockResolvedValue({ id: 'inv-1' }),
     };
 
@@ -69,7 +71,58 @@ describe('InvoiceCoverageService', () => {
       }),
     );
     expect(invoiceService.recalculateInvoiceTotals).toHaveBeenCalled();
+    expect(invoiceService.stampConsultationCreditExpiry).toHaveBeenCalledWith(
+      tx,
+      'inv-1',
+      expect.any(Date),
+    );
     expect(result).toEqual({ id: 'inv-1' });
+  });
+
+  it('does not stamp consultation expiry when HMO coverage is partial', async () => {
+    const tx: any = {
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          status: InvoiceStatus.PENDING,
+          totalAmount: new Prisma.Decimal(100),
+          amountPaid: new Prisma.Decimal(0),
+          patientId: 'pat-1',
+        }),
+      },
+      patient: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'pat-1', hmoId: 'hmo-1' }),
+      },
+      hmo: {
+        findUnique: jest.fn().mockResolvedValue({ defaultCoveragePercent: new Prisma.Decimal(50) }),
+      },
+      invoiceCoverage: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amount: null } }),
+        create: jest.fn().mockResolvedValue({ id: 'cov-1' }),
+      },
+      invoiceAuditLog: { create: jest.fn() },
+    };
+
+    const prisma: any = {
+      $transaction: (cb: any) => cb(tx),
+    };
+    const invoiceService: any = {
+      recalculateInvoiceTotals: jest
+        .fn()
+        .mockResolvedValue({ status: InvoiceStatus.PARTIALLY_PAID }),
+      stampConsultationCreditExpiry: jest.fn().mockResolvedValue(undefined),
+      findOne: jest.fn().mockResolvedValue({ id: 'inv-1' }),
+    };
+
+    const service = createService(prisma, invoiceService);
+    await service.applyHmoCoverage(
+      'inv-1',
+      { scope: InvoiceCoverageScope.INVOICE },
+      'staff-1',
+    );
+
+    expect(invoiceService.stampConsultationCreditExpiry).not.toHaveBeenCalled();
   });
 
   it('rejects discount apply when invoice is already paid', async () => {

@@ -439,7 +439,7 @@ export class InvoiceService {
     return expiresAt;
   }
 
-  private async stampConsultationCreditExpiry(
+  async stampConsultationCreditExpiry(
     tx: Prisma.TransactionClient,
     invoiceId: string,
     paidAt: Date,
