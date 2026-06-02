@@ -8,7 +8,10 @@ import {
   WalletTransactionType,
 } from '@prisma/client';
 import { InvoiceService } from './invoice.service';
-import { RADIOLOGY_BILLING_CATEGORY } from './invoice-link.constants';
+import {
+  CONSULTATION_CREDIT_MAX_VISITS,
+  RADIOLOGY_BILLING_CATEGORY,
+} from './invoice-link.constants';
 
 function createConsumableStockMock() {
   return {
@@ -459,21 +462,108 @@ describe('InvoiceService', () => {
     expect(result).toBeNull();
   });
 
-  it('settleConsultationItemsForEncounter updates unsettled consultation lines for encounter invoices', async () => {
-    const tx: any = {
-      invoiceItem: { updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
-    };
-    const service = createInvoiceService({} as any);
-    await service.settleConsultationItemsForEncounter(tx, 'enc-1');
-    expect(tx.invoiceItem.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          settled: false,
-          invoice: { encounterId: 'enc-1' },
-        }),
-        data: { settled: true },
-      }),
-    );
+  describe('consultation credit reuse', () => {
+    const futureExpiry = new Date('2026-04-15T12:00:00.000Z');
+    const pastExpiry = new Date('2026-03-01T12:00:00.000Z');
+
+    it('isConsultationCreditConsumable allows credit with visits remaining and valid expiry', () => {
+      const service = createInvoiceService({} as any);
+      expect(
+        service.isConsultationCreditConsumable(
+          {
+            settled: false,
+            consultationVisitsConsumed: 1,
+            consultationCreditExpiresAt: futureExpiry,
+          },
+          now,
+        ),
+      ).toBe(true);
+    });
+
+    it('isConsultationCreditConsumable rejects expired, exhausted, or missing expiry', () => {
+      const service = createInvoiceService({} as any);
+      const base = {
+        settled: false,
+        consultationVisitsConsumed: 0,
+        consultationCreditExpiresAt: futureExpiry,
+      };
+      expect(
+        service.isConsultationCreditConsumable(
+          { ...base, consultationCreditExpiresAt: pastExpiry },
+          now,
+        ),
+      ).toBe(false);
+      expect(
+        service.isConsultationCreditConsumable(
+          {
+            ...base,
+            consultationVisitsConsumed: CONSULTATION_CREDIT_MAX_VISITS,
+          },
+          now,
+        ),
+      ).toBe(false);
+      expect(
+        service.isConsultationCreditConsumable(
+          { ...base, consultationCreditExpiresAt: null },
+          now,
+        ),
+      ).toBe(false);
+      expect(
+        service.isConsultationCreditConsumable({ ...base, settled: true }, now),
+      ).toBe(false);
+    });
+
+    it('settleConsultationItemsForEncounter increments visit and releases invoice after first visit', async () => {
+      const tx: any = {
+        invoiceItem: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'item-1',
+              invoiceId: 'inv-1',
+              consultationVisitsConsumed: 0,
+            },
+          ]),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        invoice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      };
+      const service = createInvoiceService({} as any);
+      await service.settleConsultationItemsForEncounter(tx, 'enc-1');
+      expect(tx.invoiceItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: { consultationVisitsConsumed: 1, settled: false },
+      });
+      expect(tx.invoice.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['inv-1'] } },
+        data: { encounterId: null },
+      });
+    });
+
+    it('settleConsultationItemsForEncounter exhausts credit on second visit', async () => {
+      const tx: any = {
+        invoiceItem: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'item-1',
+              invoiceId: 'inv-1',
+              consultationVisitsConsumed: 1,
+            },
+          ]),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        invoice: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      };
+      const service = createInvoiceService({} as any);
+      await service.settleConsultationItemsForEncounter(tx, 'enc-1');
+      expect(tx.invoiceItem.update).toHaveBeenCalledWith({
+        where: { id: 'item-1' },
+        data: {
+          consultationVisitsConsumed: CONSULTATION_CREDIT_MAX_VISITS,
+          settled: true,
+        },
+      });
+      expect(tx.invoice.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   const lineForRecalc = {

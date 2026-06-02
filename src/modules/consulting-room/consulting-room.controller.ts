@@ -32,7 +32,7 @@ export class ConsultingRoomController {
     return this.consultingRoomService.create(dto);
   }
 
-  @Roles('admin', 'doctor', 'nurse')
+  // @Roles('admin', 'doctor', 'nurse', 'consultant', 'medical-records', 'front-desk')
   @Get()
   @ApiOperation({
     summary: 'List consulting rooms with optional search and pagination',

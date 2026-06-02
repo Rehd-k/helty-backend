@@ -23,9 +23,13 @@ import { ListAntenatalVisitsQueryDto } from './dto/list-antenatal-visits-query.d
 @ApiTags('Obstetrics - Antenatal')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')
+@AccountTypes('ONG',
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+  'NURSE',
+  'HEAD_NURSE')
 export class AntenatalVisitController {
-  constructor(private readonly antenatalVisitService: AntenatalVisitService) {}
+  constructor(private readonly antenatalVisitService: AntenatalVisitService) { }
 
   @Post('pregnancies/:pregnancyId/visits')
   @HttpCode(HttpStatus.CREATED)

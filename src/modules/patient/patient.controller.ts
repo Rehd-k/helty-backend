@@ -16,6 +16,7 @@ import {
 import { Public, Roles } from '../../common/decorators';
 import { PatientService } from './patient.service';
 import { PatientChartService } from './patient-chart.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { PatientChartQueryDto } from './dto/patient-chart-query.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
@@ -27,6 +28,7 @@ export class PatientController {
   constructor(
     private readonly patientService: PatientService,
     private readonly patientChartService: PatientChartService,
+    private readonly invoiceService: InvoiceService,
   ) {}
 
   private applySelect<T extends Record<string, unknown>>(
@@ -123,6 +125,15 @@ export class PatientController {
   @ApiResponse({ status: 200, description: 'Patient chart payload' })
   getChart(@Param('id') id: string, @Query() query: PatientChartQueryDto) {
     return this.patientChartService.getChart(id, query);
+  }
+
+  @Get(':id/consultation-credits')
+  @ApiOperation({
+    summary: 'List paid consultation credits (2 visits / 14 days per payment)',
+  })
+  @ApiResponse({ status: 200, description: 'Consultation credits for patient' })
+  getConsultationCredits(@Param('id') id: string) {
+    return this.invoiceService.listConsultationCredits(id);
   }
 
   @Get(':id')

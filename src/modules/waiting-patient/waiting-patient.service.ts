@@ -13,11 +13,31 @@ import {
   UpdateWaitingPatientDto,
 } from './dto/waiting-patient.dto';
 import { parseDateRange } from '../../common/utils/date-range';
-import { CONSULTATION_BILLING_CATEGORY } from '../invoice/invoice-link.constants';
+import {
+  CONSULTATION_BILLING_CATEGORY,
+  CONSULTATION_CREDIT_MAX_VISITS,
+} from '../invoice/invoice-link.constants';
 
 @Injectable()
 export class WaitingPatientService {
   constructor(private readonly prisma: PrismaService) { }
+
+  private consumableConsultationItemWhere(): Prisma.InvoiceItemWhereInput {
+    const now = new Date();
+    return {
+      settled: false,
+      consultationVisitsConsumed: { lt: CONSULTATION_CREDIT_MAX_VISITS },
+      consultationCreditExpiresAt: { gt: now },
+      service: {
+        category: {
+          name: {
+            equals: CONSULTATION_BILLING_CATEGORY,
+            mode: 'insensitive',
+          },
+        },
+      },
+    };
+  }
 
   private queueBaseWhere(
     dateRange?: { from: Date; to: Date },
@@ -39,55 +59,39 @@ export class WaitingPatientService {
       status: 'PAID',
       patient: patientWhere,
       invoiceItems: {
-        some: {
-          settled: false,
-          service: {
-            category: {
-              name: {
-                equals: CONSULTATION_BILLING_CATEGORY,
-                mode: 'insensitive',
-              },
-            },
-          },
-        },
+        some: this.consumableConsultationItemWhere(),
       },
     };
   }
 
-  private queueInclude = {
-    patient: {
-      select: {
-        id: true,
-        firstName: true,
-        surname: true,
-        email: true,
-        patientId: true,
-      },
-    },
-    consultingRoom: { select: { id: true, name: true } },
-    vitals: true,
-    encounter: { select: { id: true, status: true, startTime: true } },
-    updatedBy: { select: { id: true, firstName: true, lastName: true } },
-    invoiceItems: {
-      where: {
-        settled: false,
-        service: {
-          category: {
-            name: {
-              equals: CONSULTATION_BILLING_CATEGORY,
-              mode: 'insensitive',
-            },
-          },
+  private queueInclude(): Prisma.InvoiceInclude {
+    return {
+      patient: {
+        select: {
+          id: true,
+          firstName: true,
+          surname: true,
+          email: true,
+          patientId: true,
         },
       },
-      select: {
-        id: true,
-        serviceId: true,
-        settled: true,
-        service: { select: { id: true, name: true } },
+      consultingRoom: { select: { id: true, name: true } },
+      vitals: true,
+      encounter: { select: { id: true, status: true, startTime: true } },
+      updatedBy: { select: { id: true, firstName: true, lastName: true } },
+      invoiceItems: {
+        where: this.consumableConsultationItemWhere(),
+        select: {
+          id: true,
+          serviceId: true,
+          settled: true,
+          consultationVisitsConsumed: true,
+          consultationCreditExpiresAt: true,
+          service: { select: { id: true, name: true } },
+        },
       },
-    },
-  } satisfies Prisma.InvoiceInclude;
+    };
+  }
 
   private toQueueRow(inv: any) {
     return {
@@ -108,6 +112,15 @@ export class WaitingPatientService {
         serviceId: it.serviceId ?? null,
         settled: Boolean(it.settled),
         name: it.service?.name ?? null,
+        visitsConsumed: it.consultationVisitsConsumed ?? 0,
+        visitsRemaining: Math.max(
+          0,
+          CONSULTATION_CREDIT_MAX_VISITS -
+            (it.consultationVisitsConsumed ?? 0),
+        ),
+        expiresAt: it.consultationCreditExpiresAt?.toISOString?.() ??
+          it.consultationCreditExpiresAt ??
+          null,
       })),
       updatedBy: inv.updatedBy ?? null,
       invoice: inv,
@@ -155,18 +168,17 @@ export class WaitingPatientService {
         skip,
         take,
         orderBy: { createdAt: 'asc' },
-        include: this.queueInclude,
+        include: this.queueInclude(),
       }),
       this.prisma.invoice.count({ where }),
     ]);
-    console.log({ data: rows.map((r) => this.toQueueRow(r)), total, skip, take })
     return { data: rows.map((r) => this.toQueueRow(r)), total, skip, take };
   }
 
   async findOne(id: string) {
     const inv = await this.prisma.invoice.findFirst({
       where: { ...this.queueBaseWhere(), id },
-      include: this.queueInclude,
+      include: this.queueInclude(),
     });
     if (!inv) {
       throw new NotFoundException(`Queue entry for invoice "${id}" not found.`);
@@ -209,7 +221,7 @@ export class WaitingPatientService {
         updatedById: staffId,
         ...(dto.staffId ? { staffId: dto.staffId } : {}),
       },
-      include: this.queueInclude,
+      include: this.queueInclude(),
     });
     return this.toQueueRow(updated);
   }
@@ -230,7 +242,7 @@ export class WaitingPatientService {
         consultingRoomId,
       },
       orderBy: { createdAt: 'asc' },
-      include: this.queueInclude,
+      include: this.queueInclude(),
     });
     return rows.map((r) => this.toQueueRow(r));
   }
@@ -262,7 +274,7 @@ export class WaitingPatientService {
         updatedById: staffId,
         ...(dto.staffId ? { staffId: dto.staffId } : {}),
       },
-      include: this.queueInclude,
+      include: this.queueInclude(),
     });
     return this.toQueueRow(updated);
   }

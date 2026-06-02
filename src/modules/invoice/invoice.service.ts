@@ -35,6 +35,8 @@ import {
   LAB_BILLING_CATEGORIES,
   RADIOLOGY_BILLING_CATEGORY,
   CONSULTATION_BILLING_CATEGORY,
+  CONSULTATION_CREDIT_MAX_VISITS,
+  CONSULTATION_CREDIT_VALIDITY_DAYS,
   PROCEDURE_BILLING_CATEGORIES,
 } from './invoice-link.constants';
 import { ConsumableStockService } from '../store/consumable-stock.service';
@@ -393,73 +395,142 @@ export class InvoiceService {
     });
   }
 
+  private static consultationCategoryWhere(): Prisma.ServiceCategoryWhereInput {
+    return {
+      name: {
+        equals: CONSULTATION_BILLING_CATEGORY,
+        mode: 'insensitive',
+      },
+    };
+  }
+
+  private static consumableConsultationItemWhere(
+    now: Date,
+  ): Prisma.InvoiceItemWhereInput {
+    return {
+      settled: false,
+      consultationVisitsConsumed: { lt: CONSULTATION_CREDIT_MAX_VISITS },
+      consultationCreditExpiresAt: { gt: now },
+      service: {
+        category: InvoiceService.consultationCategoryWhere(),
+      },
+    };
+  }
+
+  isConsultationCreditConsumable(
+    item: {
+      settled: boolean;
+      consultationVisitsConsumed: number;
+      consultationCreditExpiresAt: Date | null;
+    },
+    now: Date = new Date(),
+  ): boolean {
+    if (item.settled) return false;
+    if (item.consultationVisitsConsumed >= CONSULTATION_CREDIT_MAX_VISITS) {
+      return false;
+    }
+    if (!item.consultationCreditExpiresAt) return false;
+    return item.consultationCreditExpiresAt > now;
+  }
+
+  private addConsultationCreditValidityDays(paidAt: Date): Date {
+    const expiresAt = new Date(paidAt);
+    expiresAt.setDate(expiresAt.getDate() + CONSULTATION_CREDIT_VALIDITY_DAYS);
+    return expiresAt;
+  }
+
+  private async stampConsultationCreditExpiry(
+    tx: Prisma.TransactionClient,
+    invoiceId: string,
+    paidAt: Date,
+  ): Promise<void> {
+    const expiresAt = this.addConsultationCreditValidityDays(paidAt);
+    await tx.invoiceItem.updateMany({
+      where: {
+        invoiceId,
+        consultationCreditExpiresAt: null,
+        service: {
+          category: InvoiceService.consultationCategoryWhere(),
+        },
+      },
+      data: { consultationCreditExpiresAt: expiresAt },
+    });
+  }
+
   /**
-   * Marks all unsettled consultation lines on invoices linked to this encounter as settled.
-   * Used when an outpatient encounter is completed (consumes the consultation charge).
+   * Consumes one OPD visit from consultation credit lines on the encounter invoice.
+   * After the first visit, clears invoice.encounterId so the credit can be selected again.
    */
   async settleConsultationItemsForEncounter(
     tx: Prisma.TransactionClient,
     encounterId: string,
   ): Promise<void> {
-    await tx.invoiceItem.updateMany({
+    const items = await tx.invoiceItem.findMany({
       where: {
         settled: false,
         invoice: { encounterId },
         service: {
-          category: {
-            name: {
-              equals: CONSULTATION_BILLING_CATEGORY,
-              mode: 'insensitive',
-            },
-          },
+          category: InvoiceService.consultationCategoryWhere(),
         },
       },
-      data: { settled: true },
+      select: {
+        id: true,
+        invoiceId: true,
+        consultationVisitsConsumed: true,
+      },
     });
+    if (!items.length) return;
+
+    const invoiceIds = new Set<string>();
+    let releaseInvoiceForReuse = false;
+
+    for (const item of items) {
+      const visitsConsumed = item.consultationVisitsConsumed + 1;
+      const exhausted = visitsConsumed >= CONSULTATION_CREDIT_MAX_VISITS;
+      await tx.invoiceItem.update({
+        where: { id: item.id },
+        data: {
+          consultationVisitsConsumed: visitsConsumed,
+          settled: exhausted,
+        },
+      });
+      invoiceIds.add(item.invoiceId);
+      if (!exhausted) releaseInvoiceForReuse = true;
+    }
+
+    if (releaseInvoiceForReuse) {
+      await tx.invoice.updateMany({
+        where: { id: { in: [...invoiceIds] } },
+        data: { encounterId: null },
+      });
+    }
   }
 
   /**
-   * Picks the first paid, unsettled consultation invoice line for a patient.
-   * Selection is deterministic: oldest invoice first, then oldest item first.
+   * Picks the first paid consultation credit for a patient (FIFO by expiry, then invoice).
    */
   async findFirstConsumableConsultationItem(
     tx: Prisma.TransactionClient,
     patientId: string,
   ): Promise<{ invoiceId: string; invoiceItemId: string } | null> {
+    const now = new Date();
+    const itemWhere = InvoiceService.consumableConsultationItemWhere(now);
+
     const invoice = await tx.invoice.findFirst({
       where: {
         patientId,
         status: InvoiceStatus.PAID,
         encounterId: null,
-        invoiceItems: {
-          some: {
-            settled: false,
-            service: {
-              category: {
-                name: {
-                  equals: CONSULTATION_BILLING_CATEGORY,
-                  mode: 'insensitive',
-                },
-              },
-            },
-          },
-        },
+        invoiceItems: { some: itemWhere },
       },
       include: {
         invoiceItems: {
-          where: {
-            settled: false,
-            service: {
-              category: {
-                name: {
-                  equals: CONSULTATION_BILLING_CATEGORY,
-                  mode: 'insensitive',
-                },
-              },
-            },
-          },
-          select: { id: true },
-          orderBy: { id: 'asc' },
+          where: itemWhere,
+          select: { id: true, consultationCreditExpiresAt: true },
+          orderBy: [
+            { consultationCreditExpiresAt: 'asc' },
+            { id: 'asc' },
+          ],
           take: 1,
         },
       },
@@ -468,6 +539,107 @@ export class InvoiceService {
     const invoiceItemId = invoice?.invoiceItems?.[0]?.id;
     if (!invoice || !invoiceItemId) return null;
     return { invoiceId: invoice.id, invoiceItemId };
+  }
+
+  /**
+   * Human-readable reason when no consumable consultation credit exists (for OPD start errors).
+   */
+  async getConsultationCreditBlockReason(
+    tx: Prisma.TransactionClient,
+    patientId: string,
+  ): Promise<string> {
+    const now = new Date();
+    const items = await tx.invoiceItem.findMany({
+      where: {
+        invoice: { patientId, status: InvoiceStatus.PAID },
+        service: {
+          category: InvoiceService.consultationCategoryWhere(),
+        },
+      },
+      select: {
+        settled: true,
+        consultationVisitsConsumed: true,
+        consultationCreditExpiresAt: true,
+        invoice: { select: { encounterId: true } },
+      },
+      orderBy: { consultationCreditExpiresAt: 'asc' },
+    });
+
+    if (!items.length) {
+      return 'No paid consultation invoice is on file for this patient.';
+    }
+
+    const hasActiveEncounterHold = items.some((i) => i.invoice.encounterId);
+    if (hasActiveEncounterHold) {
+      return 'A consultation is already in progress for this patient.';
+    }
+
+    const hasExpired = items.some(
+      (i) =>
+        i.consultationCreditExpiresAt != null &&
+        i.consultationCreditExpiresAt <= now,
+    );
+    if (hasExpired && !items.some((i) => this.isConsultationCreditConsumable(i, now))) {
+      return 'The consultation payment has expired (valid for 14 days after payment).';
+    }
+
+    const allExhausted = items.every(
+      (i) =>
+        i.settled ||
+        i.consultationVisitsConsumed >= CONSULTATION_CREDIT_MAX_VISITS,
+    );
+    if (allExhausted) {
+      return 'The consultation payment has already been used for the maximum number of visits (2).';
+    }
+
+    return 'No paid consultation credit is currently available for this patient.';
+  }
+
+  async listConsultationCredits(patientId: string) {
+    const now = new Date();
+    const items = await this.prisma.invoiceItem.findMany({
+      where: {
+        invoice: { patientId, status: InvoiceStatus.PAID },
+        service: {
+          category: InvoiceService.consultationCategoryWhere(),
+        },
+      },
+      include: {
+        service: { select: { id: true, name: true } },
+        invoice: { select: { id: true, invoiceID: true, encounterId: true } },
+      },
+      orderBy: [
+        { consultationCreditExpiresAt: 'asc' },
+        { id: 'asc' },
+      ],
+    });
+
+    return {
+      credits: items.map((item) => {
+        const visitsRemaining = Math.max(
+          0,
+          CONSULTATION_CREDIT_MAX_VISITS - item.consultationVisitsConsumed,
+        );
+        const expired =
+          item.consultationCreditExpiresAt != null &&
+          item.consultationCreditExpiresAt <= now;
+        return {
+          invoiceItemId: item.id,
+          invoiceId: item.invoice.id,
+          invoiceID: item.invoice.invoiceID,
+          serviceId: item.service?.id ?? null,
+          serviceName: item.service?.name ?? null,
+          visitsConsumed: item.consultationVisitsConsumed,
+          visitsRemaining,
+          expiresAt: item.consultationCreditExpiresAt?.toISOString() ?? null,
+          expired,
+          settled: item.settled,
+          consumable:
+            !item.invoice.encounterId &&
+            this.isConsultationCreditConsumable(item, now),
+        };
+      }),
+    };
   }
 
   /** When auto-adding a service line from an encounter, enforce Radiology vs Lab category rules. */
@@ -1969,6 +2141,8 @@ export class InvoiceService {
         data: { amountPaid: this.asDecimal(lineRequiredById.get(it.id)!) },
       });
     }
+
+    await this.stampConsultationCreditExpiry(tx, invoiceId, now);
   }
 
   /**

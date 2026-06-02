@@ -50,7 +50,7 @@ export class EncounterController {
     return encounter;
   }
 
-  @Post('start-outpatient')
+  @Post('outpatient/start')
   @ApiOperation({
     summary: 'Start an outpatient encounter (e.g. when doctor begins consult)',
     description:
@@ -60,6 +60,25 @@ export class EncounterController {
     @Body() dto: StartOutpatientEncounterDto,
     @Req() req: { user: { sub: string } },
     @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.startOutpatientHandler(dto, req, res);
+  }
+
+  /** @deprecated Prefer POST /encounters/outpatient/start */
+  @Post('start-outpatient')
+  @ApiOperation({ summary: 'Start outpatient encounter (legacy path)' })
+  async startOutpatientLegacy(
+    @Body() dto: StartOutpatientEncounterDto,
+    @Req() req: { user: { sub: string } },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.startOutpatientHandler(dto, req, res);
+  }
+
+  private async startOutpatientHandler(
+    dto: StartOutpatientEncounterDto,
+    req: { user: { sub: string } },
+    res: Response,
   ) {
     const { encounter, reused } = await this.encounterService.startOutpatient(
       dto,

@@ -105,9 +105,12 @@ export class EncounterService {
             dto.patientId,
           );
         if (!consultationItem) {
-          throw new BadRequestException(
-            'No paid unsettled consultation invoice item is available for this patient.',
-          );
+          const reason =
+            await this.invoiceService.getConsultationCreditBlockReason(
+              tx,
+              dto.patientId,
+            );
+          throw new BadRequestException(reason);
         }
 
         const encounter = await tx.encounter.create({
@@ -254,9 +257,12 @@ export class EncounterService {
           dto.patientId,
         );
       if (!consultationItem) {
-        throw new BadRequestException(
-          'No paid unsettled consultation invoice item is available for this patient.',
-        );
+        const reason =
+          await this.invoiceService.getConsultationCreditBlockReason(
+            tx,
+            dto.patientId,
+          );
+        throw new BadRequestException(reason);
       }
 
       const createdEncounter = await tx.encounter.create({

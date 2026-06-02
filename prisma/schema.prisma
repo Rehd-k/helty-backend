@@ -1063,6 +1063,10 @@ model InvoiceItem {
   service   Service? @relation(fields: [serviceId], references: [id])
   serviceId String?
   settled   Boolean  @default(false)
+  /// OPD consultation credit: visits consumed toward CONSULTATION_CREDIT_MAX_VISITS (default 2).
+  consultationVisitsConsumed  Int       @default(0)
+  /// When this paid consultation line stops being valid for OPD reuse (14 days from payment).
+  consultationCreditExpiresAt DateTime?
 
   drug   Drug?   @relation(fields: [drugId], references: [id])
   drugId String?

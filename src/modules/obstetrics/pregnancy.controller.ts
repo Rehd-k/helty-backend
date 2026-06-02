@@ -24,7 +24,13 @@ import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 @ApiTags('Obstetrics – Antenatal')
 @Controller('obstetrics/pregnancies')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')
+@AccountTypes(
+  'ONG',
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+  'NURSE',
+  'HEAD_NURSE',
+)
 export class PregnancyController {
   constructor(private readonly pregnancyService: PregnancyService) {}
 
