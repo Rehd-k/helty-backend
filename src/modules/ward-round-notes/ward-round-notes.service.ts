@@ -32,7 +32,7 @@ function toWardRoundNoteResponse(note: WardRoundNote) {
 
 @Injectable()
 export class WardRoundNotesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(dto: CreateWardRoundNoteDto) {
     if (!hasAtLeastOneSoapField(dto)) {
@@ -89,8 +89,17 @@ export class WardRoundNotesService {
 
     const notes = await this.prisma.wardRoundNote.findMany({
       where,
+      include: {
+        doctor: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
       orderBy: { roundDate: 'desc' },
     });
-    return notes.map(toWardRoundNoteResponse);
+    return notes;
   }
 }

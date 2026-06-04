@@ -69,7 +69,7 @@ export class InvoiceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly consumableStock: ConsumableStockService,
-  ) {}
+  ) { }
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
 
@@ -1444,7 +1444,7 @@ export class InvoiceService {
     // Invoice is authoritative for client-facing due amount.
     // Do not override with linked transaction financial fields.
     const netAmountDue = amountDue;
-   
+
     return {
       ...invoice,
       invoiceItems,
@@ -2865,6 +2865,8 @@ export class InvoiceService {
               phoneNumber: true,
               dob: true,
               patientId: true,
+              ward: true,
+              gender: true
             },
           },
           invoiceItems: {
@@ -2898,6 +2900,8 @@ export class InvoiceService {
         patientName: patientDisplayName,
         phone: p.phoneNumber ?? null,
         age: this.patientAgeYears(p.dob),
+        ward: p.ward?.name ?? null,
+        gender: p.gender ?? null,
         date: inv.updatedAt.toISOString(),
         invoice: {
           id: inv.id,
