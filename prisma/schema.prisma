@@ -1468,6 +1468,7 @@ enum AccountType {
   CMD
   CMAC
   HMO
+  PURCHASES
   SUPER_ADMIN
 }
 
@@ -1514,6 +1515,10 @@ enum StaffRole {
   CMAC
   // HMO (insurance liaison / portal users)
   HMO_STAFF
+  // Purchases
+  PURCHASES_STORE
+  PURCHASES_STAFF
+  PURCHASES_HEAD
   SUPER_ADMIN
 }
 
@@ -1766,7 +1771,6 @@ model Department {
   services            Service[]
   wards               Ward[]
   radiologyOrders     RadiologyOrder[]
-  purchaseNotes       PurchaseNote[]
   storeStockMovements StoreStockMovement[]
   referrals           Referral[]
   complaints          PatientComplaint[]
@@ -1905,7 +1909,22 @@ model Staff {
   patientArchivedEncountersUploaded   PatientArchivedEncounter[]  @relation("PatientArchivedEncounterUploadedBy")
   radiologyReportsSigned              RadiologyStudyReport[]      @relation("RadiologyReportSignedBy")
   medicationOrders                    MedicationOrder[]
-  purchaseNotesRequested              PurchaseNote[]              @relation("PurchaseNoteRequestedBy")
+  requisitionsRequested               Requisition[]               @relation("RequisitionRequestedBy")
+  requisitionsApproved              Requisition[]               @relation("RequisitionApprovedBy")
+  requisitionsRejected              Requisition[]               @relation("RequisitionRejectedBy")
+  purchaseItemsCreated                PurchaseItem[]              @relation("PurchaseItemCreatedBy")
+  purchaseItemsUpdated                PurchaseItem[]              @relation("PurchaseItemUpdatedBy")
+  purchasesManufacturersCreated       PurchasesManufacturer[]     @relation("PurchasesManufacturerCreatedBy")
+  purchasesSuppliersCreated           PurchasesSupplier[]         @relation("PurchasesSupplierCreatedBy")
+  purchasesLocationsCreated           PurchasesLocation[]         @relation("PurchasesLocationCreatedBy")
+  purchasesLocationsUpdated           PurchasesLocation[]         @relation("PurchasesLocationUpdatedBy")
+  purchasesLocationAssigned           PurchasesLocation?          @relation("PurchasesLocationStaff")
+  purchasesPurchaseOrdersCreated      PurchasesPurchaseOrder[]    @relation("PurchasesPurchaseOrderCreatedBy")
+  purchasesPurchaseOrdersApproved     PurchasesPurchaseOrder[]    @relation("PurchasesPurchaseOrderApprovedBy")
+  purchasesGoodsReceiptsReceived      PurchasesGoodsReceipt[]     @relation("PurchasesGoodsReceiptReceivedBy")
+  purchasesStockTransfersCreated      PurchasesStockTransfer[]    @relation("PurchasesStockTransferCreatedBy")
+  purchasesStockTransfersApproved     PurchasesStockTransfer[]    @relation("PurchasesStockTransferApprovedBy")
+  purchasesInventoryMovementsPerformed PurchasesInventoryMovement[] @relation("PurchasesInventoryMovementPerformedBy")
   storeStockMovementsCreated          StoreStockMovement[]        @relation("StoreStockMovementCreatedBy")
   invoiceItemsCreated                 InvoiceItem[]               @relation("InvoiceItemCreatedBy")
   invoiceItemsDispensed               InvoiceItem[]               @relation("InvoiceItemDispensedBy")
@@ -3443,21 +3462,6 @@ enum StoreStockMovementType {
   RETURN
 }
 
-enum PurchaseNoteStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  ORDERED
-  COMPLETED
-}
-
-enum PurchaseNotePriority {
-  LOW
-  NORMAL
-  HIGH
-  CRITICAL
-}
-
 model StoreItemCategory {
   id          String   @id @default(uuid())
   name        String
@@ -3484,8 +3488,6 @@ model StoreItem {
 
   stocks            StoreStock[]
   movements         StoreStockMovement[]
-  purchaseNoteItems PurchaseNoteItem[]
-
   @@index([categoryId])
   @@index([isActive])
 }
@@ -3557,45 +3559,346 @@ model StoreStockMovement {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PURCHASES MODULE (purchase notes from departments)
+// PURCHASES MODULE
 // ─────────────────────────────────────────────────────────────────────────────
 
-model PurchaseNote {
-  id                     String             @id @default(uuid())
-  requestingDepartment   Department         @relation(fields: [requestingDepartmentId], references: [id], onDelete: Restrict)
-  requestingDepartmentId String
-  requestedBy            Staff              @relation("PurchaseNoteRequestedBy", fields: [requestedById], references: [id])
-  requestedById          String
-  status                 PurchaseNoteStatus @default(PENDING)
-  remarks                String?
-  neededByDate           DateTime?
-  totalEstimatedCost     Decimal            @default(0) @db.Decimal(12, 2)
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
+enum PurchasesLocationType {
+  STORE
+  WAREHOUSE
+  DEPARTMENT
+  COLD_ROOM
+}
 
-  items PurchaseNoteItem[]
+enum PurchasesOrderStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  COMPLETED
+  CANCELLED
+}
 
-  @@index([requestingDepartmentId])
-  @@index([status])
+enum PurchasesStockTransferStatus {
+  PENDING
+  APPROVED
+  IN_TRANSIT
+  COMPLETED
+  REJECTED
+}
+
+enum RequisitionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
+enum RequestingDepartment {
+  PHARMACY
+  STORE
+  PURCHASES
+  LAB
+  RADIOLOGY
+  OTHER
+}
+
+enum PurchasesInventoryMovementType {
+  PURCHASE
+  TRANSFER_OUT
+  TRANSFER_IN
+  ADJUSTMENT
+  RETURN
+  EXPIRY_WRITEOFF
+}
+
+enum PurchasesMovementReferenceType {
+  PURCHASE_ORDER
+  TRANSFER
+  GOODS_RECEIPT
+  ADJUSTMENT
+  REQUISITION
+}
+
+enum RequisitionLinePriority {
+  NORMAL
+  URGENT
+  CRITICAL
+}
+
+enum RequisitionItemType {
+  DRUG
+  CONSUMABLE
+  PURCHASE_ITEM
+}
+
+model PurchasesManufacturer {
+  id          String   @id @default(uuid())
+  name        String
+  country     String?
+  contactInfo Json?
+  createdAt   DateTime @default(now())
+  createdBy   Staff    @relation("PurchasesManufacturerCreatedBy", fields: [createdById], references: [id])
+  createdById String
+
+  items PurchaseItem[]
+
+  @@index([name])
+}
+
+model PurchasesSupplier {
+  id            String   @id @default(uuid())
+  name          String
+  licenseNumber String?
+  contactInfo   Json?
+  creditTerms   String?
+  leadTimeDays  Int?
+  rating        Int?
+  isBlacklisted Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  createdBy     Staff    @relation("PurchasesSupplierCreatedBy", fields: [createdById], references: [id])
+  createdById   String
+
+  batches        PurchaseItemBatch[]
+  purchaseOrders PurchasesPurchaseOrder[]
+
+  @@index([name])
+}
+
+model PurchaseItem {
+  id              String               @id @default(uuid())
+  itemName        String
+  sku             String?
+  category        String?
+  description     String?
+  manufacturer    PurchasesManufacturer? @relation(fields: [manufacturerId], references: [id])
+  manufacturerId  String?
+  unitOfMeasure   String?
+  reorderLevel    Int                  @default(0)
+  reorderQuantity Int                  @default(0)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  deletedAt       DateTime?
+  createdBy       Staff                @relation("PurchaseItemCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  updatedBy       Staff?               @relation("PurchaseItemUpdatedBy", fields: [updatedById], references: [id])
+  updatedById     String?
+
+  batches              PurchaseItemBatch[]
+  purchaseOrderLines   PurchasesPurchaseOrderLine[]
+  goodsReceiptItems    PurchasesGoodsReceiptItem[]
+  inventoryMovements   PurchasesInventoryMovement[]
+  requisitionLines     RequisitionLine[]
+
+  @@index([manufacturerId])
+  @@index([itemName])
+  @@index([deletedAt])
+}
+
+model PurchasesLocation {
+  id           String                @id @default(uuid())
+  name         String
+  locationType PurchasesLocationType
+  description  String?
+  isActive     Boolean               @default(true)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  createdBy    Staff                 @relation("PurchasesLocationCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  updatedBy    Staff?                @relation("PurchasesLocationUpdatedBy", fields: [updatedById], references: [id])
+  updatedById  String?
+  staff        Staff?                @relation("PurchasesLocationStaff", fields: [staffId], references: [id])
+  staffId      String?               @unique
+
+  batchesFrom              PurchaseItemBatch[]          @relation("PurchaseItemBatchFromLocation")
+  batchesTo                PurchaseItemBatch[]          @relation("PurchaseItemBatchToLocation")
+  inventoryMovementsFrom   PurchasesInventoryMovement[] @relation("PurchasesInventoryMovementFromLocation")
+  inventoryMovementsTo     PurchasesInventoryMovement[] @relation("PurchasesInventoryMovementToLocation")
+  stockTransfersFrom       PurchasesStockTransfer[]     @relation("PurchasesStockTransferFromLocation")
+  stockTransfersTo         PurchasesStockTransfer[]     @relation("PurchasesStockTransferToLocation")
+}
+
+model PurchaseItemBatch {
+  id                String            @id @default(uuid())
+  item              PurchaseItem      @relation(fields: [itemId], references: [id])
+  itemId            String
+  purchaseOrder     PurchasesPurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId   String?
+  supplier          PurchasesSupplier? @relation(fields: [supplierId], references: [id])
+  supplierId        String?
+  batchNumber       String?
+  manufacturingDate DateTime?
+  expiryDate        DateTime?
+  quantityReceived  Int
+  quantityRemaining Int?
+  costPrice         Decimal?          @db.Decimal(12, 2)
+  sellingPrice      Decimal?          @db.Decimal(12, 2)
+  fromLocation      PurchasesLocation? @relation("PurchaseItemBatchFromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId    String?
+  toLocation        PurchasesLocation? @relation("PurchaseItemBatchToLocation", fields: [toLocationId], references: [id])
+  toLocationId      String?
+  grn               PurchasesGoodsReceipt? @relation(fields: [grnId], references: [id])
+  grnId             String?
+  createdAt         DateTime          @default(now())
+
+  movements     PurchasesInventoryMovement[]
+  transferLines PurchasesStockTransferLine[]
+
+  @@index([itemId])
+  @@index([supplierId])
+  @@index([expiryDate])
+  @@index([fromLocationId, toLocationId])
+}
+
+model PurchasesInventoryMovement {
+  id             String                         @id @default(uuid())
+  batch          PurchaseItemBatch              @relation(fields: [batchId], references: [id])
+  batchId        String
+  item           PurchaseItem                   @relation(fields: [itemId], references: [id])
+  itemId         String
+  fromLocation   PurchasesLocation?             @relation("PurchasesInventoryMovementFromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId String?
+  toLocation     PurchasesLocation?             @relation("PurchasesInventoryMovementToLocation", fields: [toLocationId], references: [id])
+  toLocationId   String?
+  movementType   PurchasesInventoryMovementType
+  quantity       Int
+  referenceType  PurchasesMovementReferenceType
+  referenceId    String
+  performedBy    Staff                          @relation("PurchasesInventoryMovementPerformedBy", fields: [performedById], references: [id])
+  performedById  String
+  createdAt      DateTime                       @default(now())
+
+  @@index([batchId])
+  @@index([itemId])
   @@index([createdAt])
 }
 
-model PurchaseNoteItem {
-  id                 String               @id @default(uuid())
-  purchaseNote       PurchaseNote         @relation(fields: [purchaseNoteId], references: [id], onDelete: Cascade)
-  purchaseNoteId     String
-  storeItem          StoreItem?           @relation(fields: [storeItemId], references: [id], onDelete: SetNull)
-  storeItemId        String?
-  description        String
-  quantity           Decimal              @db.Decimal(12, 2)
-  estimatedUnitCost  Decimal?             @db.Decimal(12, 2)
-  totalEstimatedCost Decimal?             @db.Decimal(12, 2)
-  priority           PurchaseNotePriority @default(NORMAL)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+model PurchasesPurchaseOrder {
+  id           String               @id @default(uuid())
+  supplier     PurchasesSupplier    @relation(fields: [supplierId], references: [id])
+  supplierId   String
+  status       PurchasesOrderStatus @default(DRAFT)
+  totalAmount  Decimal              @default(0) @db.Decimal(12, 2)
+  requisition  Requisition?         @relation(fields: [requisitionId], references: [id])
+  requisitionId String?             @unique
+  createdBy    Staff                @relation("PurchasesPurchaseOrderCreatedBy", fields: [createdById], references: [id])
+  createdById  String
+  approvedBy   Staff?               @relation("PurchasesPurchaseOrderApprovedBy", fields: [approvedById], references: [id])
+  approvedById String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
-  @@index([purchaseNoteId])
-  @@index([storeItemId])
+  lines    PurchasesPurchaseOrderLine[]
+  receipts PurchasesGoodsReceipt[]
+  batches  PurchaseItemBatch[]
+
+  @@index([supplierId])
+  @@index([status])
+}
+
+model PurchasesPurchaseOrderLine {
+  id              String               @id @default(uuid())
+  purchaseOrder   PurchasesPurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  purchaseOrderId String
+  item            PurchaseItem         @relation(fields: [itemId], references: [id])
+  itemId          String
+  quantity        Int
+  unitCost        Decimal              @db.Decimal(12, 2)
+  lineTotal       Decimal              @db.Decimal(12, 2)
+  externalItemName String?
+
+  @@index([purchaseOrderId])
+  @@index([itemId])
+}
+
+model PurchasesGoodsReceipt {
+  id              String               @id @default(uuid())
+  purchaseOrder   PurchasesPurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId String
+  receivedBy      Staff                @relation("PurchasesGoodsReceiptReceivedBy", fields: [receivedById], references: [id])
+  receivedById    String
+  receivedAt      DateTime             @default(now())
+  notes           String?
+
+  items   PurchasesGoodsReceiptItem[]
+  batches PurchaseItemBatch[]
+}
+
+model PurchasesGoodsReceiptItem {
+  id                String              @id @default(uuid())
+  goodsReceipt      PurchasesGoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  goodsReceiptId    String
+  item              PurchaseItem        @relation(fields: [itemId], references: [id])
+  itemId            String
+  batchNumber       String?
+  manufacturingDate DateTime?
+  expiryDate        DateTime?
+  quantityReceived  Int
+  costPrice         Decimal             @db.Decimal(12, 2)
+}
+
+model PurchasesStockTransfer {
+  id             String                     @id @default(uuid())
+  fromLocation   PurchasesLocation          @relation("PurchasesStockTransferFromLocation", fields: [fromLocationId], references: [id])
+  fromLocationId String
+  toLocation     PurchasesLocation          @relation("PurchasesStockTransferToLocation", fields: [toLocationId], references: [id])
+  toLocationId   String
+  status         PurchasesStockTransferStatus @default(PENDING)
+  createdBy      Staff                      @relation("PurchasesStockTransferCreatedBy", fields: [createdById], references: [id])
+  createdById    String
+  approvedBy     Staff?                     @relation("PurchasesStockTransferApprovedBy", fields: [approvedById], references: [id])
+  approvedById   String?
+  createdAt      DateTime                   @default(now())
+  completedAt    DateTime?
+
+  items PurchasesStockTransferLine[]
+}
+
+model PurchasesStockTransferLine {
+  id              String               @id @default(uuid())
+  stockTransfer   PurchasesStockTransfer @relation(fields: [stockTransferId], references: [id], onDelete: Cascade)
+  stockTransferId String
+  batch           PurchaseItemBatch    @relation(fields: [batchId], references: [id])
+  batchId         String
+  quantity        Int
+}
+
+model Requisition {
+  id                   String               @id @default(uuid())
+  requestingDepartment RequestingDepartment
+  requestedBy          Staff                @relation("RequisitionRequestedBy", fields: [requestedById], references: [id])
+  requestedById        String
+  status               RequisitionStatus    @default(PENDING)
+  notes                String?
+  rejectReason         String?
+  approvedBy           Staff?               @relation("RequisitionApprovedBy", fields: [approvedById], references: [id])
+  approvedById         String?
+  rejectedBy           Staff?               @relation("RequisitionRejectedBy", fields: [rejectedById], references: [id])
+  rejectedById         String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  lines         RequisitionLine[]
+  purchaseOrder PurchasesPurchaseOrder?
+
+  @@index([status])
+  @@index([requestingDepartment])
+  @@index([createdAt])
+}
+
+model RequisitionLine {
+  id            String                  @id @default(uuid())
+  requisition   Requisition             @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  requisitionId String
+  itemType      RequisitionItemType
+  itemId        String
+  itemName      String
+  quantity      Int
+  priority      RequisitionLinePriority @default(NORMAL)
+  notes         String?
+  purchaseItem  PurchaseItem?           @relation(fields: [purchaseItemId], references: [id])
+  purchaseItemId String?
+
+  @@index([requisitionId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -28,8 +28,9 @@ export class StaffController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new staff member' })
   @ApiResponse({ status: 201, description: 'Staff created' })
-  create(@Body() dto: any, @Req() req: any) {
-    const { departmentId, ...rest } = dto;
+  create(@Body() dto: CreateStaffDto, @Req() req: any) {
+    console.log(dto);
+    const { departmentId, role, ...rest } = dto;
     const data: any = { ...rest };
     if (departmentId) {
       data.department = { connect: { id: departmentId } };
@@ -37,7 +38,7 @@ export class StaffController {
     if (req && req.user && req.user.sub) {
       data.createdById = req.user.sub;
     }
-    data.staffRole = dto.staffRole ?? dto.role;
+    data.staffRole = dto.staffRole ?? role;
 
     return this.staffService.create(data);
   }
@@ -67,10 +68,16 @@ export class StaffController {
     @Body() dto: UpdateStaffDto,
     @Req() req: { user: { sub: string } },
   ) {
-    const { departmentId, ...rest } = dto as any;
+    const { departmentId, role, staffRole, ...rest } = dto as UpdateStaffDto & {
+      role?: string;
+    };
     const data: any = { ...rest };
     if (departmentId) {
       data.department = { connect: { id: departmentId } };
+    }
+    const resolvedRole = staffRole ?? role;
+    if (resolvedRole !== undefined) {
+      data.staffRole = resolvedRole;
     }
     return this.staffService.update(id, data, req.user.sub);
   }
