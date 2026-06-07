@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -20,6 +21,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
+import { AccountTypes } from '../../common/decorators/account-types.decorator';
+import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import {
   CreateInvoicePaymentBodyDto,
   UpdateInvoicePaymentDto,
@@ -29,6 +32,16 @@ import {
 @ApiTags('Invoices')
 @ApiBearerAuth()
 @Controller('invoices')
+@UseGuards(JwtAuthGuard, AccessGuard)
+@AccountTypes(
+  'ACCOUNTING',
+  'ACCOUNTS',
+  'BILLING',
+  'BILLS',
+  'CMD',
+  'CMAC',
+  'SUPER_ADMIN',
+)
 export class InvoicePaymentsController {
   constructor(private readonly paymentService: PaymentService) {}
 

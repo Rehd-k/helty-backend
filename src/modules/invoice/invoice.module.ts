@@ -12,6 +12,8 @@ import { InvoicePurchaseController } from './invoice-purchase.controller';
 import { InvoicePurchaseService } from './invoice-purchase.service';
 import { InvoiceCoverageController } from './coverage/coverage.controller';
 import { InvoiceCoverageService } from './coverage/coverage.service';
+import { InvoiceItemRefundController } from './invoice-item-refund.controller';
+import { InvoiceItemRefundService } from './invoice-item-refund.service';
 
 @Module({
   imports: [PrismaModule, StoreModule, PurchasesModule],
@@ -21,6 +23,7 @@ import { InvoiceCoverageService } from './coverage/coverage.service';
     InvoiceConsumableController,
     InvoicePurchaseController,
     InvoiceCoverageController,
+    InvoiceItemRefundController,
   ],
   providers: [
     InvoiceService,
@@ -28,6 +31,7 @@ import { InvoiceCoverageService } from './coverage/coverage.service';
     InvoiceConsumableService,
     InvoicePurchaseService,
     InvoiceCoverageService,
+    InvoiceItemRefundService,
   ],
   exports: [
     InvoiceService,
@@ -35,6 +39,7 @@ import { InvoiceCoverageService } from './coverage/coverage.service';
     InvoiceConsumableService,
     InvoicePurchaseService,
     InvoiceCoverageService,
+    InvoiceItemRefundService,
   ],
 })
 export class InvoiceModule {}

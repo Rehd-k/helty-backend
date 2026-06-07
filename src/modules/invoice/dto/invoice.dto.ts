@@ -539,3 +539,24 @@ export class UpdateInvoiceInsuranceClaimDto {
   @IsUUID()
   staffId?: string;
 }
+
+export class CreateInvoiceItemRefundRequestDto {
+  @ApiProperty({ example: 'Patient requested cancellation before service' })
+  @IsString()
+  @IsNotEmpty()
+  reason!: string;
+}
+
+export class RejectInvoiceItemRefundDto {
+  @ApiProperty({ example: 'Service already scheduled' })
+  @IsString()
+  @IsNotEmpty()
+  reason!: string;
+}
+
+export class ReviewInvoiceItemRefundDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  note?: string;
+}

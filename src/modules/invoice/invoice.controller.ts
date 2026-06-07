@@ -23,6 +23,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { InvoicePaymentMethod, InvoicePaymentSource } from '@prisma/client';
+import { AccountTypes } from '../../common/decorators/account-types.decorator';
 import { InvoiceService } from './invoice.service';
 import {
   AddInvoiceItemDto,
@@ -121,6 +122,15 @@ export class InvoiceController {
   }
 
   @Get('payments')
+  @AccountTypes(
+    'ACCOUNTING',
+    'ACCOUNTS',
+    'BILLING',
+    'BILLS',
+    'CMD',
+    'CMAC',
+    'SUPER_ADMIN',
+  )
   @ApiOperation({
     summary: 'List all invoice payments (cashier/head of accounts view)',
     description:

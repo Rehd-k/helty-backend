@@ -53,6 +53,7 @@ import { Icd10Module } from './modules/icd10/icd10.module';
 import { QualitySafetyModule } from './modules/quality-safety/quality-safety.module';
 import { CmacAnalyticsModule } from './modules/cmac-analytics/cmac-analytics.module';
 import { CmdAnalyticsModule } from './modules/cmd-analytics/cmd-analytics.module';
+import { AccountsModule } from './modules/accounts/accounts.module';
 
 @Module({
   imports: [
@@ -122,6 +123,7 @@ import { CmdAnalyticsModule } from './modules/cmd-analytics/cmd-analytics.module
     QualitySafetyModule,
     CmacAnalyticsModule,
     CmdAnalyticsModule,
+    AccountsModule,
   ],
   controllers: [AppController],
   providers: [

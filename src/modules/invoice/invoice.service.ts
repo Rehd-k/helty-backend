@@ -1,12 +1,15 @@
 import { randomBytes } from 'crypto';
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
   AdmissionStatus,
   InvoiceAuditAction,
+  InvoiceItemRefundStatus,
   InvoicePaymentMethod,
   InvoicePaymentSource,
   InvoiceStatus,
@@ -42,6 +45,7 @@ import {
 } from './invoice-link.constants';
 import { ConsumableStockService } from '../store/consumable-stock.service';
 import { PurchaseItemStockService } from '../purchases/purchase-item-stock.service';
+import { InvoiceItemRefundService } from './invoice-item-refund.service';
 
 const INVOICE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -72,6 +76,8 @@ export class InvoiceService {
     private readonly prisma: PrismaService,
     private readonly consumableStock: ConsumableStockService,
     private readonly purchaseItemStock: PurchaseItemStockService,
+    @Inject(forwardRef(() => InvoiceItemRefundService))
+    private readonly itemRefundService: InvoiceItemRefundService,
   ) { }
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
@@ -1507,6 +1513,30 @@ export class InvoiceService {
             drug: { select: { id: true, genericName: true } },
             usageSegments: true,
             createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+            refundRequests: {
+              where: { status: InvoiceItemRefundStatus.pending },
+              include: {
+                requestedBy: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                    staffId: true,
+                  },
+                },
+              },
+              take: 1,
+            },
+            radiologyOrderItem: {
+              include: { procedure: true, report: true },
+            },
+            labOrder: true,
+            labRequest: true,
+            dialysisSession: true,
+            medicationOrder: {
+              include: { _count: { select: { administrations: true } } },
+            },
           },
         },
         payments: {
@@ -1556,12 +1586,17 @@ export class InvoiceService {
       const lineCovered = this.asDecimal(lineCoveredById.get(item.id) ?? 0);
       const lineEffectiveDue = lineTotal.sub(lineCovered);
       const paid = this.asDecimal(item.amountPaid);
+      const refundFields = this.itemRefundService.enrichItemRefundFields({
+        ...item,
+        invoice: { id: invoice.id, staffId: invoice.staffId, patientId: invoice.patientId },
+      });
       return {
         ...item,
         lineTotal,
         lineCovered,
         lineEffectiveDue,
         lineAmountDue: lineEffectiveDue.sub(paid),
+        ...refundFields,
       };
     });
 

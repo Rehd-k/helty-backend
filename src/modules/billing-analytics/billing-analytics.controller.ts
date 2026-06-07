@@ -1,5 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AccountTypes } from '../../common/decorators/account-types.decorator';
+import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { BillingAnalyticsService } from './billing-analytics.service';
 import {
   BillingAnalyticsQueryDto,
@@ -8,6 +10,16 @@ import {
 
 @ApiTags('Billing analytics')
 @Controller('billing/analytics')
+@UseGuards(JwtAuthGuard, AccessGuard)
+@AccountTypes(
+  'ACCOUNTING',
+  'ACCOUNTS',
+  'BILLING',
+  'BILLS',
+  'CMD',
+  'CMAC',
+  'SUPER_ADMIN',
+)
 export class BillingAnalyticsController {
   constructor(private readonly billingAnalytics: BillingAnalyticsService) {}
 

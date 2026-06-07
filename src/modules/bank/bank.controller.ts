@@ -8,13 +8,26 @@ import {
   Param,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { AccountTypes } from '../../common/decorators/account-types.decorator';
+import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { BankService } from './bank.service';
 import { CreateBankDto, UpdateBankDto, QueryBankDto } from './dto/bank.dto';
 
 @ApiTags('Bank')
 @Controller('banks')
+@UseGuards(JwtAuthGuard, AccessGuard)
+@AccountTypes(
+  'ACCOUNTING',
+  'ACCOUNTS',
+  'BILLING',
+  'BILLS',
+  'CMD',
+  'CMAC',
+  'SUPER_ADMIN',
+)
 export class BankController {
   constructor(private readonly bankService: BankService) {}
 

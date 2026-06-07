@@ -926,6 +926,185 @@ model CmdComplianceItem {
   @@index([status])
 }
 
+// ─── Accounts & Audit (Finance) ───────────────────────────────────────────────
+
+enum FinanceReconciliationStatus {
+  open
+  submitted
+  closed
+}
+
+enum FinanceApprovalType {
+  REFUND
+  WRITE_OFF
+  JOURNAL_ADJUSTMENT
+  OTHER
+}
+
+enum FinanceApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+enum FiscalPeriodStatus {
+  open
+  closed
+}
+
+enum ChartOfAccountType {
+  asset
+  liability
+  equity
+  revenue
+  expense
+}
+
+model FinanceComplianceItem {
+  id             String              @id @default(uuid())
+  code           String              @unique
+  description    String
+  status         CmdComplianceStatus @default(Pending)
+  lastCheckedAt  DateTime?
+  acknowledgedAt DateTime?
+  note           String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  updatedBy      Staff?              @relation("FinanceComplianceItemUpdatedBy", fields: [updatedById], references: [id])
+  updatedById    String?
+
+  @@index([status])
+}
+
+model DailyCashReconciliation {
+  id            String                      @id @default(uuid())
+  date          DateTime                    @unique @db.Date
+  countedCash   Decimal?                    @db.Decimal(12, 2)
+  expectedCash  Decimal                     @default(0) @db.Decimal(12, 2)
+  variance      Decimal                     @default(0) @db.Decimal(12, 2)
+  status        FinanceReconciliationStatus @default(open)
+  notes         String?
+  submittedBy   Staff?                      @relation("DailyCashReconciliationSubmittedBy", fields: [submittedById], references: [id])
+  submittedById String?
+  closedBy      Staff?                      @relation("DailyCashReconciliationClosedBy", fields: [closedById], references: [id])
+  closedById    String?
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+
+  @@index([status])
+}
+
+model BankReconciliation {
+  id                String                      @id @default(uuid())
+  bank              Bank                        @relation(fields: [bankId], references: [id])
+  bankId            String
+  statementDate     DateTime                    @db.Date
+  bookBalance       Decimal                     @default(0) @db.Decimal(12, 2)
+  statementBalance  Decimal                     @default(0) @db.Decimal(12, 2)
+  variance          Decimal                     @default(0) @db.Decimal(12, 2)
+  status            FinanceReconciliationStatus @default(open)
+  closedBy          Staff?                      @relation("BankReconciliationClosedBy", fields: [closedById], references: [id])
+  closedById        String?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@index([bankId, statementDate])
+  @@index([status])
+}
+
+model FinanceApproval {
+  id           String                @id @default(uuid())
+  type         FinanceApprovalType
+  amount       Decimal               @db.Decimal(12, 2)
+  requester    Staff                 @relation("FinanceApprovalRequester", fields: [requesterId], references: [id])
+  requesterId  String
+  status       FinanceApprovalStatus @default(pending)
+  entityRef    String?
+  detail       String?
+  note         String?
+  reason       String?
+  reviewedBy   Staff?                @relation("FinanceApprovalReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById String?
+  reviewedAt   DateTime?
+  submittedAt  DateTime              @default(now())
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([status])
+  @@index([requesterId])
+}
+
+model FiscalPeriod {
+  id         String             @id @default(uuid())
+  label      String
+  startDate  DateTime           @db.Date
+  endDate    DateTime           @db.Date
+  status     FiscalPeriodStatus @default(open)
+  closedAt   DateTime?
+  closedBy   Staff?             @relation("FiscalPeriodClosedBy", fields: [closedById], references: [id])
+  closedById String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  journalEntries JournalEntry[]
+
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model ChartOfAccount {
+  id        String             @id @default(uuid())
+  code      String             @unique
+  name      String
+  type      ChartOfAccountType
+  isActive  Boolean            @default(true)
+  balance   Decimal            @default(0) @db.Decimal(14, 2)
+  parent    ChartOfAccount?    @relation("ChartOfAccountHierarchy", fields: [parentId], references: [id])
+  parentId  String?
+  children  ChartOfAccount[]   @relation("ChartOfAccountHierarchy")
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  debitJournalEntries  JournalEntry[] @relation("JournalEntryDebitAccount")
+  creditJournalEntries JournalEntry[] @relation("JournalEntryCreditAccount")
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model JournalEntry {
+  id              String          @id @default(uuid())
+  entryDate       DateTime        @db.Date
+  reference       String          @unique
+  description     String
+  amount          Decimal         @db.Decimal(12, 2)
+  debitAccount    ChartOfAccount  @relation("JournalEntryDebitAccount", fields: [debitAccountId], references: [id])
+  debitAccountId  String
+  creditAccount   ChartOfAccount  @relation("JournalEntryCreditAccount", fields: [creditAccountId], references: [id])
+  creditAccountId String
+  fiscalPeriod    FiscalPeriod?   @relation(fields: [fiscalPeriodId], references: [id])
+  fiscalPeriodId  String?
+  createdBy       Staff           @relation("JournalEntryCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime        @default(now())
+
+  @@index([entryDate])
+  @@index([fiscalPeriodId])
+}
+
+model ExpenseBudget {
+  id           String   @id @default(uuid())
+  category     String
+  periodStart  DateTime @db.Date
+  periodEnd    DateTime @db.Date
+  budgetAmount Decimal  @db.Decimal(12, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category])
+  @@index([periodStart, periodEnd])
+}
+
 model ServiceCategory {
   id          String  @id @default(uuid())
   name        String  @unique
@@ -1032,7 +1211,8 @@ model Invoice {
 
   invoiceItems    InvoiceItem[]
   payments        InvoicePayment[]
-  refunds         InvoiceRefund[]
+  refunds              InvoiceRefund[]
+  itemRefundRequests   InvoiceItemRefundRequest[]
   walletTxns      WalletTransaction[]
   insuranceClaims InsuranceClaim[]
   auditLogs       InvoiceAuditLog[]
@@ -1118,6 +1298,8 @@ model InvoiceItem {
   drugReturns                InvoiceDrugReturn[]
   purchaseItemReturns        InvoicePurchaseItemReturn[]
   coverages                  InvoiceCoverage[]
+  refundRequests             InvoiceItemRefundRequest[]
+  refunds                    InvoiceRefund[]
 
   @@index([invoiceId])
   @@index([createdById])
@@ -1213,6 +1395,8 @@ model InvoiceRefund {
   id            String   @id @default(uuid())
   invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   invoiceId     String
+  invoiceItem   InvoiceItem? @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId String?
   amount        Decimal  @db.Decimal(12, 2)
   reason        String
   processedBy   Staff    @relation("InvoiceRefundProcessedBy", fields: [processedById], references: [id])
@@ -1221,8 +1405,36 @@ model InvoiceRefund {
   createdById   String?
   refundedAt    DateTime @default(now())
   createdAt     DateTime @default(now())
+  itemRefundRequest InvoiceItemRefundRequest?
 
   @@index([invoiceId, refundedAt])
+  @@index([invoiceItemId])
+}
+
+model InvoiceItemRefundRequest {
+  id              String                  @id @default(uuid())
+  invoice         Invoice                 @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId       String
+  invoiceItem     InvoiceItem?            @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId   String?
+  amount          Decimal                 @default(0) @db.Decimal(12, 2)
+  lineTotal       Decimal                 @db.Decimal(12, 2)
+  reason          String
+  status          InvoiceItemRefundStatus @default(pending)
+  requestedBy     Staff                   @relation("InvoiceItemRefundRequestedBy", fields: [requestedById], references: [id])
+  requestedById   String
+  reviewedBy      Staff?                  @relation("InvoiceItemRefundReviewedBy", fields: [reviewedById], references: [id])
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectReason    String?
+  submittedAt     DateTime                @default(now())
+  executedAt      DateTime?
+  invoiceRefund   InvoiceRefund?          @relation(fields: [invoiceRefundId], references: [id], onDelete: SetNull)
+  invoiceRefundId String?                 @unique
+
+  @@index([status, submittedAt])
+  @@index([invoiceId])
+  @@index([invoiceItemId])
 }
 
 model InvoiceAuditLog {
@@ -1478,6 +1690,13 @@ enum InvoicePaymentMethod {
   INSURANCE
   WAIVER
   WALLET
+}
+
+enum InvoiceItemRefundStatus {
+  pending
+  approved
+  rejected
+  cancelled
 }
 
 enum InvoiceAuditAction {
@@ -1984,6 +2203,8 @@ model Staff {
   invoicePaymentsCreated              InvoicePayment[]            @relation("InvoicePaymentCreatedBy")
   invoiceRefundsProcessed             InvoiceRefund[]             @relation("InvoiceRefundProcessedBy")
   invoiceRefundsCreated               InvoiceRefund[]             @relation("InvoiceRefundCreatedBy")
+  invoiceItemRefundsRequested         InvoiceItemRefundRequest[]  @relation("InvoiceItemRefundRequestedBy")
+  invoiceItemRefundsReviewed          InvoiceItemRefundRequest[]  @relation("InvoiceItemRefundReviewedBy")
   walletTransactionsCreated           WalletTransaction[]         @relation("WalletTransactionCreatedBy")
   invoiceAuditLogsPerformed           InvoiceAuditLog[]           @relation("InvoiceAuditLogPerformedBy")
   invoiceDrugReturnsPerformed         InvoiceDrugReturn[]         @relation("InvoiceDrugReturnPerformedBy")
@@ -2022,6 +2243,14 @@ model Staff {
   cmdReportTemplatesCreated          CmdReportTemplate[]            @relation("CmdReportTemplateCreatedBy")
   cmdIntegrationStatusesUpdated      CmdIntegrationStatus[]         @relation("CmdIntegrationStatusUpdatedBy")
   cmdComplianceItemsUpdated          CmdComplianceItem[]            @relation("CmdComplianceItemUpdatedBy")
+  financeComplianceItemsUpdated      FinanceComplianceItem[]        @relation("FinanceComplianceItemUpdatedBy")
+  dailyCashReconciliationsSubmitted  DailyCashReconciliation[]      @relation("DailyCashReconciliationSubmittedBy")
+  dailyCashReconciliationsClosed     DailyCashReconciliation[]      @relation("DailyCashReconciliationClosedBy")
+  bankReconciliationsClosed          BankReconciliation[]           @relation("BankReconciliationClosedBy")
+  financeApprovalsRequested          FinanceApproval[]              @relation("FinanceApprovalRequester")
+  financeApprovalsReviewed           FinanceApproval[]              @relation("FinanceApprovalReviewedBy")
+  fiscalPeriodsClosed                FiscalPeriod[]                 @relation("FiscalPeriodClosedBy")
+  journalEntriesCreated              JournalEntry[]                 @relation("JournalEntryCreatedBy")
 }
 
 /// One-time 6-digit codes for staff password reset (plain `code` in DB for admin handoff until SMTP).
@@ -2393,7 +2622,8 @@ model Bank {
   name          String
   accountNumber String @unique
 
-  invoicePayments InvoicePayment[]
+  invoicePayments     InvoicePayment[]
+  bankReconciliations BankReconciliation[]
 
   createdBy   Staff?  @relation("BankCreatedBy", fields: [createdById], references: [id])
   createdById String?
