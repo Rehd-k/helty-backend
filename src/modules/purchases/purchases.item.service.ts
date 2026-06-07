@@ -32,6 +32,7 @@ export class PurchasesItemService {
         unitOfMeasure: dto.unitOfMeasure?.trim() ?? null,
         reorderLevel: dto.reorderLevel ?? 0,
         reorderQuantity: dto.reorderQuantity ?? 0,
+        sellingPrice: new Prisma.Decimal(dto.sellingPrice ?? 0),
         createdById,
         updatedById: createdById,
       },
@@ -148,6 +149,9 @@ export class PurchasesItemService {
         }),
         ...(dto.reorderQuantity !== undefined && {
           reorderQuantity: dto.reorderQuantity,
+        }),
+        ...(dto.sellingPrice !== undefined && {
+          sellingPrice: new Prisma.Decimal(dto.sellingPrice),
         }),
         updatedById,
       },

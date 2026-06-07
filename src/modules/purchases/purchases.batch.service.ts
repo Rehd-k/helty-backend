@@ -57,7 +57,7 @@ export class PurchasesBatchService {
           sellingPrice:
             dto.sellingPrice != null
               ? new Prisma.Decimal(dto.sellingPrice)
-              : null,
+              : item.sellingPrice,
           fromLocationId,
           toLocationId,
           grnId: dto.grnId ?? null,

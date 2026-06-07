@@ -82,6 +82,7 @@ model Patient {
   gynaeProcedures           GynaeProcedure[]
   postnatalVisitsAsSubject  PostnatalVisit[]
   labOrders                 LabOrder[]
+  dialysisSessions          DialysisSession[]
   radiologyOrders           RadiologyOrder[]
   medicationOrders          MedicationOrder[]
   consumableUsageEvents     ConsumableUsageEvent[]
@@ -531,8 +532,9 @@ model Consumable {
   batches           ConsumableBatch[]
   prescriptionItems PrescriptionItem[]
   movements         ConsumableMovement[]
-  invoiceItems      InvoiceItem[]
-  usageEvents       ConsumableUsageEvent[]
+  invoiceItems             InvoiceItem[]
+  usageEvents              ConsumableUsageEvent[]
+  dialysisSessionConsumables DialysisSessionConsumable[]
 }
 
 model DrugBatch {
@@ -829,7 +831,8 @@ model ConsumableUsageEvent {
   performedById   String
   createdAt       DateTime                 @default(now())
 
-  allocations ConsumableStockAllocation[]
+  allocations                ConsumableStockAllocation[]
+  dialysisSessionConsumables DialysisSessionConsumable[]
 
   @@index([consumableId, createdAt])
   @@index([patientId, createdAt])
@@ -961,6 +964,7 @@ model Service {
 
   invoiceItems InvoiceItem[]
 
+  dialysisSessions DialysisSession[]
   waitingPatients  WaitingPatient[]
   hmoServicePrices HmoServicePrice[]
 }
@@ -1045,7 +1049,10 @@ model Invoice {
   vitals           PatientVitals?      @relation("InvoiceVitals", fields: [vitalsId], references: [id], onDelete: SetNull)
   vitalsId         String?             @unique
   labRequests      LabRequest[]
-  drugReturns      InvoiceDrugReturn[]
+  dialysisSessions           DialysisSession[]
+  dialysisSessionConsumables DialysisSessionConsumable[]
+  drugReturns                InvoiceDrugReturn[]
+  purchaseItemReturns        InvoicePurchaseItemReturn[]
 
   @@index([patientId])
   @@index([invoiceID])
@@ -1077,6 +1084,12 @@ model InvoiceItem {
   storeLocation   StoreLocation? @relation("InvoiceItemStoreLocation", fields: [storeLocationId], references: [id])
   storeLocationId String?
 
+  purchaseItem         PurchaseItem?      @relation(fields: [purchaseItemId], references: [id])
+  purchaseItemId       String?
+  /// Purchases location used for FIFO when this line is a purchase catalog item.
+  purchasesLocation    PurchasesLocation? @relation("InvoiceItemPurchasesLocation", fields: [purchasesLocationId], references: [id])
+  purchasesLocationId  String?
+
   customDescription String?
   createdBy         Staff?  @relation("InvoiceItemCreatedBy", fields: [createdById], references: [id])
   createdById       String?
@@ -1091,20 +1104,28 @@ model InvoiceItem {
   unitPrice                  Decimal                     @default(0) @db.Decimal(12, 2)
   amountPaid                 Decimal                     @default(0) @db.Decimal(12, 2)
   isRecurringDaily           Boolean                     @default(false)
+  createdAt                  DateTime                    @default(now())
   usageSegments              InvoiceItemUsageSegment[]
   allocations                InvoiceItemPayment[]
   consumableStockAllocations ConsumableStockAllocation[]
+  purchaseStockAllocations   PurchaseItemStockAllocation[]
   radiologyOrderItem         RadiologyOrderItem?
   labOrder                   LabOrder?
   labRequest                 LabRequest?
+  dialysisSession            DialysisSession?
+  dialysisSessionConsumables DialysisSessionConsumable[]
   medicationOrder            MedicationOrder?
   drugReturns                InvoiceDrugReturn[]
+  purchaseItemReturns        InvoicePurchaseItemReturn[]
   coverages                  InvoiceCoverage[]
 
   @@index([invoiceId])
   @@index([createdById])
   @@index([consumableId])
   @@index([storeLocationId])
+  @@index([purchaseItemId])
+  @@index([purchasesLocationId])
+  @@index([createdAt])
   @@index([dispensedById])
   @@index([dispensaryLocationId])
   @@index([dispensedAt])
@@ -1237,6 +1258,27 @@ model InvoiceDrugReturn {
   @@index([invoiceId, createdAt])
   @@index([drugId])
   @@index([dispensaryLocationId])
+}
+
+model InvoicePurchaseItemReturn {
+  id                  String            @id @default(uuid())
+  invoice             Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId           String
+  invoiceItem         InvoiceItem?      @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId       String?
+  purchaseItem        PurchaseItem      @relation(fields: [purchaseItemId], references: [id])
+  purchaseItemId      String
+  quantity            Int
+  purchasesLocation   PurchasesLocation @relation("InvoicePurchaseItemReturnLocation", fields: [purchasesLocationId], references: [id])
+  purchasesLocationId String
+  performedBy         Staff             @relation("InvoicePurchaseItemReturnPerformedBy", fields: [performedById], references: [id])
+  performedById       String
+  reason              String?
+  createdAt           DateTime          @default(now())
+
+  @@index([invoiceId, createdAt])
+  @@index([purchaseItemId])
+  @@index([purchasesLocationId])
 }
 
 // ─── Invoice Coverage / Receivables ──────────────────────────────────────────
@@ -1447,6 +1489,7 @@ enum InvoiceAuditAction {
   ITEM_UPDATED
   ITEM_REMOVED
   DRUG_RETURNED
+  PURCHASE_ITEM_RETURNED
   COVERAGE_APPLIED
   COVERAGE_REVERSED
   COVERAGE_REMITTANCE_RECORDED
@@ -1469,6 +1512,7 @@ enum AccountType {
   CMAC
   HMO
   PURCHASES
+  DIALYSIS
   SUPER_ADMIN
 }
 
@@ -1519,6 +1563,11 @@ enum StaffRole {
   PURCHASES_STORE
   PURCHASES_STAFF
   PURCHASES_HEAD
+  // Dialysis
+  DIALYSIS_HEAD
+  DIALYSIS_NURSE
+  DIALYSIS_TECH
+  DIALYSIS_RECEPTIONIST
   SUPER_ADMIN
 }
 
@@ -1899,6 +1948,9 @@ model Staff {
   gynaeProceduresAsSurgeon            GynaeProcedure[]            @relation("GynaeProcedureSurgeon")
   gynaeProceduresAsAssistant          GynaeProcedure[]            @relation("GynaeProcedureAssistant")
   labOrdersAsDoctor                   LabOrder[]                  @relation("LabOrderDoctor")
+  dialysisSessionsAsDoctor            DialysisSession[]           @relation("DialysisSessionDoctor")
+  dialysisSessionsAsPerformedBy       DialysisSession[]           @relation("DialysisSessionPerformedBy")
+  dialysisSessionConsumablesCreated   DialysisSessionConsumable[] @relation("DialysisSessionConsumableCreatedBy")
   labSamplesCollected                 LabSample[]                 @relation("LabSampleCollectedBy")
   labResultsEntered                   LabResult[]                 @relation("LabResultEnteredBy")
   chatMessagesSent                    ChatMessage[]               @relation("ChatMessageSender")
@@ -1935,6 +1987,8 @@ model Staff {
   walletTransactionsCreated           WalletTransaction[]         @relation("WalletTransactionCreatedBy")
   invoiceAuditLogsPerformed           InvoiceAuditLog[]           @relation("InvoiceAuditLogPerformedBy")
   invoiceDrugReturnsPerformed         InvoiceDrugReturn[]         @relation("InvoiceDrugReturnPerformedBy")
+  invoicePurchaseItemReturnsPerformed InvoicePurchaseItemReturn[] @relation("InvoicePurchaseItemReturnPerformedBy")
+  purchaseItemStockAllocationsPerformed PurchaseItemStockAllocation[] @relation("PurchaseItemStockAllocationPerformedBy")
 
   discountPoliciesOwned       DiscountPolicy[]     @relation("DiscountPolicyOwner")
   discountPoliciesCreated     DiscountPolicy[]     @relation("DiscountPolicyCreatedBy")
@@ -2749,6 +2803,13 @@ enum LabOrderStatus {
   VERIFIED
 }
 
+enum DialysisSessionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
 enum LabTestFieldType {
   TEXT
   NUMBER
@@ -2841,6 +2902,62 @@ model LabOrder {
   @@index([status])
   @@index([invoiceItemId])
   @@index([completedAt])
+}
+
+model DialysisSession {
+  id            String                @id @default(uuid())
+  patientId     String
+  status        DialysisSessionStatus @default(PENDING)
+  invoice       Invoice?              @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceId     String?
+  invoiceItem   InvoiceItem?          @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId String?               @unique
+  service       Service?              @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceId     String?
+  doctor        Staff?                @relation("DialysisSessionDoctor", fields: [doctorId], references: [id], onDelete: SetNull)
+  doctorId      String?
+  performedBy   Staff?                @relation("DialysisSessionPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+  performedById String?
+  machineId     String?
+  notes         String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  consumables DialysisSessionConsumable[]
+  patient     Patient                   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([patientId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([invoiceItemId])
+}
+
+model DialysisSessionConsumable {
+  id              String   @id @default(uuid())
+  sessionId       String
+  consumableId    String
+  storeLocationId String
+  quantity        Int
+  unitPrice       Decimal  @db.Decimal(12, 2)
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoiceId       String?
+  invoiceItem     InvoiceItem? @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+  invoiceItemId   String?
+  usageEvent      ConsumableUsageEvent? @relation(fields: [usageEventId], references: [id], onDelete: SetNull)
+  usageEventId    String?
+  createdAt       DateTime @default(now())
+  createdBy       Staff?   @relation("DialysisSessionConsumableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById     String?
+
+  session       DialysisSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  consumable    Consumable       @relation(fields: [consumableId], references: [id], onDelete: Restrict)
+  storeLocation StoreLocation    @relation(fields: [storeLocationId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId])
+  @@index([consumableId])
+  @@index([storeLocationId])
 }
 
 model LabOrderItem {
@@ -3509,7 +3626,8 @@ model StoreLocation {
   consumableBatches     ConsumableBatch[]
   consumableMovements   ConsumableMovement[]
   consumableUsageEvents ConsumableUsageEvent[]
-  invoiceItemsFromStore InvoiceItem[]          @relation("InvoiceItemStoreLocation")
+  invoiceItemsFromStore      InvoiceItem[]               @relation("InvoiceItemStoreLocation")
+  dialysisSessionConsumables DialysisSessionConsumable[]
 }
 
 model StoreStock {
@@ -3561,6 +3679,11 @@ model StoreStockMovement {
 // ─────────────────────────────────────────────────────────────────────────────
 // PURCHASES MODULE
 // ─────────────────────────────────────────────────────────────────────────────
+
+enum PurchaseItemAllocationDirection {
+  OUT
+  IN
+}
 
 enum PurchasesLocationType {
   STORE
@@ -3617,6 +3740,7 @@ enum PurchasesMovementReferenceType {
   GOODS_RECEIPT
   ADJUSTMENT
   REQUISITION
+  INVOICE_ITEM
 }
 
 enum RequisitionLinePriority {
@@ -3675,6 +3799,7 @@ model PurchaseItem {
   unitOfMeasure   String?
   reorderLevel    Int                  @default(0)
   reorderQuantity Int                  @default(0)
+  sellingPrice    Decimal              @default(0) @db.Decimal(12, 2)
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   deletedAt       DateTime?
@@ -3688,6 +3813,8 @@ model PurchaseItem {
   goodsReceiptItems    PurchasesGoodsReceiptItem[]
   inventoryMovements   PurchasesInventoryMovement[]
   requisitionLines     RequisitionLine[]
+  invoiceItems         InvoiceItem[]
+  purchaseItemReturns  InvoicePurchaseItemReturn[]
 
   @@index([manufacturerId])
   @@index([itemName])
@@ -3715,6 +3842,8 @@ model PurchasesLocation {
   inventoryMovementsTo     PurchasesInventoryMovement[] @relation("PurchasesInventoryMovementToLocation")
   stockTransfersFrom       PurchasesStockTransfer[]     @relation("PurchasesStockTransferFromLocation")
   stockTransfersTo         PurchasesStockTransfer[]     @relation("PurchasesStockTransferToLocation")
+  invoiceItems             InvoiceItem[]                @relation("InvoiceItemPurchasesLocation")
+  purchaseItemReturns      InvoicePurchaseItemReturn[]  @relation("InvoicePurchaseItemReturnLocation")
 }
 
 model PurchaseItemBatch {
@@ -3742,6 +3871,7 @@ model PurchaseItemBatch {
 
   movements     PurchasesInventoryMovement[]
   transferLines PurchasesStockTransferLine[]
+  stockAllocations PurchaseItemStockAllocation[]
 
   @@index([itemId])
   @@index([supplierId])
@@ -3769,6 +3899,26 @@ model PurchasesInventoryMovement {
 
   @@index([batchId])
   @@index([itemId])
+  @@index([createdAt])
+}
+
+/// Per-batch audit of stock OUT (invoice) and IN (returns), with price snapshots.
+model PurchaseItemStockAllocation {
+  id                   String                          @id @default(uuid())
+  batch                PurchaseItemBatch               @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  batchId              String
+  direction            PurchaseItemAllocationDirection
+  quantity             Int
+  costPriceSnapshot    Decimal?                        @db.Decimal(12, 2)
+  sellingPriceSnapshot Decimal?                        @db.Decimal(12, 2)
+  invoiceItem          InvoiceItem?                    @relation(fields: [invoiceItemId], references: [id], onDelete: Cascade)
+  invoiceItemId        String?
+  performedBy          Staff                           @relation("PurchaseItemStockAllocationPerformedBy", fields: [performedById], references: [id])
+  performedById        String
+  createdAt            DateTime                        @default(now())
+
+  @@index([batchId])
+  @@index([invoiceItemId])
   @@index([createdAt])
 }
 

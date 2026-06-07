@@ -1,8 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, PurchasesOrderStatus, RequisitionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PurchasesDashboardQueryDto } from './dto/dashboard.dto';
+import {
+  PurchasesDashboardQueryDto,
+  PurchasesUsageHistoryQueryDto,
+} from './dto/dashboard.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+
+function toNumber(v: Prisma.Decimal | number | null | undefined): number {
+  if (v == null) return 0;
+  return typeof v === 'number' ? v : Number(v);
+}
 
 @Injectable()
 export class PurchasesDashboardService {
@@ -246,5 +254,114 @@ export class PurchasesDashboardService {
           ? Math.round((v.leadTimeSum / v.onTimeDeliveries) * 10) / 10
           : 0,
     }));
+  }
+
+  async getUsageHistory(q: PurchasesUsageHistoryQueryDto) {
+    const { from, to } = parseDateRange(q.fromDate, q.toDate);
+    const skip = Math.max(0, q.skip ?? 0);
+    const take = Math.min(Math.max(1, q.take ?? 20), 100);
+    const patientQuery = q.patientQuery?.trim();
+
+    const where: Prisma.InvoiceItemWhereInput = {
+      purchaseItemId: { not: null },
+      createdAt: { gte: from, lte: to },
+      ...(q.purchaseItemId ? { purchaseItemId: q.purchaseItemId } : {}),
+      ...(q.purchasesLocationId
+        ? { purchasesLocationId: q.purchasesLocationId }
+        : {}),
+      ...(patientQuery
+        ? {
+            invoice: {
+              patient: {
+                OR: [
+                  {
+                    patientId: { contains: patientQuery, mode: 'insensitive' },
+                  },
+                  {
+                    firstName: { contains: patientQuery, mode: 'insensitive' },
+                  },
+                  { surname: { contains: patientQuery, mode: 'insensitive' } },
+                ],
+              },
+            },
+          }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.invoiceItem.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          purchaseItem: {
+            select: { id: true, itemName: true, sku: true },
+          },
+          purchasesLocation: {
+            select: { id: true, name: true, locationType: true },
+          },
+          createdBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          invoice: {
+            select: {
+              id: true,
+              invoiceID: true,
+              encounterId: true,
+              patient: {
+                select: {
+                  id: true,
+                  patientId: true,
+                  firstName: true,
+                  surname: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.invoiceItem.count({ where }),
+    ]);
+
+    return {
+      data: rows.map((row) => ({
+        invoiceItemId: row.id,
+        invoiceUUID: row.invoice.id,
+        invoiceId: row.invoice.invoiceID,
+        issuedAt: row.createdAt,
+        encounterId: row.invoice.encounterId,
+        quantity: row.quantity,
+        unitPrice: toNumber(row.unitPrice),
+        amountPaid: toNumber(row.amountPaid),
+        purchaseItem: {
+          id: row.purchaseItemId,
+          name: row.purchaseItem?.itemName ?? 'Unknown',
+          sku: row.purchaseItem?.sku ?? null,
+        },
+        patient: {
+          id: row.invoice.patient.id,
+          patientId: row.invoice.patient.patientId,
+          name: `${row.invoice.patient.firstName ?? ''} ${row.invoice.patient.surname ?? ''}`.trim(),
+        },
+        purchasesLocation: row.purchasesLocation
+          ? {
+              id: row.purchasesLocation.id,
+              name: row.purchasesLocation.name,
+              locationType: row.purchasesLocation.locationType,
+            }
+          : null,
+        issuedBy: row.createdBy
+          ? {
+              id: row.createdBy.id,
+              name: `${row.createdBy.firstName ?? ''} ${row.createdBy.lastName ?? ''}`.trim(),
+            }
+          : null,
+      })),
+      total,
+      skip,
+      take,
+      window: { from: from.toISOString(), to: to.toISOString() },
+    };
   }
 }

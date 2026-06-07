@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -41,13 +42,6 @@ export class CreatePurchasesStockTransferDto {
   items: CreatePurchasesStockTransferLineDto[];
 }
 
-export class UpdatePurchasesStockTransferDto {
-  @ApiPropertyOptional({ enum: PurchasesStockTransferStatus })
-  @IsOptional()
-  @IsEnum(PurchasesStockTransferStatus)
-  status?: PurchasesStockTransferStatus;
-}
-
 export class ListPurchasesStockTransferDto extends PaginationDto {
   @ApiPropertyOptional({ enum: PurchasesStockTransferStatus })
   @IsOptional()
@@ -58,6 +52,21 @@ export class ListPurchasesStockTransferDto extends PaginationDto {
   @IsOptional()
   @IsUUID()
   itemId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by from location' })
+  @IsOptional()
+  @IsUUID()
+  fromLocationId?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by to location' })
+  @IsOptional()
+  @IsUUID()
+  toLocationId?: string;
+
+  @ApiPropertyOptional({ enum: ['createdAt', 'status', 'completedAt'] })
+  @IsOptional()
+  @IsIn(['createdAt', 'status', 'completedAt'])
+  sortBy?: 'createdAt' | 'status' | 'completedAt' = undefined;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -32,6 +32,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { invoiceLinkException } from '../../common/exceptions/invoice-link.exception';
 import {
+  DIALYSIS_BILLING_CATEGORIES,
   LAB_BILLING_CATEGORIES,
   RADIOLOGY_BILLING_CATEGORY,
   CONSULTATION_BILLING_CATEGORY,
@@ -40,6 +41,7 @@ import {
   PROCEDURE_BILLING_CATEGORIES,
 } from './invoice-link.constants';
 import { ConsumableStockService } from '../store/consumable-stock.service';
+import { PurchaseItemStockService } from '../purchases/purchase-item-stock.service';
 
 const INVOICE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -69,6 +71,7 @@ export class InvoiceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly consumableStock: ConsumableStockService,
+    private readonly purchaseItemStock: PurchaseItemStockService,
   ) { }
 
   private readonly dayMs = 24 * 60 * 60 * 1000;
@@ -87,6 +90,34 @@ export class InvoiceService {
       },
       orderBy: { updatedAt: 'desc' },
     });
+  }
+
+  /** Returns an open invoice for the patient, creating a new PENDING one when none exists. */
+  async ensureOpenInvoiceForPatient(
+    patientId: string,
+    staffId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ): Promise<{ id: string }> {
+    const open = await this.findOpenInvoiceForPatient(patientId, tx);
+    if (open) return { id: open.id };
+    const staff = await tx.staff.findUnique({
+      where: { id: staffId },
+      select: { id: true },
+    });
+    if (!staff) {
+      throw new NotFoundException(`Staff "${staffId}" not found.`);
+    }
+    const invoice = await tx.invoice.create({
+      data: {
+        invoiceID: generateInvoiceHumanId(),
+        patientId,
+        status: InvoiceStatus.PENDING,
+        createdById: staffId,
+        staffId,
+      },
+      select: { id: true },
+    });
+    return { id: invoice.id };
   }
 
   private async assertConsultingRoomExists(consultingRoomId: string) {
@@ -287,7 +318,7 @@ export class InvoiceService {
       invoiceItemId: string;
       serviceId: string;
       patientId: string;
-      mode: 'radiology' | 'lab';
+      mode: 'radiology' | 'lab' | 'dialysis';
     },
     options?: { requirePayment?: boolean },
   ): Promise<void> {
@@ -372,7 +403,7 @@ export class InvoiceService {
           'This paid invoice item has already been used for a radiology order item.',
         );
       }
-    } else {
+    } else if (params.mode === 'lab') {
       const okCat = LAB_BILLING_CATEGORIES.some(
         (c) =>
           !!categoryName &&
@@ -391,6 +422,27 @@ export class InvoiceService {
         throw invoiceLinkException(
           'INVOICE_ITEM_ALREADY_CONSUMED',
           'This paid invoice item has already been used for a lab order.',
+        );
+      }
+    } else {
+      const okCat = DIALYSIS_BILLING_CATEGORIES.some(
+        (c) =>
+          !!categoryName &&
+          categoryName.trim().toLowerCase() === c.trim().toLowerCase(),
+      );
+      if (!okCat) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_CATEGORY_MISMATCH',
+          'This invoice line is not a dialysis service.',
+        );
+      }
+      const existing = await tx.dialysisSession.findFirst({
+        where: { invoiceItemId: params.invoiceItemId },
+      });
+      if (existing) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_ALREADY_CONSUMED',
+          'This paid invoice item has already been used for a dialysis session.',
         );
       }
     }
@@ -661,7 +713,7 @@ export class InvoiceService {
   /** When auto-adding a service line from an encounter, enforce Radiology vs Lab category rules. */
   async assertServiceCategoryForEncounterBilling(
     serviceId: string,
-    mode: 'radiology' | 'lab',
+    mode: 'radiology' | 'lab' | 'dialysis',
   ): Promise<void> {
     const svc = await this.prisma.service.findUnique({
       where: { id: serviceId },
@@ -682,7 +734,7 @@ export class InvoiceService {
           'Encounter billing for imaging/radiology must use a Radiology & Imaging service.',
         );
       }
-    } else {
+    } else if (mode === 'lab') {
       const okCat = LAB_BILLING_CATEGORIES.some(
         (c) => !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
       );
@@ -690,6 +742,16 @@ export class InvoiceService {
         throw invoiceLinkException(
           'INVOICE_ITEM_CATEGORY_MISMATCH',
           'Encounter billing for laboratory orders must use a Laboratory service category.',
+        );
+      }
+    } else {
+      const okCat = DIALYSIS_BILLING_CATEGORIES.some(
+        (c) => !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
+      );
+      if (!okCat) {
+        throw invoiceLinkException(
+          'INVOICE_ITEM_CATEGORY_MISMATCH',
+          'Encounter billing for dialysis must use a Dialysis service category.',
         );
       }
     }
@@ -1194,6 +1256,19 @@ export class InvoiceService {
             dosageForm: true,
           },
         },
+        purchasesLocation: {
+          select: {
+            id: true,
+            name: true
+          },
+        },
+        purchaseItem: {
+          select: {
+            id: true,
+            itemName: true
+          },
+
+        },
         createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
       },
     },
@@ -1262,12 +1337,61 @@ export class InvoiceService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
-    console.log('invoices', invoices);
     return { invoices, total, skip, take };
   }
 
   /**
+   * Waiting-room filter for PAID invoices not linked to an active encounter.
+   * Includes return OPD visits while consultation credit is still consumable
+   * (even when `updatedAt` is outside the requested date range), and omits
+   * consultation-only invoices whose credit is expired or fully used.
+   */
+  private static paidWithoutEncounterWhere(
+    from: Date,
+    to: Date,
+    now: Date,
+    patientStatus: PatientStatus,
+    patientPkScope: Prisma.InvoiceWhereInput,
+  ): Prisma.InvoiceWhereInput {
+    const consumableConsultation =
+      InvoiceService.consumableConsultationItemWhere(now);
+    const consultationCategory = InvoiceService.consultationCategoryWhere();
+
+    return {
+      ...patientPkScope,
+      status: InvoiceStatus.PAID,
+      encounterId: null,
+      patient: { status: patientStatus },
+      OR: [
+        { invoiceItems: { some: consumableConsultation } },
+        {
+          updatedAt: { gte: from, lte: to },
+          OR: [
+            {
+              NOT: {
+                invoiceItems: {
+                  some: { service: { category: consultationCategory } },
+                },
+              },
+            },
+            { invoiceItems: { some: consumableConsultation } },
+            {
+              invoiceItems: {
+                some: {
+                  service: { category: { NOT: consultationCategory } },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  /**
    * Paginated PAID invoices with no linked encounter (`encounterId` is null).
+   * Consultation lines expose `consultationVisitsConsumed`,
+   * `consultationCreditExpiresAt`, and `settled` on each `invoiceItem`.
    */
   async findPaidWithoutEncounter(
     params: DateRangeSkipTakeDto & {
@@ -1284,13 +1408,13 @@ export class InvoiceService {
     const patientPkScope: Prisma.InvoiceWhereInput = patientId?.trim()
       ? { patientId: patientId.trim() }
       : {};
-    const where: Prisma.InvoiceWhereInput = {
-      ...patientPkScope,
-      status: InvoiceStatus.PAID,
-      encounterId: null,
-      updatedAt: { gte: from, lte: to },
-      patient: { status: patientStatus },
-    };
+    const where = InvoiceService.paidWithoutEncounterWhere(
+      from,
+      to,
+      new Date(),
+      patientStatus,
+      patientPkScope,
+    );
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
@@ -1656,6 +1780,14 @@ export class InvoiceService {
         'An invoice line cannot reference both a drug and a consumable.',
       );
     }
+    const stockLineCount = [dto.drugId, dto.consumableId, dto.purchaseItemId].filter(
+      Boolean,
+    ).length;
+    if (stockLineCount > 1) {
+      throw new BadRequestException(
+        'An invoice line cannot reference more than one of drug, consumable, or purchase item.',
+      );
+    }
     if (dto.consumableId) {
       if (!dto.storeLocationId) {
         throw new BadRequestException(
@@ -1674,6 +1806,21 @@ export class InvoiceService {
         );
       }
     }
+    if (dto.purchaseItemId) {
+      if (!dto.purchasesLocationId) {
+        throw new BadRequestException(
+          'purchasesLocationId is required when adding a purchase item invoice line.',
+        );
+      }
+      const purchaseItem = await this.prisma.purchaseItem.findFirst({
+        where: { id: dto.purchaseItemId, deletedAt: null },
+      });
+      if (!purchaseItem) {
+        throw new NotFoundException(
+          `Purchase item "${dto.purchaseItemId}" not found.`,
+        );
+      }
+    }
 
     const creator =
       await this.resolveOptionalInvoiceItemCreator(createdByStaffId);
@@ -1681,6 +1828,15 @@ export class InvoiceService {
       createdByStaffId ?? invoice.createdById ?? invoice.staffId;
 
     const qty = dto.quantity ?? 1;
+
+    let serviceUnitPrice: Prisma.Decimal | undefined;
+    if (dto.serviceId && dto.unitPrice === undefined) {
+      const resolved = await this.resolveServiceUnitPrice(
+        invoice.patientId,
+        dto.serviceId,
+      );
+      serviceUnitPrice = resolved.unitPrice;
+    }
 
     if (dto.consumableId && dto.storeLocationId) {
       const item = await this.prisma.$transaction(async (tx) => {
@@ -1733,13 +1889,78 @@ export class InvoiceService {
       return item;
     }
 
+    if (dto.purchaseItemId && dto.purchasesLocationId) {
+      const purchaseItem = await this.prisma.purchaseItem.findFirstOrThrow({
+        where: { id: dto.purchaseItemId, deletedAt: null },
+      });
+      const unitPrice =
+        dto.unitPrice !== undefined
+          ? this.asDecimal(dto.unitPrice)
+          : purchaseItem.sellingPrice;
+
+      const item = await this.prisma.$transaction(async (tx) => {
+        await this.purchaseItemStock.assertPurchasesLocation(
+          tx,
+          dto.purchasesLocationId!,
+        );
+        await this.purchaseItemStock.assertEnoughStock(
+          tx,
+          dto.purchaseItemId!,
+          dto.purchasesLocationId!,
+          qty,
+        );
+
+        const row = await tx.invoiceItem.create({
+          data: {
+            invoiceId,
+            serviceId: dto.serviceId ?? null,
+            drugId: null,
+            consumableId: null,
+            purchaseItemId: dto.purchaseItemId!,
+            purchasesLocationId: dto.purchasesLocationId!,
+            quantity: qty,
+            unitPrice,
+            isRecurringDaily: dto.isRecurringDaily ?? false,
+            ...creator,
+          },
+          include: {
+            service: {
+              select: { id: true, name: true, description: true, cost: true },
+            },
+            purchaseItem: {
+              select: { id: true, itemName: true, sku: true, sellingPrice: true },
+            },
+            purchasesLocation: { select: { id: true, name: true } },
+            invoice: { select: { id: true, status: true, patientId: true } },
+            createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+          },
+        });
+
+        await this.purchaseItemStock.applyFifoOut(tx, {
+          purchaseItemId: dto.purchaseItemId!,
+          purchasesLocationId: dto.purchasesLocationId!,
+          quantity: qty,
+          performedById,
+          invoiceItemId: row.id,
+        });
+
+        await this.recalculateInvoiceTotals(invoiceId, tx);
+        return row;
+      });
+
+      return item;
+    }
+
     const item = await this.prisma.invoiceItem.create({
       data: {
         invoiceId,
         serviceId: dto.serviceId,
         drugId: dto.drugId,
         quantity: qty,
-        unitPrice: this.asDecimal(dto.unitPrice ?? 0),
+        unitPrice:
+          dto.unitPrice !== undefined
+            ? this.asDecimal(dto.unitPrice)
+            : (serviceUnitPrice ?? new Prisma.Decimal(0)),
         isRecurringDaily: dto.isRecurringDaily ?? false,
         ...creator,
       },
@@ -1848,6 +2069,57 @@ export class InvoiceService {
       });
     }
 
+    if (existing.purchaseItemId && existing.purchasesLocationId) {
+      const purchaseItemId = existing.purchaseItemId;
+      const purchasesLocationId = existing.purchasesLocationId;
+      const nextQty = dto.quantity ?? existing.quantity;
+      const nextPrice =
+        dto.unitPrice !== undefined
+          ? this.asDecimal(dto.unitPrice)
+          : existing.unitPrice;
+
+      return this.prisma.$transaction(async (tx) => {
+        await this.purchaseItemStock.releaseFifoOutForInvoiceItem(
+          tx,
+          itemId,
+          performedById,
+        );
+
+        const updated = await tx.invoiceItem.update({
+          where: { id: itemId },
+          data: {
+            quantity: nextQty,
+            unitPrice: nextPrice,
+          },
+          include: {
+            service: { select: { id: true, name: true, cost: true } },
+            purchaseItem: { select: { id: true, itemName: true } },
+            purchasesLocation: { select: { id: true, name: true } },
+            createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+          },
+        });
+
+        if (nextQty > 0) {
+          await this.purchaseItemStock.assertEnoughStock(
+            tx,
+            purchaseItemId,
+            purchasesLocationId,
+            nextQty,
+          );
+          await this.purchaseItemStock.applyFifoOut(tx, {
+            purchaseItemId,
+            purchasesLocationId,
+            quantity: nextQty,
+            performedById,
+            invoiceItemId: itemId,
+          });
+        }
+
+        await this.recalculateInvoiceTotals(invoiceId, tx);
+        return updated;
+      });
+    }
+
     const updated = await this.prisma.invoiceItem.update({
       where: { id: itemId },
       data: {
@@ -1913,6 +2185,15 @@ export class InvoiceService {
       );
     }
 
+    if (item.purchaseItemId) {
+      const performedById = item.invoice.staffId;
+      await this.purchaseItemStock.releaseFifoOutForInvoiceItem(
+        tx,
+        invoiceItemId,
+        performedById,
+      );
+    }
+
     await tx.invoiceItem.delete({ where: { id: invoiceItemId } });
     await this.recalculateInvoiceTotals(item.invoice.id, tx);
   }
@@ -1940,6 +2221,20 @@ export class InvoiceService {
       const performedById = invoice.staffId;
       return this.prisma.$transaction(async (tx) => {
         await this.consumableStock.releaseFifoOutForInvoiceItem(
+          tx,
+          itemId,
+          performedById,
+        );
+        const deleted = await tx.invoiceItem.delete({ where: { id: itemId } });
+        await this.recalculateInvoiceTotals(invoiceId, tx);
+        return deleted;
+      });
+    }
+
+    if (existing.purchaseItemId) {
+      const performedById = invoice.staffId;
+      return this.prisma.$transaction(async (tx) => {
+        await this.purchaseItemStock.releaseFifoOutForInvoiceItem(
           tx,
           itemId,
           performedById,
@@ -2700,6 +2995,8 @@ export class InvoiceService {
                   drug: {
                     select: { id: true, genericName: true, brandName: true },
                   },
+                  purchaseItem: { select: { id: true, itemName: true } },
+                  purchasesLocation: { select: { id: true, name: true } },
                   createdBy: {
                     select: InvoiceService.invoiceItemCreatedBySelect,
                   },
@@ -3288,12 +3585,19 @@ export class InvoiceService {
     drugId?: string;
     quantity?: number;
   }) {
+    if (!params.serviceId) {
+      throw new BadRequestException('serviceId is required');
+    }
     const service = await this.prisma.service.findUnique({
       where: { id: params.serviceId },
     });
     if (!service) {
       throw new NotFoundException(`Service ${params.serviceId} not found`);
     }
+    const { unitPrice } = await this.resolveServiceUnitPrice(
+      params.patientId,
+      params.serviceId,
+    );
     const quantity = params.quantity ?? 1;
 
     const include = {
@@ -3323,7 +3627,7 @@ export class InvoiceService {
           serviceId: params.serviceId,
           drugId: params.drugId,
           quantity,
-          unitPrice: service.cost,
+          unitPrice: unitPrice.toNumber(),
         },
         params.staffId,
       );
@@ -3349,7 +3653,7 @@ export class InvoiceService {
           create: {
             serviceId: params.serviceId,
             quantity,
-            unitPrice: this.asDecimal(service.cost),
+            unitPrice,
             ...lineCreator,
           },
         },
@@ -3401,6 +3705,47 @@ export class InvoiceService {
     }
 
     return multiplier;
+  }
+
+  /**
+   * Resolve the unit price for a service line from the patient's HMO tariff or standard catalog cost.
+   */
+  async resolveServiceUnitPrice(
+    patientId: string,
+    serviceId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ): Promise<{ unitPrice: Prisma.Decimal; source: 'hmo' | 'standard' }> {
+    const service = await tx.service.findUnique({
+      where: { id: serviceId },
+      select: { id: true, cost: true },
+    });
+    if (!service) {
+      throw new NotFoundException(`Service ${serviceId} not found`);
+    }
+
+    const patient = await tx.patient.findUnique({
+      where: { id: patientId },
+      select: { hmoId: true },
+    });
+    if (!patient) {
+      throw new NotFoundException(`Patient ${patientId} not found`);
+    }
+
+    const standardCost = this.asDecimal(service.cost);
+
+    if (patient.hmoId) {
+      const hmoPrice = await tx.hmoServicePrice.findUnique({
+        where: {
+          hmoId_serviceId: { hmoId: patient.hmoId, serviceId },
+        },
+        select: { fullCost: true },
+      });
+      if (hmoPrice) {
+        return { unitPrice: this.asDecimal(hmoPrice.fullCost), source: 'hmo' };
+      }
+    }
+
+    return { unitPrice: standardCost, source: 'standard' };
   }
 
   private resolveDrugUnitPrice(

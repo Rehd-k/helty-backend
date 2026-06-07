@@ -20,6 +20,7 @@ import { PurchasesStockTransferController } from './purchases.stock-transfer.con
 import { PurchasesStockTransferService } from './purchases.stock-transfer.service';
 import { PurchasesDashboardController } from './purchases.dashboard.controller';
 import { PurchasesDashboardService } from './purchases.dashboard.service';
+import { PurchaseItemStockService } from './purchase-item-stock.service';
 
 @Module({
   imports: [PrismaModule],
@@ -46,11 +47,13 @@ import { PurchasesDashboardService } from './purchases.dashboard.service';
     PurchasesGoodsReceiptService,
     PurchasesStockTransferService,
     PurchasesDashboardService,
+    PurchaseItemStockService,
   ],
   exports: [
     PurchasesRequisitionService,
     PurchasesItemService,
     PurchasesPurchaseOrderService,
+    PurchaseItemStockService,
   ],
 })
 export class PurchasesModule {}

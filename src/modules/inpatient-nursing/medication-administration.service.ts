@@ -71,17 +71,11 @@ export class MedicationAdministrationService {
         'Medication order does not belong to this admission.',
       );
     }
-
-    // console.log(order)
-
-
     const { quantity, isOverMedication } = this.buildAdministrationQuantityFields(
       order,
       dto.status,
       dto.quantity,
     );
-    // console.log(quantity, dto, isOverMedication)
-
     return this.prisma.medicationAdministration.create({
       data: {
         admissionId,

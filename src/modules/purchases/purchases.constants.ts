@@ -5,6 +5,11 @@ export const PURCHASES_ACCESS = [
   'PURCHASES_STAFF',
   'PURCHASES_HEAD',
   'SUPER_ADMIN',
+  'NURSE',
+  'PHYSICIAN',
+  'LABORATORY',
+  'RADIOLOGY',
+  'OTHER',
 ] as const;
 
 export const PURCHASES_HEAD_ACCESS = ['PURCHASES_HEAD', 'SUPER_ADMIN'] as const;

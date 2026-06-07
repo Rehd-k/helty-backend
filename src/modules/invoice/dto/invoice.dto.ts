@@ -206,6 +206,22 @@ export class AddInvoiceItemDto {
   storeLocationId?: string;
 
   @ApiPropertyOptional({
+    description:
+      'UUID of a purchase catalog item. Requires purchasesLocationId; mutually exclusive with drugId and consumableId.',
+  })
+  @IsUUID()
+  @IsOptional()
+  purchaseItemId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Purchases location for FIFO stock when adding a purchase item line (required with purchaseItemId).',
+  })
+  @IsUUID()
+  @IsOptional()
+  purchasesLocationId?: string;
+
+  @ApiPropertyOptional({
     description: 'Quantity of the service rendered',
     example: 1,
     default: 1,
@@ -215,8 +231,9 @@ export class AddInvoiceItemDto {
   @IsOptional()
   quantity?: number;
 
-  @ApiProperty({
-    description: 'Unit price used for this line item',
+  @ApiPropertyOptional({
+    description:
+      'Unit price snapshot for this line. When omitted for a service line, the server resolves HMO tariff (if patient is registered) or standard Service.cost.',
     example: 3500,
   })
   @IsNumber()
@@ -311,6 +328,18 @@ export class ReturnDrugInvoiceItemDto {
 }
 
 export class ReturnConsumableInvoiceItemDto {
+  @ApiProperty({ description: 'Units being returned', example: 2 })
+  @IsInt()
+  @IsPositive()
+  quantity!: number;
+
+  @ApiPropertyOptional({ description: 'Optional reason for the return' })
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+
+export class ReturnPurchaseInvoiceItemDto {
   @ApiProperty({ description: 'Units being returned', example: 2 })
   @IsInt()
   @IsPositive()

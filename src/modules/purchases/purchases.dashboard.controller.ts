@@ -4,7 +4,7 @@ import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { PURCHASES_ACCESS } from './purchases.constants';
 import { PurchasesDashboardService } from './purchases.dashboard.service';
-import { PurchasesDashboardQueryDto } from './dto/dashboard.dto';
+import { PurchasesDashboardQueryDto, PurchasesUsageHistoryQueryDto } from './dto/dashboard.dto';
 
 @ApiTags('Purchases - Dashboard')
 @Controller('purchases/dashboard')
@@ -37,5 +37,11 @@ export class PurchasesDashboardController {
   @Get('supplier-performance')
   supplierPerformance(@Query() query: PurchasesDashboardQueryDto) {
     return this.service.getSupplierPerformance(query);
+  }
+
+  @Get('usage-history')
+  @ApiOperation({ summary: 'Purchase item usage history from invoice lines' })
+  usageHistory(@Query() query: PurchasesUsageHistoryQueryDto) {
+    return this.service.getUsageHistory(query);
   }
 }

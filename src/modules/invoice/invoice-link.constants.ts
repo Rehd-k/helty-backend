@@ -6,6 +6,11 @@ export const LAB_BILLING_CATEGORIES = [
   'Laboratory Tests',
 ] as const;
 
+export const DIALYSIS_BILLING_CATEGORIES = [
+  'Dialysis',
+  'Dialysis Services',
+] as const;
+
 export const CONSULTATION_BILLING_CATEGORY = 'Consultations & Reviews';
 
 /** Paid consultation lines may fund this many completed OPD encounters. */

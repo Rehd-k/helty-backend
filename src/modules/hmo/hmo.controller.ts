@@ -27,6 +27,7 @@ import {
   UpdateHmoDto,
   QueryHmoDto,
   QueryHmoPatientsDto,
+  UpsertHmoServicePricesDto,
 } from './dto/hmo.dto';
 
 @ApiTags('HMO')
@@ -65,6 +66,42 @@ export class HmoController {
   @ApiNotFoundResponse({ description: 'HMO not found' })
   findPatients(@Param('id') id: string, @Query() query: QueryHmoPatientsDto) {
     return this.hmoService.findPatients(id, query);
+  }
+
+  @Patch(':id/service-prices')
+  @ApiOperation({
+    summary: 'Upsert HMO service prices',
+    description:
+      'Creates or updates price rows for the given services. Prices for services not in the payload are kept unchanged.',
+  })
+  @ApiParam({ name: 'id', description: 'HMO UUID' })
+  @ApiOkResponse({ description: 'Updated HMO with service prices' })
+  @ApiNotFoundResponse({ description: 'HMO not found' })
+  @AccountTypes('HMO', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN')
+  upsertServicePrices(
+    @Param('id') id: string,
+    @Body() dto: UpsertHmoServicePricesDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.hmoService.upsertServicePrices(id, dto, req);
+  }
+
+  @Delete(':id/service-prices/:serviceId')
+  @ApiOperation({
+    summary: 'Remove one HMO service price',
+    description: 'Deletes the price row for a single service under this HMO.',
+  })
+  @ApiParam({ name: 'id', description: 'HMO UUID' })
+  @ApiParam({ name: 'serviceId', description: 'Service UUID' })
+  @ApiOkResponse({ description: 'Price removed' })
+  @ApiNotFoundResponse({ description: 'HMO or price row not found' })
+  @AccountTypes('HMO', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN')
+  removeServicePrice(
+    @Param('id') id: string,
+    @Param('serviceId') serviceId: string,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.hmoService.removeServicePrice(id, serviceId, req);
   }
 
   @Get(':id')

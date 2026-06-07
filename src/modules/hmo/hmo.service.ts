@@ -13,7 +13,16 @@ import {
   QueryHmoDto,
   QueryHmoPatientsDto,
   HmoServicePriceItemDto,
+  UpsertHmoServicePricesDto,
 } from './dto/hmo.dto';
+
+type NormalizedHmoServicePrice = {
+  serviceId: string;
+  fullCost: number;
+  hmoPays: number;
+  patientPays: number;
+  coveragePercent?: number;
+};
 
 @Injectable()
 export class HmoService {
@@ -45,7 +54,39 @@ export class HmoService {
     }
   }
 
-  private validatePriceRows(rows: HmoServicePriceItemDto[]): void {
+  private normalizePriceRow(row: HmoServicePriceItemDto): NormalizedHmoServicePrice {
+    if (row.cost !== undefined && row.cost !== null) {
+      return {
+        serviceId: row.serviceId,
+        fullCost: row.cost,
+        hmoPays: row.cost,
+        patientPays: 0,
+        coveragePercent: row.coveragePercent,
+      };
+    }
+    if (
+      row.fullCost === undefined ||
+      row.hmoPays === undefined ||
+      row.patientPays === undefined
+    ) {
+      throw new BadRequestException(
+        `Each service price must include either cost or fullCost/hmoPays/patientPays (serviceId "${row.serviceId}").`,
+      );
+    }
+    return {
+      serviceId: row.serviceId,
+      fullCost: row.fullCost,
+      hmoPays: row.hmoPays,
+      patientPays: row.patientPays,
+      coveragePercent: row.coveragePercent,
+    };
+  }
+
+  private normalizePriceRows(rows: HmoServicePriceItemDto[]): NormalizedHmoServicePrice[] {
+    return rows.map((row) => this.normalizePriceRow(row));
+  }
+
+  private validatePriceRows(rows: NormalizedHmoServicePrice[]): void {
     const seen = new Set<string>();
     for (const row of rows) {
       if (seen.has(row.serviceId)) {
@@ -101,8 +142,9 @@ export class HmoService {
       throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
 
     const prices = dto.servicePrices ?? [];
-    this.validatePriceRows(prices);
-    await this.assertServicesExist(prices.map((p) => p.serviceId));
+    const normalizedPrices = this.normalizePriceRows(prices);
+    this.validatePriceRows(normalizedPrices);
+    await this.assertServicesExist(normalizedPrices.map((p) => p.serviceId));
 
     const hmo = await this.prisma.$transaction(async (tx) => {
       const created = await tx.hmo.create({
@@ -121,7 +163,7 @@ export class HmoService {
 
       if (prices.length > 0) {
         await tx.hmoServicePrice.createMany({
-          data: prices.map((p) => ({
+          data: normalizedPrices.map((p) => ({
             hmoId: created.id,
             serviceId: p.serviceId,
             fullCost: this.asDecimal(p.fullCost),
@@ -272,14 +314,15 @@ export class HmoService {
     }
 
     if (dto.servicePrices !== undefined) {
-      this.validatePriceRows(dto.servicePrices);
-      await this.assertServicesExist(dto.servicePrices.map((p) => p.serviceId));
+      const normalizedPrices = this.normalizePriceRows(dto.servicePrices);
+      this.validatePriceRows(normalizedPrices);
+      await this.assertServicesExist(normalizedPrices.map((p) => p.serviceId));
 
       await this.prisma.$transaction(async (tx) => {
         await tx.hmoServicePrice.deleteMany({ where: { hmoId: id } });
-        if (dto.servicePrices!.length > 0) {
+        if (normalizedPrices.length > 0) {
           await tx.hmoServicePrice.createMany({
-            data: dto.servicePrices!.map((p) => ({
+            data: normalizedPrices.map((p) => ({
               hmoId: id,
               serviceId: p.serviceId,
               fullCost: this.asDecimal(p.fullCost),
@@ -313,6 +356,95 @@ export class HmoService {
 
     this.logger.log(`HMO "${updated.id}" updated.`);
     return this.findOne(updated.id);
+  }
+
+  async upsertServicePrices(
+    id: string,
+    dto: UpsertHmoServicePricesDto,
+    req: { user: { sub: string } },
+  ) {
+    await this.findOne(id);
+
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: req.user.sub },
+    });
+    if (!staff) {
+      throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
+    }
+
+    const normalizedPrices = this.normalizePriceRows(dto.servicePrices);
+    this.validatePriceRows(normalizedPrices);
+    await this.assertServicesExist(normalizedPrices.map((p) => p.serviceId));
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const p of normalizedPrices) {
+        await tx.hmoServicePrice.upsert({
+          where: {
+            hmoId_serviceId: { hmoId: id, serviceId: p.serviceId },
+          },
+          create: {
+            hmoId: id,
+            serviceId: p.serviceId,
+            fullCost: this.asDecimal(p.fullCost),
+            hmoPays: this.asDecimal(p.hmoPays),
+            patientPays: this.asDecimal(p.patientPays),
+            coveragePercent:
+              p.coveragePercent !== undefined
+                ? this.asDecimal(p.coveragePercent)
+                : null,
+          },
+          update: {
+            fullCost: this.asDecimal(p.fullCost),
+            hmoPays: this.asDecimal(p.hmoPays),
+            patientPays: this.asDecimal(p.patientPays),
+            coveragePercent:
+              p.coveragePercent !== undefined
+                ? this.asDecimal(p.coveragePercent)
+                : null,
+          },
+        });
+      }
+
+      await tx.hmo.update({
+        where: { id },
+        data: { updatedById: req.user.sub },
+      });
+    });
+
+    this.logger.log(`HMO "${id}" service prices upserted (${normalizedPrices.length} row(s)).`);
+    return this.findOne(id);
+  }
+
+  async removeServicePrice(
+    hmoId: string,
+    serviceId: string,
+    req: { user: { sub: string } },
+  ) {
+    await this.findOne(hmoId);
+
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: req.user.sub },
+    });
+    if (!staff) {
+      throw new NotFoundException(`Staff "${req.user.sub}" not found.`);
+    }
+
+    const deleted = await this.prisma.hmoServicePrice.deleteMany({
+      where: { hmoId, serviceId },
+    });
+    if (deleted.count === 0) {
+      throw new NotFoundException(
+        `No HMO service price found for HMO "${hmoId}" and service "${serviceId}".`,
+      );
+    }
+
+    await this.prisma.hmo.update({
+      where: { id: hmoId },
+      data: { updatedById: req.user.sub },
+    });
+
+    this.logger.log(`HMO "${hmoId}" service price removed for service "${serviceId}".`);
+    return { message: 'HMO service price removed successfully.' };
   }
 
   async remove(id: string) {

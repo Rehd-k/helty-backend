@@ -4,6 +4,7 @@ import {
   InvoicePaymentMethod,
   InvoicePaymentSource,
   InvoiceStatus,
+  PatientStatus,
   Prisma,
   WalletTransactionType,
 } from '@prisma/client';
@@ -566,6 +567,62 @@ describe('InvoiceService', () => {
     });
   });
 
+  describe('findPaidWithoutEncounter', () => {
+    it('includes reusable consultation credit outside the date range', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const count = jest.fn().mockResolvedValue(0);
+      const prisma: any = { invoice: { findMany, count } };
+      const service = createInvoiceService(prisma);
+
+      await service.findPaidWithoutEncounter({
+        fromDate: '2026-03-27',
+        toDate: '2026-03-27',
+      });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: InvoiceStatus.PAID,
+            encounterId: null,
+            patient: { status: PatientStatus.OUTPATIENT },
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                invoiceItems: {
+                  some: expect.objectContaining({
+                    settled: false,
+                    consultationVisitsConsumed: { lt: CONSULTATION_CREDIT_MAX_VISITS },
+                    consultationCreditExpiresAt: { gt: now },
+                  }),
+                },
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('still filters by patientId and allowIP when provided', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const count = jest.fn().mockResolvedValue(0);
+      const prisma: any = { invoice: { findMany, count } };
+      const service = createInvoiceService(prisma);
+
+      await service.findPaidWithoutEncounter({
+        patientId: 'pat-1',
+        allowIP: true,
+      });
+
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            patientId: 'pat-1',
+            patient: { status: PatientStatus.ADMITED },
+          }),
+        }),
+      );
+    });
+  });
+
   const lineForRecalc = {
     unitPrice: new Prisma.Decimal(500),
     quantity: 1,
@@ -928,6 +985,7 @@ describe('InvoiceService', () => {
             .mockResolvedValue(overrides.labOrderExists ? { id: 'ord-1' } : null),
         },
         radiologyOrderItem: { findFirst: jest.fn() },
+        dialysisSession: { findFirst: jest.fn() },
       };
     }
 
@@ -1003,12 +1061,81 @@ describe('InvoiceService', () => {
         },
         radiologyOrderItem: { findFirst: jest.fn().mockResolvedValue(null) },
         labOrder: { findFirst: jest.fn() },
+        dialysisSession: { findFirst: jest.fn() },
       };
       const service = createInvoiceService({} as any);
       await expect(
         service.assertPaidInvoiceItemConsumable(tx as any, {
           ...baseParams,
           mode: 'radiology',
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('validates dialysis category and rejects duplicate session', async () => {
+      const tx = {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            patientId: 'pat-1',
+            status: InvoiceStatus.PAID,
+          }),
+        },
+        admission: { count: jest.fn() },
+        invoiceItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            serviceId: 'svc-1',
+            settled: false,
+            service: { category: { name: 'Dialysis' } },
+          }),
+        },
+        radiologyOrderItem: { findFirst: jest.fn() },
+        labOrder: { findFirst: jest.fn() },
+        dialysisSession: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'sess-1' }),
+        },
+      };
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(tx as any, {
+          ...baseParams,
+          mode: 'dialysis',
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'INVOICE_ITEM_ALREADY_CONSUMED',
+        }),
+      });
+    });
+
+    it('allows dialysis category when no duplicate session exists', async () => {
+      const tx = {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            patientId: 'pat-1',
+            status: InvoiceStatus.PAID,
+          }),
+        },
+        admission: { count: jest.fn() },
+        invoiceItem: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            serviceId: 'svc-1',
+            settled: false,
+            service: { category: { name: 'Dialysis Services' } },
+          }),
+        },
+        radiologyOrderItem: { findFirst: jest.fn() },
+        labOrder: { findFirst: jest.fn() },
+        dialysisSession: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      const service = createInvoiceService({} as any);
+      await expect(
+        service.assertPaidInvoiceItemConsumable(tx as any, {
+          ...baseParams,
+          mode: 'dialysis',
         }),
       ).resolves.toBeUndefined();
     });
@@ -1162,6 +1289,7 @@ describe('InvoiceService', () => {
         },
         labOrder: { findFirst: jest.fn().mockResolvedValue(null) },
         radiologyOrderItem: { findFirst: jest.fn() },
+        dialysisSession: { findFirst: jest.fn() },
       };
       const service = createInvoiceService({} as any);
       await expect(
@@ -1172,6 +1300,152 @@ describe('InvoiceService', () => {
         ),
       ).resolves.toBeUndefined();
       expect(tx.admission.count).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveServiceUnitPrice', () => {
+    it('uses HMO fullCost when patient is registered and price row exists', async () => {
+      const prisma: any = {
+        service: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'svc-1', cost: 5000 }),
+        },
+        patient: {
+          findUnique: jest.fn().mockResolvedValue({ hmoId: 'hmo-1' }),
+        },
+        hmoServicePrice: {
+          findUnique: jest.fn().mockResolvedValue({
+            fullCost: new Prisma.Decimal(3500),
+          }),
+        },
+      };
+      const service = createInvoiceService(prisma);
+      const result = await service.resolveServiceUnitPrice('pat-1', 'svc-1');
+      expect(result.source).toBe('hmo');
+      expect(result.unitPrice.toString()).toBe('3500');
+    });
+
+    it('falls back to standard Service.cost when patient has HMO but no price row', async () => {
+      const prisma: any = {
+        service: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'svc-1', cost: 5000 }),
+        },
+        patient: {
+          findUnique: jest.fn().mockResolvedValue({ hmoId: 'hmo-1' }),
+        },
+        hmoServicePrice: {
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+      };
+      const service = createInvoiceService(prisma);
+      const result = await service.resolveServiceUnitPrice('pat-1', 'svc-1');
+      expect(result.source).toBe('standard');
+      expect(result.unitPrice.toString()).toBe('5000');
+    });
+
+    it('uses standard Service.cost when patient has no hmoId', async () => {
+      const prisma: any = {
+        service: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'svc-1', cost: 5000 }),
+        },
+        patient: {
+          findUnique: jest.fn().mockResolvedValue({ hmoId: null }),
+        },
+      };
+      const service = createInvoiceService(prisma);
+      const result = await service.resolveServiceUnitPrice('pat-1', 'svc-1');
+      expect(result.source).toBe('standard');
+      expect(result.unitPrice.toString()).toBe('5000');
+    });
+  });
+
+  describe('addItem service price resolution', () => {
+    it('auto-resolves unitPrice from patient HMO when omitted', async () => {
+      const createdItem = {
+        id: 'item-1',
+        invoiceId: 'inv-1',
+        serviceId: 'svc-1',
+        quantity: 1,
+        unitPrice: new Prisma.Decimal(3500),
+        isRecurringDaily: false,
+        service: { id: 'svc-1', name: 'Lab Test', description: null, cost: 5000 },
+        invoice: { id: 'inv-1', status: InvoiceStatus.PENDING, patientId: 'pat-1' },
+        createdBy: null,
+      };
+      const prisma: any = {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            status: InvoiceStatus.PENDING,
+            patientId: 'pat-1',
+            createdById: 'staff-1',
+            staffId: 'staff-1',
+          }),
+        },
+        service: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'svc-1', cost: 5000 }),
+        },
+        patient: {
+          findUnique: jest.fn().mockResolvedValue({ hmoId: 'hmo-1' }),
+        },
+        hmoServicePrice: {
+          findUnique: jest.fn().mockResolvedValue({
+            fullCost: new Prisma.Decimal(3500),
+          }),
+        },
+        staff: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'staff-1' }),
+        },
+        invoiceItem: {
+          create: jest.fn().mockResolvedValue(createdItem),
+        },
+      };
+      prisma.invoice.update = jest.fn().mockResolvedValue({});
+      const service = createInvoiceService({
+        ...prisma,
+        invoice: {
+          ...prisma.invoice,
+          update: jest.fn().mockImplementation(({ data }) => ({ ...data })),
+        },
+      });
+      (service as any).recalculateInvoiceTotals = jest.fn().mockResolvedValue({});
+
+      await service.addItem('inv-1', { serviceId: 'svc-1' }, 'staff-1');
+
+      const createCall = prisma.invoiceItem.create.mock.calls[0][0];
+      expect(createCall.data.unitPrice.toString()).toBe('3500');
+    });
+
+    it('honors explicit unitPrice override', async () => {
+      const prisma: any = {
+        invoice: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'inv-1',
+            status: InvoiceStatus.PENDING,
+            patientId: 'pat-1',
+            createdById: 'staff-1',
+            staffId: 'staff-1',
+          }),
+        },
+        service: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'svc-1', cost: 5000 }),
+        },
+        staff: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'staff-1' }),
+        },
+        invoiceItem: {
+          create: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            isRecurringDaily: false,
+          }),
+        },
+      };
+      const service = createInvoiceService(prisma);
+      (service as any).recalculateInvoiceTotals = jest.fn().mockResolvedValue({});
+
+      await service.addItem('inv-1', { serviceId: 'svc-1', unitPrice: 999 }, 'staff-1');
+
+      const createCall = prisma.invoiceItem.create.mock.calls[0][0];
+      expect(createCall.data.unitPrice.toString()).toBe('999');
     });
   });
 });

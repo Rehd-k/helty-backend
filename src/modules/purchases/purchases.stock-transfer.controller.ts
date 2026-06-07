@@ -18,7 +18,6 @@ import {
   CreatePurchasesStockTransferDto,
   ListPurchasesStockTransferDto,
   TransferHistoryQueryDto,
-  UpdatePurchasesStockTransferDto,
 } from './dto/stock-transfer.dto';
 
 @ApiTags('Purchases - Stock Transfers')
@@ -29,6 +28,10 @@ export class PurchasesStockTransferController {
   constructor(private readonly service: PurchasesStockTransferService) {}
 
   @Post()
+  @ApiOperation({
+    summary:
+      'Create and complete a stock transfer (validates, approves, and moves stock in one step)',
+  })
   create(
     @Body() dto: CreatePurchasesStockTransferDto,
     @Req() req: { user: { sub: string } },
@@ -43,21 +46,34 @@ export class PurchasesStockTransferController {
   }
 
   @Get()
+  @ApiOperation({
+    summary: 'List stock transfers with filtering and pagination',
+  })
   findAll(@Query() query: ListPurchasesStockTransferDto) {
     return this.service.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Get stock transfer by ID' })
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);
   }
 
-  @Patch(':id')
-  update(
+  @Patch(':id/approve')
+  @ApiOperation({ summary: 'Approve a pending stock transfer' })
+  approve(
     @Param('id') id: string,
-    @Body() dto: UpdatePurchasesStockTransferDto,
     @Req() req: { user: { sub: string } },
   ) {
-    return this.service.update(id, dto, req.user.sub);
+    return this.service.approve(id, req.user.sub);
+  }
+
+  @Patch(':id/complete')
+  @ApiOperation({ summary: 'Complete an approved transfer (moves stock)' })
+  complete(
+    @Param('id') id: string,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.service.complete(id, req.user.sub);
   }
 }

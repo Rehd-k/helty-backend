@@ -165,7 +165,6 @@ export class PharmacyLocationService {
     dto: UpdatePharmacyLocationDto,
     updatedById: string,
   ) {
-    console.log(dto);
     const location = await this.findOne(id);
     if (dto.staffId !== undefined && dto.staffId !== null) {
       const existing = await this.prisma.pharmacyLocation.findFirst({

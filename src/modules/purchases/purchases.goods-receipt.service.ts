@@ -42,6 +42,20 @@ export class PurchasesGoodsReceiptService {
     }
     const toLocationId = dto.toLocationId ?? defaultLoc.id;
 
+    const itemIds = [...new Set(dto.items.map((i) => i.itemId))];
+    const purchaseItems = await this.prisma.purchaseItem.findMany({
+      where: { id: { in: itemIds }, deletedAt: null },
+      select: { id: true, sellingPrice: true },
+    });
+    const sellingPriceByItemId = new Map(
+      purchaseItems.map((i) => [i.id, i.sellingPrice]),
+    );
+    for (const itemId of itemIds) {
+      if (!sellingPriceByItemId.has(itemId)) {
+        throw new NotFoundException(`Item "${itemId}" not found.`);
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const gr = await tx.purchasesGoodsReceipt.create({
         data: {
@@ -80,6 +94,7 @@ export class PurchasesGoodsReceiptService {
             quantityReceived: item.quantityReceived,
             quantityRemaining: item.quantityReceived,
             costPrice,
+            sellingPrice: sellingPriceByItemId.get(item.itemId)!,
             fromLocationId: toLocationId,
             toLocationId,
             grnId: gr.id,

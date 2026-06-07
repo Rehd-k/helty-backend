@@ -76,7 +76,7 @@ function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
         user.staffRole === 'INPATIENT_NURSE'
       );
     case 'DIALYSIS':
-      return user.accountType === 'PHYSICIAN';
+      return user.accountType === 'DIALYSIS';
     case 'HMO_DESK':
       return user.accountType === 'HMO' || user.staffRole === 'HMO_STAFF';
     case 'PURCHASES':

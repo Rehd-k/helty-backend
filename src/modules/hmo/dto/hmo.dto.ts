@@ -19,26 +19,43 @@ export class HmoServicePriceItemDto {
   @IsUUID()
   serviceId!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
+    description:
+      'Simple HMO cost for this service. When provided, sets fullCost and hmoPays to this value and patientPays to 0.',
+    example: 5000,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  cost?: number;
+
+  @ApiPropertyOptional({
     description: 'Full / list price for this service under the HMO',
     example: 5000,
   })
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
-  fullCost!: number;
+  @IsOptional()
+  fullCost?: number;
 
-  @ApiProperty({ description: 'Amount covered by the HMO', example: 4000 })
+  @ApiPropertyOptional({ description: 'Amount covered by the HMO', example: 4000 })
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
-  hmoPays!: number;
+  @IsOptional()
+  hmoPays?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Amount paid by the patient (co-pay)',
     example: 1000,
   })
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
-  patientPays!: number;
+  @IsOptional()
+  patientPays?: number;
 
   @ApiPropertyOptional({
     description:
@@ -138,6 +155,20 @@ export class UpdateHmoDto {
   @Type(() => HmoServicePriceItemDto)
   @IsOptional()
   servicePrices?: HmoServicePriceItemDto[];
+}
+
+// ─── Upsert HMO service prices (merge) ────────────────────────────────────────
+
+export class UpsertHmoServicePricesDto {
+  @ApiProperty({
+    type: [HmoServicePriceItemDto],
+    description:
+      'Service prices to upsert. Existing prices for other services are kept unchanged.',
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => HmoServicePriceItemDto)
+  servicePrices!: HmoServicePriceItemDto[];
 }
 
 // ─── Query list ───────────────────────────────────────────────────────────────

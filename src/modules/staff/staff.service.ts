@@ -9,7 +9,6 @@ export class StaffService {
   constructor(private readonly prisma: PrismaService) { }
 
   async create(data: Prisma.StaffCreateInput) {
-    console.log(data);
     // hash password if provided
     if ('password' in data && data.password) {
       data.password = await bcrypt.hash(data.password, 10);
@@ -21,7 +20,6 @@ export class StaffService {
 
     // cast to any because of relation union types
     const newStaff = await this.prisma.staff.create({ data: data as any });
-    console.log(newStaff);
     return newStaff;
   }
 

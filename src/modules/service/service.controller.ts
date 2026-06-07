@@ -77,6 +77,13 @@ export class ServiceController {
     description: 'Category filter',
     example: 'Lab Tests',
   })
+  @ApiQuery({
+    name: 'hmoId',
+    required: false,
+    type: String,
+    description:
+      'When set, each service includes hmoPrices filtered to this HMO only. Omit to return prices for all HMOs.',
+  })
   @ApiOkResponse({ description: 'Paginated list of services' })
   findAll(
     @Query('skip') skip = '0',
@@ -85,6 +92,7 @@ export class ServiceController {
     @Query('filterCategory') filterCategory: string = '',
     @Query('departmentId') departmentId: string = '',
     @Query('categoryId') categoryId: string = '',
+    @Query('hmoId') hmoId: string = '',
   ) {
     return this.serviceService.findAll(
       +skip,
@@ -93,6 +101,7 @@ export class ServiceController {
       filterCategory,
       departmentId,
       categoryId,
+      hmoId,
     );
   }
 
@@ -100,13 +109,20 @@ export class ServiceController {
   @ApiOperation({
     summary: 'Get a single service by ID',
     description:
-      'Returns full service details including category, department, and related invoice items.',
+      'Returns full service details including category, department, HMO prices, and related invoice items.',
   })
   @ApiParam({ name: 'id', description: 'Service UUID' })
+  @ApiQuery({
+    name: 'hmoId',
+    required: false,
+    type: String,
+    description:
+      'When set, hmoPrices on the service is filtered to this HMO only.',
+  })
   @ApiOkResponse({ description: 'Service found' })
   @ApiNotFoundResponse({ description: 'Service not found' })
-  findOne(@Param('id') id: string) {
-    return this.serviceService.findOne(id);
+  findOne(@Param('id') id: string, @Query('hmoId') hmoId: string = '') {
+    return this.serviceService.findOne(id, hmoId);
   }
 
   @Patch(':id')

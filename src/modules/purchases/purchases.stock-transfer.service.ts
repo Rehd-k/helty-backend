@@ -14,9 +14,10 @@ import {
   CreatePurchasesStockTransferDto,
   ListPurchasesStockTransferDto,
   TransferHistoryQueryDto,
-  UpdatePurchasesStockTransferDto,
 } from './dto/stock-transfer.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+
+const ALLOWED_SORT = new Set(['createdAt', 'status', 'completedAt']);
 
 @Injectable()
 export class PurchasesStockTransferService {
@@ -24,7 +25,7 @@ export class PurchasesStockTransferService {
 
   async create(dto: CreatePurchasesStockTransferDto, createdById: string) {
     if (dto.fromLocationId === dto.toLocationId) {
-      throw new BadRequestException('From and to locations must differ.');
+      throw new BadRequestException('From and to locations must be different.');
     }
     await this.validateLocations(dto.fromLocationId, dto.toLocationId);
     await this.validateTransferItems(dto.fromLocationId, dto.items);
@@ -44,7 +45,9 @@ export class PurchasesStockTransferService {
       },
       include: this.transferInclude(),
     });
-    return created;
+
+    await this.approve(created.id, createdById);
+    return this.complete(created.id, createdById);
   }
 
   async findAll(query: ListPurchasesStockTransferDto) {
@@ -55,17 +58,32 @@ export class PurchasesStockTransferService {
       createdAt: { gte: from, lte: to },
     };
     if (query.status) where.status = query.status;
+    if (query.fromLocationId) where.fromLocationId = query.fromLocationId;
+    if (query.toLocationId) where.toLocationId = query.toLocationId;
     if (query.itemId) {
       where.items = { some: { batch: { itemId: query.itemId } } };
     }
 
+    const orderBy = ALLOWED_SORT.has(query.sortBy ?? '')
+      ? { [query.sortBy!]: query.sortOrder ?? 'desc' }
+      : { createdAt: query.sortOrder ?? 'desc' };
+
     const [data, total] = await Promise.all([
       this.prisma.purchasesStockTransfer.findMany({
         where,
-        orderBy: { createdAt: query.sortOrder ?? 'desc' },
+        orderBy,
         skip,
         take,
-        include: this.transferInclude(),
+        include: {
+          fromLocation: {
+            select: { id: true, name: true, locationType: true },
+          },
+          toLocation: {
+            select: { id: true, name: true, locationType: true },
+          },
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+          _count: { select: { items: true } },
+        },
       }),
       this.prisma.purchasesStockTransfer.count({ where }),
     ]);
@@ -133,24 +151,6 @@ export class PurchasesStockTransferService {
     return transfer;
   }
 
-  async update(id: string, dto: UpdatePurchasesStockTransferDto, staffId: string) {
-    const transfer = await this.findOne(id);
-    if (!dto.status) {
-      throw new BadRequestException('status is required.');
-    }
-    if (dto.status === PurchasesStockTransferStatus.APPROVED) {
-      return this.approve(id, staffId);
-    }
-    if (dto.status === PurchasesStockTransferStatus.COMPLETED) {
-      return this.complete(id, staffId);
-    }
-    return this.prisma.purchasesStockTransfer.update({
-      where: { id },
-      data: { status: dto.status },
-      include: this.transferInclude(),
-    });
-  }
-
   async approve(id: string, approvedById: string) {
     const transfer = await this.findOne(id);
     if (transfer.status !== PurchasesStockTransferStatus.PENDING) {
@@ -166,16 +166,16 @@ export class PurchasesStockTransferService {
     });
   }
 
-  async complete(id: string, performedById: string) {
+  async complete(id: string, performedById?: string) {
     const transfer = await this.findOne(id);
-    if (
-      transfer.status !== PurchasesStockTransferStatus.APPROVED &&
-      transfer.status !== PurchasesStockTransferStatus.IN_TRANSIT
-    ) {
+    if (transfer.status !== PurchasesStockTransferStatus.APPROVED) {
       throw new BadRequestException(
-        'Only approved or in-transit transfers can be completed.',
+        'Only approved transfers can be completed.',
       );
     }
+
+    const actorId =
+      performedById ?? transfer.approvedById ?? transfer.createdById;
 
     return this.prisma.$transaction(async (tx) => {
       for (const line of transfer.items) {
@@ -184,14 +184,30 @@ export class PurchasesStockTransferService {
         });
         if (!batch || (batch.quantityRemaining ?? 0) < line.quantity) {
           throw new BadRequestException(
-            `Insufficient stock for batch "${line.batchId}".`,
+            `Insufficient quantity for batch "${line.batchId}" to complete transfer.`,
           );
         }
         await tx.purchaseItemBatch.update({
           where: { id: line.batchId },
           data: {
             quantityRemaining: (batch.quantityRemaining ?? 0) - line.quantity,
+          },
+        });
+        const destBatch = await tx.purchaseItemBatch.create({
+          data: {
+            itemId: batch.itemId,
+            purchaseOrderId: batch.purchaseOrderId,
+            supplierId: batch.supplierId,
+            batchNumber: batch.batchNumber,
+            manufacturingDate: batch.manufacturingDate,
+            expiryDate: batch.expiryDate,
+            quantityReceived: line.quantity,
+            quantityRemaining: line.quantity,
+            costPrice: batch.costPrice,
+            sellingPrice: batch.sellingPrice,
+            fromLocationId: transfer.fromLocationId,
             toLocationId: transfer.toLocationId,
+            grnId: batch.grnId,
           },
         });
         await tx.purchasesInventoryMovement.create({
@@ -204,12 +220,12 @@ export class PurchasesStockTransferService {
             quantity: line.quantity,
             referenceType: PurchasesMovementReferenceType.TRANSFER,
             referenceId: id,
-            performedById,
+            performedById: actorId,
           },
         });
         await tx.purchasesInventoryMovement.create({
           data: {
-            batchId: line.batchId,
+            batchId: destBatch.id,
             itemId: batch.itemId,
             fromLocationId: transfer.fromLocationId,
             toLocationId: transfer.toLocationId,
@@ -217,7 +233,7 @@ export class PurchasesStockTransferService {
             quantity: line.quantity,
             referenceType: PurchasesMovementReferenceType.TRANSFER,
             referenceId: id,
-            performedById,
+            performedById: actorId,
           },
         });
       }
@@ -275,12 +291,13 @@ export class PurchasesStockTransferService {
       }
       if (batch.toLocationId !== fromLocationId) {
         throw new BadRequestException(
-          `Batch "${item.batchId}" is not at the from-location.`,
+          `Batch "${item.batchId}" is not at the selected from-location.`,
         );
       }
-      if ((batch.quantityRemaining ?? 0) < item.quantity) {
+      const available = batch.quantityRemaining ?? 0;
+      if (available < item.quantity) {
         throw new BadRequestException(
-          `Insufficient quantity for batch "${item.batchId}".`,
+          `Insufficient quantity for batch "${item.batchId}". Available: ${available}.`,
         );
       }
     }

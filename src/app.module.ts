@@ -38,6 +38,7 @@ import { RadiologyModule } from './modules/radiology/radiology.module';
 import { MedicationOrderModule } from './modules/medication-order/medication-order.module';
 import { StoreModule } from './modules/store/store.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
+import { DialysisModule } from './modules/dialysis/dialysis.module';
 import { BillingAnalyticsModule } from './modules/billing-analytics/billing-analytics.module';
 import { FrontdeskModule } from './modules/frontdesk/frontdesk.module';
 import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module';
@@ -106,6 +107,7 @@ import { CmdAnalyticsModule } from './modules/cmd-analytics/cmd-analytics.module
     MedicationOrderModule,
     StoreModule,
     PurchasesModule,
+    DialysisModule,
     BillingAnalyticsModule,
     FrontdeskModule,
     HeltyDesktopModule,

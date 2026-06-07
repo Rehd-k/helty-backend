@@ -11,6 +11,41 @@ import { Prisma } from '@prisma/client';
 export class ServiceService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private hmoPricesInclude(hmoId?: string) {
+    return {
+      hmoServicePrices: {
+        ...(hmoId ? { where: { hmoId } } : {}),
+        orderBy: { hmo: { name: 'asc' as const } },
+        include: {
+          hmo: { select: { id: true, name: true, code: true } },
+        },
+      },
+    } satisfies Prisma.ServiceInclude;
+  }
+
+  private mapServiceWithHmoPrices<
+    T extends {
+      hmoServicePrices?: Array<{
+        id: string;
+        hmoId: string;
+        fullCost: Prisma.Decimal;
+        hmo: { id: string; name: string; code: string | null };
+      }>;
+    },
+  >(service: T) {
+    const { hmoServicePrices, ...rest } = service;
+    return {
+      ...rest,
+      hmoPrices: (hmoServicePrices ?? []).map((row) => ({
+        id: row.id,
+        hmoId: row.hmoId,
+        hmoName: row.hmo.name,
+        hmoCode: row.hmo.code,
+        cost: Number(row.fullCost),
+      })),
+    };
+  }
+
   // ─── Service CRUD ─────────────────────────────────────────────────────────────
 
   /**
@@ -78,6 +113,7 @@ export class ServiceService {
     filterCategory: string = '',
     departmentId: string = '',
     categoryId: string = '',
+    hmoId: string = '',
   ) {
     const where: Prisma.ServiceWhereInput = {};
 
@@ -106,7 +142,8 @@ export class ServiceService {
     if (categoryId && categoryId.trim() !== '') {
       where.categoryId = categoryId;
     }
-    const [services, total] = await Promise.all([
+    const hmoFilter = hmoId.trim() || undefined;
+    const [rows, total] = await Promise.all([
       this.prisma.service.findMany({
         skip,
         take,
@@ -115,6 +152,7 @@ export class ServiceService {
           category: true,
           department: { select: { id: true, name: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } },
+          ...this.hmoPricesInclude(hmoFilter),
         },
         where,
       }),
@@ -122,13 +160,14 @@ export class ServiceService {
         where,
       }),
     ]);
+    const services = rows.map((row) => this.mapServiceWithHmoPrices(row));
     return { services, total, skip, take };
   }
 
   /**
    * Get a single service by ID including invoice items.
    */
-  async findOne(id: string) {
+  async findOne(id: string, hmoId: string = '') {
     const service = await this.prisma.service.findUnique({
       where: { id },
       include: {
@@ -141,10 +180,11 @@ export class ServiceService {
             invoice: { select: { id: true, status: true, patientId: true } },
           },
         },
+        ...this.hmoPricesInclude(hmoId.trim() || undefined),
       },
     });
     if (!service) throw new NotFoundException(`Service ${id} not found`);
-    return service;
+    return this.mapServiceWithHmoPrices(service);
   }
 
   /**

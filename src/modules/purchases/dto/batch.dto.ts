@@ -3,7 +3,6 @@ import { Type } from 'class-transformer';
 import {
   IsInt,
   IsNumber,
-  IsNumberString,
   IsOptional,
   IsString,
   IsUUID,
@@ -59,10 +58,16 @@ export class CreatePurchaseItemBatchDto {
   @IsNumber()
   costPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'Patient-facing selling price. Defaults to item catalog price when omitted. 0 means free.',
+    example: 1500,
+  })
   @IsOptional()
-  @IsNumberString()
-  sellingPrice?: string;
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  sellingPrice?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

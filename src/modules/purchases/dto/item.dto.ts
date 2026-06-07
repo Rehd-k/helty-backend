@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -54,6 +55,17 @@ export class CreatePurchaseItemDto {
   @IsInt()
   @Min(0)
   reorderQuantity?: number;
+
+  @ApiPropertyOptional({
+    description: 'Patient-facing selling price. 0 means the item is free.',
+    example: 1500,
+    default: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  sellingPrice?: number;
 }
 
 export class UpdatePurchaseItemDto extends PartialType(CreatePurchaseItemDto) {}

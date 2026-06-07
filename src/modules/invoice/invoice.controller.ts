@@ -213,9 +213,9 @@ export class InvoiceController {
 
   @Get('paid-without-encounter')
   @ApiOperation({
-    summary: 'List PAID invoices with no encounter',
+    summary: 'List PAID invoices ready for OPD / encounter start',
     description:
-      'Returns paginated invoices where `status` is PAID and `encounterId` is null (paid at counter, not yet linked to a clinical encounter). Same list shape as `GET /invoices`.',
+      'Returns paginated invoices where `status` is PAID and `encounterId` is null. Includes patients with reusable consultation credit (up to 2 visits within 14 days of payment) even when the invoice was last updated outside the date range. Consultation-only invoices with expired or exhausted credit are omitted. Each `invoiceItem` includes `consultationVisitsConsumed`, `consultationCreditExpiresAt`, and `settled` when applicable. Same list shape as `GET /invoices`.',
   })
   @ApiQuery({ name: 'fromDate', required: false, type: String })
   @ApiQuery({ name: 'toDate', required: false, type: String })
