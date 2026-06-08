@@ -15,8 +15,9 @@ import {
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { Public } from '../../common/decorators';
+import { ListStaffQueryDto } from './dto/list-staff-query.dto';
 
 @ApiTags('Staff')
 @Controller('staff')
@@ -44,9 +45,12 @@ export class StaffController {
 
   @Get()
   @ApiOperation({ summary: 'List all staff' })
+  @ApiQuery({ name: 'q', required: false, description: 'Search staff by name, ID, email, department, account type, or role' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (default 20, max 500)' })
   @ApiResponse({ status: 200, description: 'Staff list returned' })
-  findAll() {
-    return this.staffService.findAll();
+  findAll(@Query() query: ListStaffQueryDto) {
+    return this.staffService.findAll(query);
   }
 
   @Get(':id')
@@ -67,6 +71,7 @@ export class StaffController {
     @Body() dto: UpdateStaffDto,
     @Req() req: { user: { sub: string } },
   ) {
+    console.log(dto)
     const { departmentId, role, staffRole, ...rest } = dto as UpdateStaffDto & {
       role?: string;
     };

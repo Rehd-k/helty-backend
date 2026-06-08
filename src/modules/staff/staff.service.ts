@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+import { AccountType, Prisma, StaffRole } from '@prisma/client';
 import { activeStaffPasswordResetInclude } from './staff-password-reset.query';
+import { ListStaffQueryDto } from './dto/list-staff-query.dto';
 
 @Injectable()
 export class StaffService {
@@ -23,12 +24,57 @@ export class StaffService {
     return newStaff;
   }
 
-  async findAll() {
-    const staffs = await this.prisma.staff.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+  private buildStaffSearchWhere(q: string): Prisma.StaffWhereInput {
+    const term = q.trim();
+    const lowered = term.toLowerCase();
+    const accountTypes = Object.values(AccountType).filter((v) =>
+      v.toLowerCase().includes(lowered),
+    );
+    const staffRoles = Object.values(StaffRole).filter((v) =>
+      v.toLowerCase().includes(lowered),
+    );
 
-    return staffs;
+    const or: Prisma.StaffWhereInput[] = [
+      { firstName: { contains: term, mode: 'insensitive' } },
+      { lastName: { contains: term, mode: 'insensitive' } },
+      { staffId: { contains: term, mode: 'insensitive' } },
+      { email: { contains: term, mode: 'insensitive' } },
+      { phone: { contains: term, mode: 'insensitive' } },
+      { department: { name: { contains: term, mode: 'insensitive' } } },
+    ];
+
+    if (accountTypes.length) {
+      or.push({ accountType: { in: accountTypes } });
+    }
+    if (staffRoles.length) {
+      or.push({ staffRole: { in: staffRoles } });
+    }
+
+    return { OR: or };
+  }
+
+  async findAll(query: ListStaffQueryDto = {}) {
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(Math.max(1, query.limit ?? 20), 500);
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.StaffWhereInput = query.q?.trim()
+      ? this.buildStaffSearchWhere(query.q)
+      : {};
+
+    const [data, total] = await Promise.all([
+      this.prisma.staff.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+        include: { department: true },
+        omit: { password: true },
+      }),
+      this.prisma.staff.count({ where }),
+    ]);
+
+    return { data, total, page, pageSize };
   }
 
   async findById(id: string) {
