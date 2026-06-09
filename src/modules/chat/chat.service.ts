@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { nanoid } from 'nanoid';
 import type { OnlineUserInfo } from './chat.types';
 import { PresenceService } from './presence/presence.service';
@@ -24,7 +24,10 @@ export class ChatService {
   /** Legacy ephemeral message id routing (1:1 demo chat) */
   private readonly messageMeta = new Map<string, MessageMeta>();
 
-  constructor(private readonly presence: PresenceService) {}
+  constructor(
+    @Inject(forwardRef(() => PresenceService))
+    private readonly presence: PresenceService,
+  ) {}
 
   registerSocket(
     userId: string,
@@ -46,7 +49,6 @@ export class ChatService {
       firstName: staff.firstName,
       lastName: staff.lastName,
     };
-    const wasEmpty = !existing || existing.socketIds.size === 0;
     if (existing) {
       existing.socketIds.add(socketId);
     } else {
@@ -55,9 +57,7 @@ export class ChatService {
         staff: staffInfo,
       });
     }
-    if (wasEmpty) {
-      void this.presence.setOnline(userId);
-    }
+    void this.presence.heartbeat(userId);
   }
 
   registerGuestSocket(socketId: string, username: string): string {
@@ -81,10 +81,21 @@ export class ChatService {
     if (entry.socketIds.size === 0) {
       this.userSockets.delete(userId);
       if (!userId.startsWith('guest-')) {
-        void this.presence.setAway(userId);
+        void this.presence.setOffline(userId);
       }
     }
     return userId;
+  }
+
+  hasActiveSockets(userId: string): boolean {
+    const entry = this.userSockets.get(userId);
+    return !!entry && entry.socketIds.size > 0;
+  }
+
+  getConnectedStaffIds(): string[] {
+    return Array.from(this.userSockets.keys()).filter(
+      (id) => !id.startsWith('guest-'),
+    );
   }
 
   getOnlineUsers(): OnlineUserInfo[] {

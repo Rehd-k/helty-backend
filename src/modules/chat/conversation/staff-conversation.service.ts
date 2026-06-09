@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import {
   AccountType,
+  Prisma,
   StaffConversationMemberRole,
   StaffConversationType,
   StaffRole,
@@ -30,7 +31,11 @@ export class StaffConversationService {
         conversationId_staffId: { conversationId, staffId },
       },
     });
-    if (!m) throw new ForbiddenException('Not a member of this conversation');
+    if (!m) {
+      throw new ForbiddenException(
+        'Not a member of this conversation. Create or open it via POST /chat/conversations/direct before messaging.',
+      );
+    }
     return m;
   }
 
@@ -142,35 +147,59 @@ export class StaffConversationService {
     });
     if (existing) return existing;
 
-    return this.prisma.staffConversation.create({
-      data: {
-        type: StaffConversationType.DIRECT,
-        directKey,
-        members: {
-          create: [
-            { staffId, role: StaffConversationMemberRole.MEMBER },
-            {
-              staffId: otherStaffId,
-              role: StaffConversationMemberRole.MEMBER,
-            },
-          ],
-        },
-      },
-      include: {
-        members: {
-          include: {
-            staff: {
-              select: {
-                id: true,
-                staffId: true,
-                firstName: true,
-                lastName: true,
-              },
+    const includeMembers = {
+      members: {
+        include: {
+          staff: {
+            select: {
+              id: true,
+              staffId: true,
+              firstName: true,
+              lastName: true,
             },
           },
         },
       },
+    } as const;
+
+    try {
+      return await this.prisma.staffConversation.create({
+        data: {
+          type: StaffConversationType.DIRECT,
+          directKey,
+          members: {
+            create: [
+              { staffId, role: StaffConversationMemberRole.MEMBER },
+              {
+                staffId: otherStaffId,
+                role: StaffConversationMemberRole.MEMBER,
+              },
+            ],
+          },
+        },
+        include: includeMembers,
+      });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const raced = await this.prisma.staffConversation.findUnique({
+          where: { directKey },
+          include: includeMembers,
+        });
+        if (raced) return raced;
+      }
+      throw e;
+    }
+  }
+
+  async listConversationIdsForStaff(staffId: string): Promise<string[]> {
+    const rows = await this.prisma.staffConversationMember.findMany({
+      where: { staffId },
+      select: { conversationId: true },
     });
+    return rows.map((r) => r.conversationId);
   }
 
   async createGroup(creatorId: string, name: string, memberStaffIds: string[]) {

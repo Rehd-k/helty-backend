@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   Inject,
   Injectable,
   Logger,
@@ -9,6 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../../redis/redis.constants';
+import { ChatService } from '../chat.service';
 
 export type PresenceStatus = 'online' | 'away' | 'offline';
 
@@ -31,6 +33,8 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Optional() @Inject(REDIS_CLIENT) private readonly redis: Redis | null,
     private readonly config: ConfigService,
+    @Inject(forwardRef(() => ChatService))
+    private readonly chatService: ChatService,
   ) {
     this.awayMs =
       (Number(this.config.get('PRESENCE_AWAY_MINUTES')) || 5) * 60 * 1000;
@@ -54,11 +58,8 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
     }, 60_000);
   }
 
-  async onModuleDestroy() {
+  onModuleDestroy() {
     if (this.sweepTimer) clearInterval(this.sweepTimer);
-    if (this.redis) {
-      await this.redis.quit().catch(() => undefined);
-    }
   }
 
   private keyStatus(staffId: string) {
@@ -172,6 +173,10 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
       if (!this.useRedis()) {
         const now = Date.now();
         for (const id of [...this.memOnline]) {
+          if (this.chatService.hasActiveSockets(id)) {
+            void this.heartbeat(id);
+            continue;
+          }
           const lastPing = this.memLastPing.get(id) ?? 0;
           if (!lastPing) continue;
           const delta = now - lastPing;
@@ -189,6 +194,10 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
       const ids = await this.redis!.smembers(ONLINE_SET_KEY);
       const now = Date.now();
       for (const id of ids) {
+        if (this.chatService.hasActiveSockets(id)) {
+          await this.heartbeat(id);
+          continue;
+        }
         const lastPingRaw = await this.redis!.get(this.keyLastPing(id));
         const lastPing = lastPingRaw ? Number(lastPingRaw) : 0;
         if (!lastPing) continue;

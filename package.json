@@ -11,6 +11,7 @@
     "start": "nest start",
     "seed:db": "npx prisma db seed",
     "seed:icd10": "npx ts-node ./prisma/seed-icd10.ts",
+    "seed:purchase-items": "npx ts-node ./prisma/seed-purchase-items.ts",
     "db:backup": "npx ts-node ./prisma/backup-restore/backup.ts",
     "db:restore": "npx ts-node ./prisma/backup-restore/restore.ts",
     "db:reset-restore": "npx ts-node ./prisma/backup-restore/reset-and-restore.ts",

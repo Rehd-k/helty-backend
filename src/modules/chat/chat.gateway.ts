@@ -11,7 +11,7 @@ import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { StaffService } from '../staff/staff.service';
 import { ChatService } from './chat.service';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -45,13 +45,20 @@ const ticketRoom = (id: string) => `ticket:${id}`;
   cors: { origin: '*' },
   namespace: '/',
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway
+  implements
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnModuleInit,
+    OnModuleDestroy
+{
   @WebSocketServer()
   server!: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
   /** roomKey:userId -> last typing emit ms */
   private readonly typingThrottle = new Map<string, number>();
+  private presenceRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -63,6 +70,94 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly conversations: StaffConversationService,
     private readonly tickets: SupportTicketService,
   ) {}
+
+  onModuleInit(): void {
+    this.presenceRefreshTimer = setInterval(() => {
+      for (const staffId of this.chatService.getConnectedStaffIds()) {
+        void this.presence.heartbeat(staffId);
+      }
+    }, 120_000);
+  }
+
+  onModuleDestroy(): void {
+    if (this.presenceRefreshTimer) {
+      clearInterval(this.presenceRefreshTimer);
+      this.presenceRefreshTimer = null;
+    }
+  }
+
+  toMessagePayload(msg: {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    content: string | null;
+    type: string;
+    fileUrl: string | null;
+    createdAt: Date;
+    sender?: unknown;
+  }) {
+    return {
+      ...msg,
+      createdAt: msg.createdAt.toISOString(),
+    };
+  }
+
+  /** Push live message to everyone in the conversation room. */
+  broadcastConversationMessage(
+    conversationId: string,
+    payload: ReturnType<ChatGateway['toMessagePayload']>,
+    excludeSocketId?: string,
+  ): void {
+    const room = convRoom(conversationId);
+    if (excludeSocketId) {
+      this.server
+        .to(room)
+        .except(excludeSocketId)
+        .emit('receiveMessage', payload);
+      return;
+    }
+    this.server.to(room).emit('receiveMessage', payload);
+  }
+
+  /** Join all active sockets for the given staff ids to a conversation room. */
+  async joinStaffSocketsToConversation(
+    staffIds: string[],
+    conversationId: string,
+  ): Promise<void> {
+    if (!this.server?.sockets?.sockets) return;
+    const room = convRoom(conversationId);
+    for (const staffId of staffIds) {
+      for (const socketId of this.chatService.getSocketIdsForUser(staffId)) {
+        const socket = this.server.sockets.sockets.get(socketId);
+        if (!socket) continue;
+        await socket.join(room);
+        socket.emit('joinedConversation', { conversationId });
+      }
+    }
+  }
+
+  private async emitPresenceForStaff(staffId: string): Promise<void> {
+    const p = await this.presence.getPresence(staffId);
+    this.server.emit('presenceUpdate', {
+      staffId,
+      status: p.status,
+      lastSeen: p.lastSeen,
+    });
+  }
+
+  private async autoJoinStaffConversations(
+    client: AuthenticatedSocket,
+    staffId: string,
+  ): Promise<void> {
+    const conversationIds =
+      await this.conversations.listConversationIdsForStaff(staffId);
+    for (const conversationId of conversationIds) {
+      await client.join(convRoom(conversationId));
+    }
+    if (conversationIds.length) {
+      client.emit('joinedConversations', { conversationIds });
+    }
+  }
 
   private allowGuestConnection(): boolean {
     if (this.configService.get<string>('ALLOW_CHAT_GUEST') === 'true') {
@@ -101,12 +196,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           firstName: user.firstName,
           lastName: user.lastName,
         });
+        await this.autoJoinStaffConversations(client, user.id);
         client.emit('user_id', {
           userId: user.id,
           displayName: user.displayName,
         });
         const onlineUsers = this.chatService.getOnlineUsers();
         this.server.emit('online_users', onlineUsers);
+        await this.emitPresenceForStaff(user.id);
         return;
       } catch {
         this.logger.warn(
@@ -132,9 +229,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(client: AuthenticatedSocket): void {
-    this.chatService.unregisterSocket(client.id);
+    const userId = this.chatService.unregisterSocket(client.id);
     const onlineUsers = this.chatService.getOnlineUsers();
     this.server.emit('online_users', onlineUsers);
+    if (
+      userId &&
+      !userId.startsWith('guest-') &&
+      !this.chatService.hasActiveSockets(userId)
+    ) {
+      void this.emitPresenceForStaff(userId);
+    }
   }
 
   private staffOnly(client: AuthenticatedSocket): OnlineUserInfo | null {
@@ -207,6 +311,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
     try {
+      await this.conversations.assertMember(dto.conversationId, user.id);
+      await client.join(convRoom(dto.conversationId));
       const msg = await this.conversationMessages.send(
         dto.conversationId,
         user.id,
@@ -216,14 +322,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           fileUrl: dto.fileUrl,
         },
       );
-      const payload = {
-        ...msg,
-        createdAt: msg.createdAt.toISOString(),
-      };
+      const payload = this.toMessagePayload(msg);
       client.emit('message_sent', payload);
-      this.server
-        .to(convRoom(dto.conversationId))
-        .emit('receiveMessage', payload);
+      this.broadcastConversationMessage(
+        dto.conversationId,
+        payload,
+        client.id,
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Send failed';
       client.emit('chat_error', { message: msg });

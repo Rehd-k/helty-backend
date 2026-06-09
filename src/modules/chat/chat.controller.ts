@@ -32,6 +32,7 @@ import { nanoid } from 'nanoid';
 import type { Response } from 'express';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { ChatService } from './chat.service';
+import { ChatGateway } from './chat.gateway';
 import { PresenceService } from './presence/presence.service';
 import { StaffConversationService } from './conversation/staff-conversation.service';
 import { StaffConversationMessageService } from './message/staff-conversation-message.service';
@@ -79,6 +80,7 @@ function safeResolveUnderUploads(relativePath: string): string {
 export class ChatController {
   constructor(
     private readonly chatService: ChatService,
+    private readonly chatGateway: ChatGateway,
     private readonly presence: PresenceService,
     private readonly conversations: StaffConversationService,
     private readonly messages: StaffConversationMessageService,
@@ -157,28 +159,38 @@ export class ChatController {
   @Post('conversations/direct')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Get or create a direct conversation' })
-  createDirect(
+  async createDirect(
     @Req() req: { user?: { sub?: string } },
     @Body() dto: CreateDirectConversationDto,
   ) {
-    return this.conversations.getOrCreateDirect(
+    const conv = await this.conversations.getOrCreateDirect(
       this.staffId(req),
       dto.otherStaffId,
     );
+    await this.chatGateway.joinStaffSocketsToConversation(
+      conv.members.map((m) => m.staffId),
+      conv.id,
+    );
+    return conv;
   }
 
   @Post('conversations/group')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a group conversation' })
-  createGroup(
+  async createGroup(
     @Req() req: { user?: { sub?: string } },
     @Body() dto: CreateGroupConversationDto,
   ) {
-    return this.conversations.createGroup(
+    const conv = await this.conversations.createGroup(
       this.staffId(req),
       dto.name,
       dto.memberStaffIds,
     );
+    await this.chatGateway.joinStaffSocketsToConversation(
+      conv.members.map((m) => m.staffId),
+      conv.id,
+    );
+    return conv;
   }
 
   @Get('conversations/:id')
@@ -203,12 +215,18 @@ export class ChatController {
   @Post('conversations/:id/members')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Add member to group (admin)' })
-  addMember(
+  async addMember(
     @Req() req: { user?: { sub?: string } },
     @Param('id') id: string,
     @Body() dto: AddMemberDto,
   ) {
-    return this.conversations.addMember(id, this.staffId(req), dto.staffId);
+    const conv = await this.conversations.addMember(
+      id,
+      this.staffId(req),
+      dto.staffId,
+    );
+    await this.chatGateway.joinStaffSocketsToConversation([dto.staffId], id);
+    return conv;
   }
 
   @Delete('conversations/:id/members/:staffId')
@@ -255,16 +273,21 @@ export class ChatController {
   @Post('conversations/:id/messages')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Send a message via REST' })
-  sendMessageRest(
+  async sendMessageRest(
     @Req() req: { user?: { sub?: string } },
     @Param('id') id: string,
     @Body() dto: SendConversationMessageRestDto,
   ) {
-    return this.messages.send(id, this.staffId(req), {
+    const msg = await this.messages.send(id, this.staffId(req), {
       content: dto.content,
       type: dto.type,
       fileUrl: dto.fileUrl,
     });
+    this.chatGateway.broadcastConversationMessage(
+      id,
+      this.chatGateway.toMessagePayload(msg),
+    );
+    return msg;
   }
 
   @Post('conversations/:id/read')
