@@ -15,6 +15,12 @@ import { LabSampleController } from './lab-sample/lab-sample.controller';
 import { LabSampleService } from './lab-sample/lab-sample.service';
 import { LabResultController } from './lab-result/lab-result.controller';
 import { LabResultService } from './lab-result/lab-result.service';
+import { LabAntibioticController } from './lab-antibiotic/lab-antibiotic.controller';
+import { LabAntibioticService } from './lab-antibiotic/lab-antibiotic.service';
+import { LabAstResultOptionController } from './lab-ast-result-option/lab-ast-result-option.controller';
+import { LabAstResultOptionService } from './lab-ast-result-option/lab-ast-result-option.service';
+import { LabAstResultController } from './lab-ast-result/lab-ast-result.controller';
+import { LabAstResultService } from './lab-ast-result/lab-ast-result.service';
 
 @Module({
   imports: [PrismaModule, InvoiceModule],
@@ -26,6 +32,9 @@ import { LabResultService } from './lab-result/lab-result.service';
     LabOrderController,
     LabSampleController,
     LabResultController,
+    LabAntibioticController,
+    LabAstResultOptionController,
+    LabAstResultController,
   ],
   providers: [
     LabCategoryService,
@@ -35,6 +44,9 @@ import { LabResultService } from './lab-result/lab-result.service';
     LabOrderService,
     LabSampleService,
     LabResultService,
+    LabAntibioticService,
+    LabAstResultOptionService,
+    LabAstResultService,
   ],
   exports: [
     LabCategoryService,
@@ -44,6 +56,9 @@ import { LabResultService } from './lab-result/lab-result.service';
     LabOrderService,
     LabSampleService,
     LabResultService,
+    LabAntibioticService,
+    LabAstResultOptionService,
+    LabAstResultService,
   ],
 })
 export class LabModule {}

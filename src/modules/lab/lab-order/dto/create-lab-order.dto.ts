@@ -6,6 +6,7 @@ import {
   ArrayMinSize,
   ValidateNested,
   IsOptional,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -15,6 +16,16 @@ export class LabOrderItemDto {
   @IsUUID()
   @IsNotEmpty()
   testVersionId: string;
+
+  @ApiPropertyOptional({
+    description:
+      'When true, Antibiotic Susceptibility Testing (AST) may be recorded for this line. Use for MCS and similar culture tests where susceptibility is ordered prospectively.',
+    default: false,
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  astRequested?: boolean;
 }
 
 export class CreateLabOrderDto {

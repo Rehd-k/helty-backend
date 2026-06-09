@@ -100,6 +100,7 @@ export class LabOrderService {
               create: dto.items.map((item) => ({
                 testVersionId: item.testVersionId,
                 status: 'PENDING',
+                astRequested: item.astRequested ?? false,
               })),
             },
           },
@@ -125,6 +126,7 @@ export class LabOrderService {
           create: dto.items.map((item) => ({
             testVersionId: item.testVersionId,
             status: 'PENDING',
+            astRequested: item.astRequested ?? false,
           })),
         },
       },
@@ -200,6 +202,19 @@ export class LabOrderService {
             },
             sample: true,
             results: { include: { field: true } },
+            astResults: {
+              include: {
+                antibiotic: true,
+                resultOption: true,
+                enteredBy: {
+                  select: { id: true, firstName: true, lastName: true },
+                },
+              },
+              orderBy: [
+                { antibiotic: { position: 'asc' } },
+                { antibiotic: { name: 'asc' } },
+              ],
+            },
           },
         },
       },

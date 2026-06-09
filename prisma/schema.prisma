@@ -2172,6 +2172,7 @@ model Staff {
   dialysisSessionConsumablesCreated   DialysisSessionConsumable[] @relation("DialysisSessionConsumableCreatedBy")
   labSamplesCollected                 LabSample[]                 @relation("LabSampleCollectedBy")
   labResultsEntered                   LabResult[]                 @relation("LabResultEnteredBy")
+  labAstResultsEntered                LabAstResult[]              @relation("LabAstResultEnteredBy")
   chatMessagesSent                    ChatMessage[]               @relation("ChatMessageSender")
   chatMessagesReceived                ChatMessage[]               @relation("ChatMessageRecipient")
   radiologySchedulesAsRadiographer    RadiologySchedule[]         @relation("RadiologyScheduleRadiographer")
@@ -3195,15 +3196,71 @@ model LabOrderItem {
   orderId       String
   testVersionId String
   status        String   @default("PENDING") // PENDING, SAMPLE_COLLECTED, PROCESSING, COMPLETED, VERIFIED
+  /// When true, Antibiotic Susceptibility Testing (AST) may be recorded for this line (e.g. MCS).
+  astRequested  Boolean  @default(false)
   createdAt     DateTime @default(now())
 
   order       LabOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   testVersion LabTestVersion @relation(fields: [testVersionId], references: [id], onDelete: Restrict)
   sample      LabSample?
   results     LabResult[]
+  astResults  LabAstResult[]
 
   @@index([orderId])
   @@index([testVersionId])
+  @@index([astRequested])
+}
+
+model LabAntibiotic {
+  id        String   @id @default(uuid())
+  name      String
+  code      String?
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  astResults LabAstResult[]
+
+  @@unique([name])
+  @@index([isActive])
+  @@index([position])
+}
+
+model LabAstResultOption {
+  id        String   @id @default(uuid())
+  label     String
+  code      String?
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  astResults LabAstResult[]
+
+  @@unique([label])
+  @@index([isActive])
+  @@index([position])
+}
+
+model LabAstResult {
+  id             String   @id @default(uuid())
+  orderItemId    String
+  antibioticId   String
+  resultOptionId String
+  enteredById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orderItem    LabOrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  antibiotic   LabAntibiotic      @relation(fields: [antibioticId], references: [id], onDelete: Restrict)
+  resultOption LabAstResultOption @relation(fields: [resultOptionId], references: [id], onDelete: Restrict)
+  enteredBy    Staff              @relation("LabAstResultEnteredBy", fields: [enteredById], references: [id], onDelete: Restrict)
+
+  @@unique([orderItemId, antibioticId])
+  @@index([orderItemId])
+  @@index([antibioticId])
+  @@index([resultOptionId])
 }
 
 model LabSample {
