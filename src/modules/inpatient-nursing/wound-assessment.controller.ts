@@ -27,6 +27,7 @@ import { nanoid } from 'nanoid';
 import type { Response } from 'express';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { WoundAssessmentService } from './wound-assessment.service';
 import { CreateWoundAssessmentDto } from './dto/nursing-docs.dto';
 
@@ -79,14 +80,14 @@ export class WoundAssessmentController {
   constructor(private readonly service: WoundAssessmentService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List wound assessments' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
   }
 
   @Get(':assessmentId/photo')
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'Serve wound assessment photo' })
   async getPhoto(
     @Param('admissionId') admissionId: string,
@@ -107,7 +108,7 @@ export class WoundAssessmentController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @UseInterceptors(woundPhotoInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Create wound assessment' })

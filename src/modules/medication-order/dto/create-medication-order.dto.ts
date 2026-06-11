@@ -63,7 +63,7 @@ export class CreateMedicationOrderDto {
 
   @ApiPropertyOptional({
     description:
-      'Per-administration dose amount (e.g. 2 tablets). Stored on the medication order only when billingQuantity is also sent.',
+      'Ordered quantity saved on the medication order. Also used for invoice billing when billingQuantity is omitted.',
   })
   @IsNumber()
   @IsPositive()
@@ -72,7 +72,7 @@ export class CreateMedicationOrderDto {
 
   @ApiPropertyOptional({
     description:
-      'Units to bill on the invoice (integer). When omitted, legacy clients may send quantity instead for billing only.',
+      'Units to bill on the invoice (integer). When both billingQuantity and quantity are sent, billing uses this field and quantity is stored on the order only.',
     example: 1,
     default: 1,
   })

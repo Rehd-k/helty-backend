@@ -1,13 +1,66 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AccountType, Prisma, StaffRole } from '@prisma/client';
 import { activeStaffPasswordResetInclude } from './staff-password-reset.query';
 import { ListStaffQueryDto } from './dto/list-staff-query.dto';
+import { validateStaffRolePairing } from './staff-role.validation';
+import {
+  isChargeNurseRole,
+  staffRoleToNursingUnit,
+} from '../nursing/nursing.constants';
+import { wardMatchesNursingUnit } from '../nursing/nursing-scope.utils';
 
 @Injectable()
 export class StaffService {
   constructor(private readonly prisma: PrismaService) { }
+
+  private extractRelationId(
+    directId: string | null | undefined,
+    relation: unknown,
+  ): string | undefined {
+    if (directId !== undefined && directId !== null) {
+      return directId;
+    }
+    if (
+      relation &&
+      typeof relation === 'object' &&
+      'connect' in relation &&
+      (relation as { connect?: { id: string } }).connect?.id
+    ) {
+      return (relation as { connect: { id: string } }).connect.id;
+    }
+    return undefined;
+  }
+
+  private async validateChargeNurseWard(
+    staffRole: StaffRole,
+    wardId: string | undefined,
+  ): Promise<void> {
+    if (!isChargeNurseRole(staffRole)) return;
+    if (!wardId) return;
+
+    const nursingUnit = staffRoleToNursingUnit(staffRole);
+    if (!nursingUnit) return;
+
+    const ward = await this.prisma.ward.findUnique({
+      where: { id: wardId },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        department: { select: { name: true } },
+      },
+    });
+    if (!ward) {
+      throw new BadRequestException(`Ward "${wardId}" not found.`);
+    }
+    if (!wardMatchesNursingUnit(ward, nursingUnit)) {
+      throw new BadRequestException(
+        `Ward "${ward.name}" does not belong to the ${nursingUnit} nursing unit.`,
+      );
+    }
+  }
 
   async create(data: Prisma.StaffCreateInput) {
     // hash password if provided
@@ -19,7 +72,27 @@ export class StaffService {
       delete data.role;
     }
 
-    // cast to any because of relation union types
+    const createData = data as Prisma.StaffCreateInput & {
+      accountType?: AccountType;
+      staffRole?: StaffRole;
+      departmentId?: string;
+      wardId?: string;
+    };
+    if (createData.accountType && createData.staffRole) {
+      const departmentId = this.extractRelationId(
+        createData.departmentId,
+        createData.department,
+      );
+      const wardId = this.extractRelationId(createData.wardId, createData.ward);
+      validateStaffRolePairing({
+        accountType: createData.accountType,
+        staffRole: createData.staffRole,
+        departmentId,
+        wardId,
+      });
+      await this.validateChargeNurseWard(createData.staffRole, wardId);
+    }
+
     const newStaff = await this.prisma.staff.create({ data: data as any });
     return newStaff;
   }
@@ -41,6 +114,7 @@ export class StaffService {
       { email: { contains: term, mode: 'insensitive' } },
       { phone: { contains: term, mode: 'insensitive' } },
       { department: { name: { contains: term, mode: 'insensitive' } } },
+      { ward: { name: { contains: term, mode: 'insensitive' } } },
     ];
 
     if (accountTypes.length) {
@@ -68,7 +142,10 @@ export class StaffService {
         orderBy: { createdAt: 'desc' },
         skip,
         take: pageSize,
-        include: { department: true },
+        include: {
+          department: true,
+          ward: { select: { id: true, name: true, type: true } },
+        },
         omit: { password: true },
       }),
       this.prisma.staff.count({ where }),
@@ -82,6 +159,7 @@ export class StaffService {
       where: { id },
       include: {
         department: true,
+        ward: { select: { id: true, name: true, type: true } },
         headedDepartment: true,
         passwordResets: activeStaffPasswordResetInclude(),
       },
@@ -94,7 +172,11 @@ export class StaffService {
     if (!email) return null;
     return this.prisma.staff.findUnique({
       where: { email },
-      include: { department: true, headedDepartment: true },
+      include: {
+        department: true,
+        ward: { select: { id: true, name: true, type: true } },
+        headedDepartment: true,
+      },
     });
   }
 
@@ -113,6 +195,7 @@ export class StaffService {
 
   private staffAuthInclude = {
     department: true,
+    ward: { select: { id: true, name: true, type: true } },
     headedDepartment: true,
   } as const;
 
@@ -158,10 +241,43 @@ export class StaffService {
     data: Partial<any>,
     updatedByStaffId?: string,
   ) {
+    const existing = await this.prisma.staff.findUnique({
+      where: { id },
+      select: {
+        accountType: true,
+        staffRole: true,
+        departmentId: true,
+        wardId: true,
+      },
+    });
+    if (!existing) throw new NotFoundException('Staff member not found');
+
     const payload: Record<string, unknown> = { ...data };
     if (updatedByStaffId) {
-      payload.updatedById = updatedByStaffId;
+      payload.updatedBy = { connect: { id: updatedByStaffId } };
     }
+
+    const accountType = (payload.accountType as AccountType) ?? existing.accountType;
+    const staffRole = (payload.staffRole as StaffRole) ?? existing.staffRole;
+    let departmentId = existing.departmentId;
+    if (payload.departmentId !== undefined) {
+      departmentId = payload.departmentId as string | null;
+    } else if (payload.department && typeof payload.department === 'object') {
+      const conn = payload.department as { connect?: { id: string } };
+      if (conn.connect?.id) departmentId = conn.connect.id;
+    }
+
+    let wardId = existing.wardId;
+    if (payload.wardId !== undefined) {
+      wardId = payload.wardId as string | null;
+    } else if (payload.ward && typeof payload.ward === 'object') {
+      const conn = payload.ward as { connect?: { id: string } };
+      if (conn.connect?.id) wardId = conn.connect.id;
+    }
+
+    validateStaffRolePairing({ accountType, staffRole, departmentId, wardId });
+    await this.validateChargeNurseWard(staffRole, wardId ?? undefined);
+
     return this.prisma.staff.update({ where: { id }, data: payload as any });
   }
 
@@ -169,3 +285,4 @@ export class StaffService {
     return this.prisma.staff.delete({ where: { id } });
   }
 }
+

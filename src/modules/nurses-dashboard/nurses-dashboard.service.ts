@@ -1,6 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { AccountType, AdmissionStatus, AlertSeverity } from '@prisma/client';
+import {
+  AccountType,
+  AdmissionStatus,
+  AlertSeverity,
+  NursingUnit,
+  StaffRole,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  capabilitiesForStaffRole,
+  defaultDashboardRoute,
+  isChargeNurseRole,
+  isMatronRole,
+  NURSING_CHARGE_ROLES,
+  NURSING_ROLE_TITLES,
+  staffRoleToNursingUnit,
+} from '../nursing/nursing.constants';
+import { wardMatchesNursingUnit } from '../nursing/nursing-scope.utils';
 import { compareMetrics } from '../billing-analytics/billing-analytics-math';
 import {
   NurseDashboardTimeRange,
@@ -95,12 +111,15 @@ function shortDeptLabel(name: string): string {
 }
 
 function staffRoleTitle(staffRole: string): string {
-  const map: Record<string, string> = {
-    HEAD_NURSE: 'Head Nurse',
-    INPATIENT_NURSE: 'Inpatient Nurse',
-    OUTPATIENT_NURSE: 'Outpatient Nurse',
-  };
-  return map[staffRole] ?? staffRole.replace(/_/g, ' ');
+  return NURSING_ROLE_TITLES[staffRole] ?? staffRole.replace(/_/g, ' ');
+}
+
+function isSupervisingRole(staffRole: string): boolean {
+  return (
+    isMatronRole(staffRole) ||
+    isChargeNurseRole(staffRole) ||
+    NURSING_CHARGE_ROLES.includes(staffRole as StaffRole)
+  );
 }
 
 function alertSeverityApi(s: AlertSeverity): 'critical' | 'warning' {
@@ -126,7 +145,61 @@ function relativeLabel(occurredAt: Date, asOf: Date): string {
 export class NursesDashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async me(staffId: string) {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: {
+        id: true,
+        staffRole: true,
+        accountType: true,
+        departmentId: true,
+        department: { select: { id: true, name: true } },
+        wardId: true,
+        ward: { select: { id: true, name: true, type: true } },
+      },
+    });
+    if (!staff) {
+      return null;
+    }
+
+    return {
+      staffId: staff.id,
+      staffRole: staff.staffRole,
+      accountType: staff.accountType,
+      nursingUnit: staffRoleToNursingUnit(staff.staffRole),
+      department: staff.department,
+      ward: staff.ward,
+      capabilities: capabilitiesForStaffRole(staff.staffRole),
+      defaultDashboardRoute: defaultDashboardRoute(staff.staffRole),
+    };
+  }
+
   async overview(
+    timeRange: NurseDashboardTimeRange,
+    asOfRaw: string | undefined,
+    staffId: string,
+  ) {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: { staffRole: true },
+    });
+    if (staff && isMatronRole(staff.staffRole)) {
+      return this.matronOverview(timeRange, asOfRaw, staffId);
+    }
+    if (staff && isChargeNurseRole(staff.staffRole)) {
+      return this.chargeOverview(timeRange, asOfRaw, staffId);
+    }
+    if (
+      staff &&
+      (staff.staffRole === StaffRole.INPATIENT_NURSE ||
+        staff.staffRole === StaffRole.OUTPATIENT_NURSE)
+    ) {
+      return this.lineOverview(timeRange, asOfRaw, staffId);
+    }
+    return this.hospitalOverview(timeRange, asOfRaw, staffId);
+  }
+
+  async hospitalOverview(
     timeRange: NurseDashboardTimeRange,
     asOfRaw: string | undefined,
     staffId: string,
@@ -135,12 +208,14 @@ export class NursesDashboardService {
     const window = windowForTimeRange(timeRange, asOf);
     const prev = previousEqualWindow(window.start, window.end);
 
-    const staff = await this.prisma.staff.findUnique({
+    const staffProfile = await this.prisma.staff.findUnique({
       where: { id: staffId },
       select: { firstName: true, lastName: true },
     });
     const userDisplayName =
-      staff?.firstName?.trim() || staff?.lastName?.trim() || 'there';
+      staffProfile?.firstName?.trim() ||
+      staffProfile?.lastName?.trim() ||
+      'there';
 
     const [
       totalPatientsCurrent,
@@ -231,6 +306,202 @@ export class NursesDashboardService {
       departmentLoad,
       staffOnDuty,
       criticalAlerts,
+      dashboardType: 'legacy',
+    };
+  }
+
+  async matronOverview(
+    timeRange: NurseDashboardTimeRange,
+    asOfRaw: string | undefined,
+    staffId: string,
+  ) {
+    const base = await this.hospitalOverview(timeRange, asOfRaw, staffId);
+    const rosterSummary = await this.prisma.nurseShiftRoster.groupBy({
+      by: ['nursingUnit'],
+      where: {
+        shiftDate: (() => {
+          const d = parseAsOf(asOfRaw);
+          d.setUTCHours(0, 0, 0, 0);
+          return d;
+        })(),
+      },
+      _count: { id: true },
+    });
+
+    const unassignedInpatient = await this.prisma.admission.count({
+      where: {
+        status: AdmissionStatus.ACTIVE,
+        nurseAssignments: { none: {} },
+      },
+    });
+
+    return {
+      ...base,
+      dashboardType: 'matron',
+      header: {
+        ...base.header,
+        title: 'Nursing Command Center',
+      },
+      unitRosterCounts: rosterSummary.map((r) => ({
+        nursingUnit: r.nursingUnit,
+        scheduled: r._count.id,
+      })),
+      assignmentGaps: {
+        unassignedInpatientAdmissions: unassignedInpatient,
+      },
+    };
+  }
+
+  async chargeOverview(
+    timeRange: NurseDashboardTimeRange,
+    asOfRaw: string | undefined,
+    staffId: string,
+  ) {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: {
+        staffRole: true,
+        ward: { select: { name: true } },
+        department: { select: { name: true } },
+      },
+    });
+    const unit = staffRoleToNursingUnit(staff?.staffRole);
+    const asOf = parseAsOf(asOfRaw);
+    const window = windowForTimeRange(timeRange, asOf);
+    const shiftDay = new Date(asOf);
+    shiftDay.setUTCHours(0, 0, 0, 0);
+
+    const [rosterToday, rosterSummary, alerts, bedCurrent] = await Promise.all([
+      this.prisma.nurseShiftRoster.count({
+        where: { nursingUnit: unit ?? undefined, shiftDate: shiftDay },
+      }),
+      this.prisma.nurseShiftRoster.groupBy({
+        by: ['shiftType'],
+        where: { nursingUnit: unit ?? undefined, shiftDate: shiftDay },
+        _count: { id: true },
+      }),
+      this.buildCriticalAlerts(asOf, unit ?? undefined),
+      this.bedOccupancyAt(asOf, unit ?? undefined),
+    ]);
+
+    const queueDepth =
+      unit === NursingUnit.OPD || unit === NursingUnit.ONG
+        ? await this.prisma.outpatientNurseAssignment.count({
+            where: { nursingUnit: unit },
+          })
+        : 0;
+
+    return {
+      dashboardType: 'charge',
+      asOf: asOf.toISOString(),
+      timeRange,
+      window: {
+        start: window.start.toISOString(),
+        end: window.end.toISOString(),
+      },
+      header: {
+        title: `${staff?.ward?.name ?? staff?.department?.name ?? staffRoleTitle(staff?.staffRole ?? '')} Unit`,
+        subtitleTemplate: 'Shift roster and patient flow for your unit.',
+        userDisplayName: staff?.ward?.name ?? staff?.department?.name ?? 'Charge Nurse',
+      },
+      nursingUnit: unit,
+      kpis: {
+        rosterToday,
+        bedOccupancy: {
+          ratio: bedCurrent.ratio,
+          valueFormatted: `${Math.round(bedCurrent.ratio * 100)}%`,
+        },
+        queueAssignments: queueDepth,
+      },
+      shiftBreakdown: rosterSummary.map((r) => ({
+        shiftType: r.shiftType,
+        count: r._count.id,
+      })),
+      staffOnDuty: await this.buildStaffOnDuty(unit ?? undefined),
+      criticalAlerts: alerts,
+    };
+  }
+
+  async lineOverview(
+    timeRange: NurseDashboardTimeRange,
+    asOfRaw: string | undefined,
+    staffId: string,
+  ) {
+    const asOf = parseAsOf(asOfRaw);
+    const shiftDay = new Date(asOf);
+    shiftDay.setUTCHours(0, 0, 0, 0);
+
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: { firstName: true, lastName: true, staffRole: true },
+    });
+
+    const [inpatientAssignments, outpatientAssignments, rosterShifts, alerts] =
+      await Promise.all([
+        this.prisma.nurseAssignment.findMany({
+          where: { nurseId: staffId, shiftDate: shiftDay },
+          include: {
+            admission: {
+              select: {
+                id: true,
+                wardEntity: { select: { name: true } },
+                patient: {
+                  select: { firstName: true, surname: true, patientId: true },
+                },
+              },
+            },
+          },
+        }),
+        this.prisma.outpatientNurseAssignment.findMany({
+          where: { nurseId: staffId },
+          include: {
+            invoice: {
+              select: {
+                id: true,
+                invoiceID: true,
+                patient: {
+                  select: { firstName: true, surname: true, patientId: true },
+                },
+              },
+            },
+          },
+          take: 20,
+          orderBy: { assignedAt: 'desc' },
+        }),
+        this.prisma.nurseShiftRoster.findMany({
+          where: { nurseId: staffId, shiftDate: shiftDay },
+          orderBy: { shiftType: 'asc' },
+        }),
+        this.buildCriticalAlerts(asOf),
+      ]);
+
+    return {
+      dashboardType: 'line',
+      asOf: asOf.toISOString(),
+      timeRange,
+      header: {
+        title: 'My Patients',
+        subtitleTemplate: 'Your assignments and shifts for today.',
+        userDisplayName:
+          `${staff?.firstName ?? ''} ${staff?.lastName ?? ''}`.trim() || 'Nurse',
+      },
+      staffRole: staff?.staffRole,
+      myRosterShifts: rosterShifts,
+      inpatientAssignments: inpatientAssignments.map((a) => ({
+        id: a.id,
+        shiftType: a.shiftType,
+        admissionId: a.admissionId,
+        ward: a.admission.wardEntity?.name,
+        patient: a.admission.patient,
+      })),
+      outpatientAssignments: outpatientAssignments.map((a) => ({
+        id: a.id,
+        invoiceId: a.invoiceId,
+        invoiceID: a.invoice.invoiceID,
+        patient: a.invoice.patient,
+        assignedAt: a.assignedAt.toISOString(),
+      })),
+      criticalAlerts: alerts,
     };
   }
 
@@ -256,20 +527,38 @@ export class NursesDashboardService {
    * as a fraction of total ward capacity (sum of `Ward.capacity`). If capacity is unset, uses
    * physical bed count as the denominator when available.
    */
-  private async bedOccupancyAt(at: Date): Promise<{
+  private async bedOccupancyAt(
+    at: Date,
+    nursingUnit?: NursingUnit,
+  ): Promise<{
     ratio: number;
     occupied: number;
     capacity: number;
   }> {
-    const [wards, bedTotal] = await Promise.all([
-      this.prisma.ward.findMany({ select: { capacity: true } }),
-      this.prisma.bed.count(),
-    ]);
-    const wardCap = wards.reduce((s, w) => s + w.capacity, 0);
+    const wards = await this.prisma.ward.findMany({
+      select: {
+        id: true,
+        capacity: true,
+        type: true,
+        name: true,
+        department: { select: { name: true } },
+      },
+    });
+
+    const scopedWards = nursingUnit
+      ? wards.filter((w) => wardMatchesNursingUnit(w, nursingUnit))
+      : wards;
+
+    const wardIds = scopedWards.map((w) => w.id);
+    const wardCap = scopedWards.reduce((s, w) => s + w.capacity, 0);
+    const bedTotal = wardIds.length
+      ? await this.prisma.bed.count({ where: { wardId: { in: wardIds } } })
+      : 0;
     const capacity = wardCap > 0 ? wardCap : Math.max(1, bedTotal);
 
     const occupied = await this.prisma.admission.count({
       where: {
+        ...(wardIds.length ? { wardId: { in: wardIds } } : {}),
         admissionDateTime: { lte: at },
         OR: [{ dischargeDateTime: null }, { dischargeDateTime: { gt: at } }],
       },
@@ -522,25 +811,57 @@ export class NursesDashboardService {
     };
   }
 
-  private async buildStaffOnDuty() {
+  private async buildStaffOnDuty(nursingUnit?: NursingUnit) {
     const since = new Date(Date.now() - 8 * 60 * 60 * 1000);
-    const nurses = await this.prisma.staff.findMany({
-      where: { accountType: AccountType.NURSE, isActive: true },
-      take: 12,
-      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        staffRole: true,
-        patientVitalsRecorded: {
-          where: { recordedAt: { gte: since } },
-          orderBy: { recordedAt: 'desc' },
-          take: 1,
-          select: { recordedAt: true },
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const rosterRows = await this.prisma.nurseShiftRoster.findMany({
+      where: {
+        shiftDate: today,
+        ...(nursingUnit ? { nursingUnit } : {}),
+      },
+      include: {
+        nurse: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffRole: true,
+            patientVitalsRecorded: {
+              where: { recordedAt: { gte: since } },
+              orderBy: { recordedAt: 'desc' },
+              take: 1,
+              select: { recordedAt: true },
+            },
+          },
         },
       },
+      take: 20,
     });
+
+    const nurses =
+      rosterRows.length > 0
+        ? rosterRows.map((r) => r.nurse)
+        : (
+            await this.prisma.staff.findMany({
+              where: { accountType: AccountType.NURSE, isActive: true },
+              take: 12,
+              orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                staffRole: true,
+                patientVitalsRecorded: {
+                  where: { recordedAt: { gte: since } },
+                  orderBy: { recordedAt: 'desc' },
+                  take: 1,
+                  select: { recordedAt: true },
+                },
+              },
+            })
+          ).slice(0, 12);
 
     return nurses.map((s) => {
       const name = `${s.firstName} ${s.lastName}`.trim();
@@ -556,7 +877,7 @@ export class NursesDashboardService {
       if (recent) {
         status = 'Active — vitals';
         statusTone = 'busy';
-      } else if (s.staffRole === 'HEAD_NURSE') {
+      } else if (isSupervisingRole(s.staffRole)) {
         status = 'Supervising';
         statusTone = 'warning';
       } else {
@@ -572,25 +893,39 @@ export class NursesDashboardService {
     });
   }
 
-  private async buildCriticalAlerts(asOf: Date) {
+  private async buildCriticalAlerts(asOf: Date, nursingUnit?: NursingUnit) {
     const rows = await this.prisma.alertLog.findMany({
       where: {
         resolved: false,
         severity: { in: [AlertSeverity.CRITICAL, AlertSeverity.HIGH] },
       },
-      take: 10,
+      take: 30,
       orderBy: { createdAt: 'desc' },
       include: {
         admission: {
           select: {
             ward: true,
-            wardEntity: { select: { name: true } },
+            wardEntity: {
+              select: {
+                name: true,
+                type: true,
+                department: { select: { name: true } },
+              },
+            },
           },
         },
       },
     });
 
-    return rows.map((r) => {
+    const filtered = nursingUnit
+      ? rows.filter((r) => {
+          const ward = r.admission.wardEntity;
+          if (!ward) return nursingUnit === NursingUnit.INPATIENT_WARD;
+          return wardMatchesNursingUnit(ward, nursingUnit);
+        })
+      : rows;
+
+    return filtered.slice(0, 10).map((r) => {
       const loc =
         r.admission.wardEntity?.name ?? r.admission.ward ?? 'Inpatient';
       return {

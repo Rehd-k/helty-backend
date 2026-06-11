@@ -30,13 +30,16 @@ export class StaffController {
   @ApiOperation({ summary: 'Register a new staff member' })
   @ApiResponse({ status: 201, description: 'Staff created' })
   create(@Body() dto: CreateStaffDto, @Req() req: any) {
-    const { departmentId, role, ...rest } = dto;
+    const { departmentId, wardId, role, ...rest } = dto;
     const data: any = { ...rest };
     if (departmentId) {
       data.department = { connect: { id: departmentId } };
     }
+    if (wardId) {
+      data.ward = { connect: { id: wardId } };
+    }
     if (req && req.user && req.user.sub) {
-      data.createdById = req.user.sub;
+      data.createdBy = { connect: { id: req.user.sub } };
     }
     data.staffRole = dto.staffRole ?? role;
 
@@ -71,13 +74,15 @@ export class StaffController {
     @Body() dto: UpdateStaffDto,
     @Req() req: { user: { sub: string } },
   ) {
-    console.log(dto)
-    const { departmentId, role, staffRole, ...rest } = dto as UpdateStaffDto & {
+    const { departmentId, wardId, role, staffRole, ...rest } = dto as UpdateStaffDto & {
       role?: string;
     };
     const data: any = { ...rest };
     if (departmentId) {
       data.department = { connect: { id: departmentId } };
+    }
+    if (wardId) {
+      data.ward = { connect: { id: wardId } };
     }
     const resolvedRole = staffRole ?? role;
     if (resolvedRole !== undefined) {

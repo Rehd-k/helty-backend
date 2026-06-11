@@ -11,6 +11,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MedicalSpecialty } from '@prisma/client';
 import { AccountTypes } from '../../common/decorators';
+import { NURSING_ACCESS } from '../nursing/nursing.constants';
 import { EncounterSpecialtyService } from './encounter-specialty.service';
 import { SyncSpecialtyModulesDto } from './dto/sync-specialty-modules.dto';
 import { UpsertClinicalSectionDto } from './dto/upsert-clinical-section.dto';
@@ -26,8 +27,7 @@ export class EncounterSpecialtyController {
     'ONG',
     'CONSULTANT',
     'INPATIENT_DOCTOR',
-    'NURSE',
-    'HEAD_NURSE',
+    ...NURSING_ACCESS,
     'MEDICAL_RECORDS',
     'CMD',
     'CMAC',
@@ -62,8 +62,7 @@ export class EncounterSpecialtyController {
     'ONG',
     'CONSULTANT',
     'INPATIENT_DOCTOR',
-    'NURSE',
-    'HEAD_NURSE',
+    ...NURSING_ACCESS,
     'MEDICAL_RECORDS',
     'CMD',
     'CMAC',

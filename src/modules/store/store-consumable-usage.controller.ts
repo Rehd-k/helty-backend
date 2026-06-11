@@ -11,6 +11,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { NURSING_ACCESS } from '../nursing/nursing.constants';
 import { ConsumableUsageService } from './consumable-usage.service';
 import {
   ListConsumableHistoryQueryDto,
@@ -28,15 +29,11 @@ export class StoreConsumableUsageController {
     summary: 'Record non-billable consumable use (nursing / procedure); deducts FIFO stock',
   })
   @AccountTypes(
-    'NURSE',
-    'HEAD_NURSE',
-    'INPATIENT_NURSE',
-    'OUTPATIENT_NURSE',
+    ...NURSING_ACCESS,
     'PHYSICIAN',
     'CONSULTANT',
     'RESIDENT',
     'INTERN',
-    'SUPER_ADMIN',
   )
   record(@Body() dto: RecordConsumableUsageDto, @Req() req: { user: { sub: string } }) {
     return this.usage.recordNonBillableUse(dto, req.user.sub);
@@ -47,15 +44,11 @@ export class StoreConsumableUsageController {
     summary: 'Full return of a prior non-billable USE event (restocks FIFO)',
   })
   @AccountTypes(
-    'NURSE',
-    'HEAD_NURSE',
-    'INPATIENT_NURSE',
-    'OUTPATIENT_NURSE',
+    ...NURSING_ACCESS,
     'PHYSICIAN',
     'CONSULTANT',
     'RESIDENT',
     'INTERN',
-    'SUPER_ADMIN',
   )
   returnUse(
     @Param('usageEventId') usageEventId: string,
@@ -73,10 +66,7 @@ export class StoreConsumableUsageController {
     'SUPER_ADMIN',
     'HEAD_OF_STORE',
     'STOREKEEPER',
-    'NURSE',
-    'HEAD_NURSE',
-    'INPATIENT_NURSE',
-    'OUTPATIENT_NURSE',
+    ...NURSING_ACCESS,
     'PHYSICIAN',
     'CONSULTANT',
   )

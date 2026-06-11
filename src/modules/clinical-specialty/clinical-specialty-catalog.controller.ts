@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccountTypes } from '../../common/decorators';
+import { NURSING_ACCESS } from '../nursing/nursing.constants';
 import { EncounterSpecialtyService } from './encounter-specialty.service';
 
 @ApiTags('Clinical specialties')
@@ -13,8 +14,7 @@ export class ClinicalSpecialtyCatalogController {
     'ONG',
     'CONSULTANT',
     'INPATIENT_DOCTOR',
-    'NURSE',
-    'HEAD_NURSE',
+    ...NURSING_ACCESS,
     'MEDICAL_RECORDS',
     'CMD',
     'CMAC',

@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { MedicationAdministrationService } from './medication-administration.service';
 import {
   CreateMedicationAdministrationDto,
@@ -32,13 +33,7 @@ export class MedicationAdministrationController {
   constructor(private readonly service: MedicationAdministrationService) { }
 
   @Get()
-  @AccountTypes(
-    'INPATIENT_DOCTOR',
-    'CONSULTANT',
-    'HEAD_NURSE',
-    'INPATIENT_NURSE',
-    'OUTPATIENT_NURSE',
-  )
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List medication administrations for an admission' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -46,7 +41,7 @@ export class MedicationAdministrationController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  // @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE', 'INPATIENT_NURSE', 'OUTPATIENT_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({
     summary:
       'Record a medication administration (nurse; nurse resolved from JWT)',
@@ -56,12 +51,13 @@ export class MedicationAdministrationController {
     @Body() dto: CreateMedicationAdministrationDto,
     @Req() req: { user: { sub: string } },
   ) {
+    console.log(dto);
     const addmi = await this.service.create(admissionId, dto, req.user.sub);
     return addmi;
   }
 
   @Patch(':administrationId')
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Update an administration (same nurse only)' })
   update(
     @Param('admissionId') admissionId: string,

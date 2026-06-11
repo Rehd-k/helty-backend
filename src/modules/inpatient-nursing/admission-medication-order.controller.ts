@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { AdmissionMedicationOrderService } from './admission-medication-order.service';
 import {
   CreateAdmissionMedicationOrderDto,
@@ -33,7 +34,7 @@ export class AdmissionMedicationOrderController {
   constructor(private readonly service: AdmissionMedicationOrderService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({
     summary: 'List inpatient medication orders for an admission',
   })
@@ -44,13 +45,7 @@ export class AdmissionMedicationOrderController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes(
-    'INPATIENT_DOCTOR',
-    'CONSULTANT',
-    'HEAD_NURSE',
-    'INPATIENT_NURSE',
-    'OUTPATIENT_NURSE',
-  )
+  @AccountTypes(...NURSING_ASSIGNMENT_WITH_DOCTORS, 'INPATIENT_NURSE', 'OUTPATIENT_NURSE')
   @ApiOperation({
     summary: 'Create an admission medication order (prescriber)',
   })
@@ -63,7 +58,7 @@ export class AdmissionMedicationOrderController {
   }
 
   @Patch(':orderId')
-  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE')
+  @AccountTypes(...NURSING_ASSIGNMENT_WITH_DOCTORS)
   @ApiOperation({ summary: 'Update an admission medication order' })
   update(
     @Param('admissionId') admissionId: string,
@@ -75,7 +70,7 @@ export class AdmissionMedicationOrderController {
 
   @Delete(':orderId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE')
+  @AccountTypes(...NURSING_ASSIGNMENT_WITH_DOCTORS)
   @ApiOperation({ summary: 'Delete an admission medication order' })
   async remove(
     @Param('admissionId') admissionId: string,

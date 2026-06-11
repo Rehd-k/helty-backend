@@ -528,6 +528,7 @@ export class EncounterService {
     staffId: string,
   ) {
     const access = await this.editPolicy.assertCanEdit(id, staffId);
+    console.log('access', dto);
 
     const encounter = await this.prisma.encounter.findUnique({
       where: { id },
@@ -542,6 +543,7 @@ export class EncounterService {
     if (!encounter) {
       throw new NotFoundException(`Encounter "${id}" not found.`);
     }
+    
 
     if (
       access.status === EncounterStatus.COMPLETED &&
@@ -815,19 +817,6 @@ export class EncounterService {
         this.matchProcedureEntry(old, entry),
       ),
     );
-
-    const addsBillableLines = merged.some(
-      (p) =>
-        (p.serviceId && !p.invoiceItemId) ||
-        (p.consumables?.some((c) => c.consumableId && !c.invoiceItemId) ??
-          false),
-    );
-    if (addsBillableLines) {
-      await this.invoiceService.assertInpatientCreditAllowed(
-        this.prisma,
-        encounter.patientId,
-      );
-    }
 
     for (const proc of merged) {
       if (proc.serviceId && !proc.invoiceItemId) {

@@ -105,6 +105,14 @@ export class QueryWaitingPatientDto {
   @IsOptional()
   patientId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Search by patient name, hospital patient ID, invoice ID, or consultation service name',
+  })
+  @IsString()
+  @IsOptional()
+  q?: string;
+
   @ApiPropertyOptional({ description: 'Number of records to skip', example: 0 })
   @Type(() => Number)
   @IsInt()

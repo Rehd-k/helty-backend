@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { IvFluidOrderService } from './iv-fluid-order.service';
 import { CreateIvFluidOrderDto, UpdateIvFluidOrderDto } from './dto/iv.dto';
 
@@ -24,7 +25,7 @@ export class IvFluidOrderController {
   constructor(private readonly service: IvFluidOrderService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List IV fluid orders for an admission' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -32,7 +33,7 @@ export class IvFluidOrderController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE')
+  @AccountTypes(...NURSING_ASSIGNMENT_WITH_DOCTORS)
   @ApiOperation({
     summary: 'Create IV fluid order (ordering clinician from JWT)',
   })
@@ -45,7 +46,7 @@ export class IvFluidOrderController {
   }
 
   @Patch(':orderId')
-  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT', 'HEAD_NURSE', 'NURSE')
+  @AccountTypes(...NURSING_ASSIGNMENT_WITH_DOCTORS, 'NURSE')
   @ApiOperation({ summary: 'Update IV fluid order (status/rate/end)' })
   update(
     @Param('admissionId') admissionId: string,

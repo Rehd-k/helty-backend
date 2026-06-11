@@ -329,6 +329,9 @@ export class PatientChartService {
           orderBy: { createdAt: 'desc' },
           include: {
             nurse: { select: { id: true, firstName: true, lastName: true } },
+            createdBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
           },
         });
       case 'allergies':

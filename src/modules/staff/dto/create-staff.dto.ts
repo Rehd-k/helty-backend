@@ -43,6 +43,15 @@ export class CreateStaffDto {
   @IsString()
   departmentId?: string;
 
+  @ApiPropertyOptional({
+    example: 'ward-uuid',
+    description:
+      'Required for charge nurse roles (WARD_CHARGE_NURSE, ICU_CHARGE_NURSE, etc.). Use GET /wards to populate the dropdown.',
+  })
+  @IsOptional()
+  @IsString()
+  wardId?: string;
+
   @ApiPropertyOptional({ example: 'john@hospital.org' })
   @IsOptional()
   @IsEmail()

@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { NursingNoteService } from './nursing-note.service';
 import { CreateNursingNoteDto } from './dto/nursing-docs.dto';
 
@@ -23,7 +24,7 @@ export class NursingNoteController {
   constructor(private readonly service: NursingNoteService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List nursing notes' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -31,7 +32,7 @@ export class NursingNoteController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Create nursing note (nurse from JWT)' })
   create(
     @Param('admissionId') admissionId: string,

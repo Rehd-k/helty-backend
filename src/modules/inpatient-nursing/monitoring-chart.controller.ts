@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { MonitoringChartService } from './monitoring-chart.service';
 import {
   CreateMonitoringChartDto,
@@ -27,7 +28,7 @@ export class MonitoringChartController {
   constructor(private readonly service: MonitoringChartService) {}
  
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List monitoring chart entries' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -35,7 +36,7 @@ export class MonitoringChartController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Create monitoring chart entry' })
   create(
     @Param('admissionId') admissionId: string,
@@ -46,7 +47,7 @@ export class MonitoringChartController {
   }
 
   @Patch(':chartId')
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Update own monitoring chart entry' })
   update(
     @Param('admissionId') admissionId: string,

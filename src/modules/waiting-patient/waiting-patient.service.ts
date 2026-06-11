@@ -64,6 +64,31 @@ export class WaitingPatientService {
     };
   }
 
+  private buildQueueSearchOr(q: string): Prisma.InvoiceWhereInput[] {
+    const needle = { contains: q, mode: 'insensitive' as const };
+    return [
+      { invoiceID: needle },
+      {
+        patient: {
+          OR: [
+            { firstName: needle },
+            { surname: needle },
+            { otherName: needle },
+            { patientId: needle },
+          ],
+        },
+      },
+      {
+        invoiceItems: {
+          some: {
+            ...this.consumableConsultationItemWhere(),
+            service: { name: needle },
+          },
+        },
+      },
+    ];
+  }
+
   private queueInclude(): Prisma.InvoiceInclude {
     return {
       patient: {
@@ -144,6 +169,7 @@ export class WaitingPatientService {
       take = 20,
       toDate,
       fromDate,
+      q,
     } = query;
 
     const dateRange =
@@ -162,6 +188,11 @@ export class WaitingPatientService {
     if (seen === true) where.encounterId = { not: null };
     if (seen === false) where.encounterId = null;
     if (patientId) where.patientId = patientId;
+
+    const searchTerm = q?.trim();
+    if (searchTerm) {
+      where.OR = this.buildQueueSearchOr(searchTerm);
+    }
     const [rows, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,

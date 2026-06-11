@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { CarePlanService } from './care-plan.service';
 import { CreateCarePlanDto, UpdateCarePlanDto } from './dto/nursing-docs.dto';
 
@@ -24,7 +25,7 @@ export class CarePlanController {
   constructor(private readonly service: CarePlanService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List care plans' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -32,7 +33,7 @@ export class CarePlanController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Create care plan' })
   create(
     @Param('admissionId') admissionId: string,
@@ -43,7 +44,7 @@ export class CarePlanController {
   }
 
   @Patch(':carePlanId')
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Update own care plan' })
   update(
     @Param('admissionId') admissionId: string,

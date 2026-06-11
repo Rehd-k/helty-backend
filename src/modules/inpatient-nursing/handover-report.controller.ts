@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { HandoverReportService } from './handover-report.service';
 import { CreateHandoverReportDto } from './dto/nursing-docs.dto';
 
@@ -23,7 +24,7 @@ export class HandoverReportController {
   constructor(private readonly service: HandoverReportService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List handover reports' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -31,7 +32,7 @@ export class HandoverReportController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Create handover report' })
   create(
     @Param('admissionId') admissionId: string,

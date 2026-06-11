@@ -1233,6 +1233,7 @@ model Invoice {
   dialysisSessionConsumables DialysisSessionConsumable[]
   drugReturns                InvoiceDrugReturn[]
   purchaseItemReturns        InvoicePurchaseItemReturn[]
+  outpatientNurseAssignment  OutpatientNurseAssignment?
 
   @@index([patientId])
   @@index([invoiceID])
@@ -1748,7 +1749,12 @@ enum StaffRole {
   PHARMACY_DISPENSARY
   PHARMACY_HEAD
   // Nurse
-  HEAD_NURSE
+  MATRON
+  WARD_CHARGE_NURSE
+  ICU_CHARGE_NURSE
+  EMERGENCY_CHARGE_NURSE
+  OPD_CHARGE_NURSE
+  ONG_CHARGE_NURSE
   INPATIENT_NURSE
   OUTPATIENT_NURSE
   // Physician
@@ -1956,6 +1962,14 @@ enum ShiftType {
   NIGHT
 }
 
+enum NursingUnit {
+  INPATIENT_WARD
+  ICU
+  EMERGENCY
+  OPD
+  ONG
+}
+
 enum MedicationAdminStatus {
   GIVEN
   MISSED
@@ -2044,6 +2058,7 @@ model Department {
   complaints          PatientComplaint[]
   safetyIncidents     SafetyIncident[]
   infectionCases      InfectionCase[]
+  nurseShiftRosters   NurseShiftRoster[]
 }
 
 model Staff {
@@ -2053,6 +2068,8 @@ model Staff {
   lastName     String
   department   Department? @relation(fields: [departmentId], references: [id])
   departmentId String?
+  ward         Ward?       @relation(fields: [wardId], references: [id])
+  wardId       String?
   accountType  AccountType
   staffRole    StaffRole
   email        String?     @unique
@@ -2121,6 +2138,11 @@ model Staff {
   auditTrailsPerformed                AuditTrail[]
   alertLogs                           AlertLog[]
   nurseAssignments                    NurseAssignment[]           @relation("NurseAssignmentNurse")
+  nurseAssignmentsCreated             NurseAssignment[]           @relation("NurseAssignmentAssignedBy")
+  nurseShiftRosters                   NurseShiftRoster[]          @relation("NurseShiftRosterNurse")
+  nurseShiftRostersAssigned           NurseShiftRoster[]          @relation("NurseShiftRosterAssignedBy")
+  outpatientNurseAssignments          OutpatientNurseAssignment[] @relation("OutpatientNurseAssignmentNurse")
+  outpatientNurseAssignmentsCreated   OutpatientNurseAssignment[] @relation("OutpatientNurseAssignmentAssignedBy")
   medicationAdministrations           MedicationAdministration[]  @relation("MedicationAdministrationNurse")
   ivMonitorings                       IVMonitoring[]              @relation("IVMonitoringNurse")
   intakeOutputRecords                 IntakeOutputRecord[]        @relation("IntakeOutputRecordNurse")
@@ -2131,6 +2153,7 @@ model Staff {
   monitoringCharts                    MonitoringChart[]           @relation("MonitoringChartNurse")
   handoverReports                     HandoverReport[]            @relation("HandoverReportNurse")
   patientVitalsRecorded               PatientVitals[]             @relation("PatientVitalsRecordedByNurse")
+  patientVitalsCreated                PatientVitals[]             @relation("PatientVitalsCreatedBy")
   encountersAsDoctor                  Encounter[]                 @relation("EncounterDoctor")
   encountersCreated                   Encounter[]                 @relation("EncounterCreatedBy")
   encountersUpdated                   Encounter[]                 @relation("EncounterUpdatedBy")
@@ -2252,6 +2275,8 @@ model Staff {
   financeApprovalsReviewed           FinanceApproval[]              @relation("FinanceApprovalReviewedBy")
   fiscalPeriodsClosed                FiscalPeriod[]                 @relation("FiscalPeriodClosedBy")
   journalEntriesCreated              JournalEntry[]                 @relation("JournalEntryCreatedBy")
+
+  @@index([wardId])
 }
 
 /// One-time 6-digit codes for staff password reset (plain `code` in DB for admin handoff until SMTP).
@@ -2648,6 +2673,7 @@ model PatientVitals {
   weight       Float?
   bmi          Float?
   pulseRate    Int?
+  respRate     Int?
   spo2         Float?
   painScore    Int?
   notes        String?
@@ -2665,6 +2691,8 @@ model PatientVitals {
   patientId         String?
   nurse             Staff?          @relation("PatientVitalsRecordedByNurse", fields: [recordedByNurseId], references: [id])
   recordedByNurseId String?
+  createdBy         Staff?          @relation("PatientVitalsCreatedBy", fields: [createdById], references: [id])
+  createdById       String?
   invoice           Invoice?        @relation("InvoiceVitals")
 
   shiftType  ShiftType?
@@ -2738,8 +2766,10 @@ model Ward {
   drugPricePercentage    Decimal? @default(1.0) @db.Decimal(12, 2)
   servicePricePercentage Decimal? @default(1.0) @db.Decimal(12, 2)
 
-  beds       Bed[]
-  admissions Admission[] @relation("WardAdmissions")
+  beds                 Bed[]
+  admissions           Admission[]        @relation("WardAdmissions")
+  nurseShiftRosters    NurseShiftRoster[]
+  assignedChargeNurses Staff[]
 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -3308,13 +3338,57 @@ model NurseAssignment {
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
 
-  shiftDate  DateTime
-  shiftType  ShiftType
-  assignedAt DateTime  @default(now())
+  nursingUnit  NursingUnit?
+  shiftDate    DateTime
+  shiftType    ShiftType
+  assignedBy   Staff?      @relation("NurseAssignmentAssignedBy", fields: [assignedById], references: [id])
+  assignedById String?
+  assignedAt   DateTime    @default(now())
 
   createdAt DateTime @default(now())
 
   @@unique([nurseId, admissionId, shiftDate, shiftType])
+  @@index([nursingUnit, shiftDate])
+}
+
+model NurseShiftRoster {
+  id           String       @id @default(uuid())
+  nurse        Staff        @relation("NurseShiftRosterNurse", fields: [nurseId], references: [id])
+  nurseId      String
+  nursingUnit  NursingUnit
+  ward         Ward?        @relation(fields: [wardId], references: [id])
+  wardId       String?
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  departmentId String?
+  shiftDate    DateTime
+  shiftType    ShiftType
+  assignedBy   Staff        @relation("NurseShiftRosterAssignedBy", fields: [assignedById], references: [id])
+  assignedById String
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([nurseId, nursingUnit, shiftDate, shiftType, wardId])
+  @@index([nursingUnit, shiftDate])
+  @@index([wardId, shiftDate])
+}
+
+model OutpatientNurseAssignment {
+  id           String       @id @default(uuid())
+  nurse        Staff        @relation("OutpatientNurseAssignmentNurse", fields: [nurseId], references: [id])
+  nurseId      String
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id])
+  invoiceId    String
+  nursingUnit  NursingUnit
+  assignedBy   Staff        @relation("OutpatientNurseAssignmentAssignedBy", fields: [assignedById], references: [id])
+  assignedById String
+  assignedAt   DateTime     @default(now())
+  shiftDate    DateTime?
+  shiftType    ShiftType?
+
+  @@unique([invoiceId])
+  @@index([nurseId])
+  @@index([nursingUnit, assignedAt])
 }
 
 model MedicationAdministration {

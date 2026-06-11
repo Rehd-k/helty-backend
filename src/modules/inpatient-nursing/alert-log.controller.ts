@@ -14,6 +14,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { AlertLogService } from './alert-log.service';
 import { CreateAlertLogDto, ResolveAlertLogDto } from './dto/alert-log.dto';
 
@@ -25,7 +26,7 @@ export class AlertLogController {
   constructor(private readonly service: AlertLogService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List alerts for an admission' })
   list(
     @Param('admissionId') admissionId: string,
@@ -37,7 +38,7 @@ export class AlertLogController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'Create an alert for an admission' })
   create(
     @Param('admissionId') admissionId: string,
@@ -47,7 +48,7 @@ export class AlertLogController {
   }
 
   @Patch(':alertId/resolve')
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'Mark alert resolved (resolver from JWT)' })
   resolve(
     @Param('admissionId') admissionId: string,

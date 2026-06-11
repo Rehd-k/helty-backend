@@ -74,7 +74,7 @@ export async function assertStaffIsNurseOrThrow(
 
 /**
  * Ensure the target staff (e.g. for a NurseAssignment payload) is a nurse.
- * Allows assigning any NURSE regardless of sub-role (HEAD_NURSE, INPATIENT_NURSE, OUTPATIENT_NURSE).
+ * Allows assigning any NURSE regardless of sub-role (matron, charge, inpatient, outpatient).
  */
 export async function assertTargetStaffIsNurseOrThrow(
   prisma: PrismaService,

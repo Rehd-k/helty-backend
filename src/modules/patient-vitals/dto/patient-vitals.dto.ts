@@ -115,6 +115,16 @@ export class CreatePatientVitalsDto {
   pulseRate?: number;
 
   @ApiPropertyOptional({
+    description: 'Respiratory rate in breaths per minute',
+    example: 16,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  respRate?: number;
+
+  @ApiPropertyOptional({
     description: 'Oxygen saturation (SpO₂) percentage',
     example: 98,
   })
@@ -230,6 +240,16 @@ export class UpdatePatientVitalsDto {
   @Min(0)
   @IsOptional()
   pulseRate?: number;
+
+  @ApiPropertyOptional({
+    description: 'Respiratory rate in breaths per minute',
+    example: 16,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  respRate?: number;
 
   @ApiPropertyOptional({
     description: 'Oxygen saturation (SpO₂) percentage',

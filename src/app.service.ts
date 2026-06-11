@@ -1,4 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import {
+  formatHospitalDateTimeDisplay,
+  formatHospitalDateTimeLocal,
+  HOSPITAL_TIMEZONE,
+} from './common/utils/datetime';
 
 @Injectable()
 export class AppService {
@@ -6,8 +11,20 @@ export class AppService {
     return 'Hello World!';
   }
 
-  getServerDateTime(): { iso: string; unixMs: number } {
+  getServerDateTime(): {
+    iso: string;
+    isoLocal: string;
+    displayLocal: string;
+    timezone: string;
+    unixMs: number;
+  } {
     const now = new Date();
-    return { iso: now.toISOString(), unixMs: now.getTime() };
+    return {
+      iso: now.toISOString(),
+      isoLocal: formatHospitalDateTimeLocal(now),
+      displayLocal: formatHospitalDateTimeDisplay(now),
+      timezone: HOSPITAL_TIMEZONE,
+      unixMs: now.getTime(),
+    };
   }
 }

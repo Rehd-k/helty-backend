@@ -300,7 +300,7 @@ export class MedicationOrderService {
         ? Math.round(dto.quantity)
         : 1;
     const clinicalQuantity =
-      hasExplicitBilling && dto.quantity != null
+      dto.quantity != null
         ? new Prisma.Decimal(dto.quantity)
         : undefined;
     return { billingQuantity, clinicalQuantity };

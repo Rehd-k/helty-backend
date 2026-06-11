@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { NURSING_ACCESS } from '../nursing/nursing.constants';
 import { PregnancyService } from './pregnancy.service';
 import {
   CreatePregnancyDto,
@@ -24,13 +25,7 @@ import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 @ApiTags('Obstetrics – Antenatal')
 @Controller('obstetrics/pregnancies')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes(
-  'ONG',
-  'CONSULTANT',
-  'INPATIENT_DOCTOR',
-  'NURSE',
-  'HEAD_NURSE',
-)
+@AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR', ...NURSING_ACCESS)
 export class PregnancyController {
   constructor(private readonly pregnancyService: PregnancyService) {}
 

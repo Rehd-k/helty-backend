@@ -12,6 +12,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { IvMonitoringService } from './iv-monitoring.service';
 import { CreateIvMonitoringDto } from './dto/iv.dto';
 
@@ -23,7 +24,7 @@ export class IvMonitoringController {
   constructor(private readonly service: IvMonitoringService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List IV monitoring entries for an order' })
   list(
     @Param('admissionId') admissionId: string,
@@ -34,7 +35,7 @@ export class IvMonitoringController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Add IV monitoring row (nurse from JWT)' })
   create(
     @Param('admissionId') admissionId: string,

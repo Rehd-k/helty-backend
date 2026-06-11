@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { NURSING_ACCESS } from '../nursing/nursing.constants';
 import { AntenatalVisitService } from './antenatal-visit.service';
 import {
   CreateAntenatalVisitDto,
@@ -23,11 +24,7 @@ import { ListAntenatalVisitsQueryDto } from './dto/list-antenatal-visits-query.d
 @ApiTags('Obstetrics - Antenatal')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('ONG',
-  'CONSULTANT',
-  'INPATIENT_DOCTOR',
-  'NURSE',
-  'HEAD_NURSE')
+@AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR', ...NURSING_ACCESS)
 export class AntenatalVisitController {
   constructor(private readonly antenatalVisitService: AntenatalVisitService) { }
 

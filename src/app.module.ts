@@ -15,7 +15,8 @@ import { ServiceModule } from './modules/service/service.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { DepartmentModule } from './modules/department/department.module';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { LocalTimestampInterceptor } from './common/interceptors/local-timestamp.interceptor';
 import { JwtAuthGuard, AccessGuard } from './common/guards';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -45,6 +46,7 @@ import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module
 import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboard.module';
 import { HmoModule } from './modules/hmo/hmo.module';
 import { InpatientNursingModule } from './modules/inpatient-nursing/inpatient-nursing.module';
+import { NursingModule } from './modules/nursing/nursing.module';
 import { DiscountModule } from './modules/discount/discount.module';
 import { ReceivablesModule } from './modules/receivables/receivables.module';
 import { ClinicalSpecialtyModule } from './modules/clinical-specialty/clinical-specialty.module';
@@ -115,6 +117,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     NursesDashboardModule,
     HmoModule,
     InpatientNursingModule,
+    NursingModule,
     DiscountModule,
     ReceivablesModule,
     ClinicalSpecialtyModule,
@@ -130,6 +133,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     AppService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: AccessGuard },
+    { provide: APP_INTERCEPTOR, useClass: LocalTimestampInterceptor },
   ],
 })
 export class AppModule {}

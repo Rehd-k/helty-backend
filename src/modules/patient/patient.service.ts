@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { customAlphabet } from 'nanoid';
 import { PatientStatus, Prisma } from '@prisma/client';
+import { endOfDay, startOfDay } from '../../common/utils/date-range';
 
 @Injectable()
 export class PatientService {
@@ -186,6 +187,92 @@ export class PatientService {
     'nextOfKinRelationship',
   ]);
 
+  async findRegisteredToday(
+    asOf?: string,
+    skip = 0,
+    take = 50,
+    search?: string,
+  ) {
+    const anchor = asOf ? new Date(asOf) : new Date();
+    const day = Number.isNaN(anchor.getTime()) ? new Date() : anchor;
+    const from = startOfDay(day);
+    const to = endOfDay(day);
+
+    const andParts: Prisma.PatientWhereInput[] = [
+      { createdAt: { gte: from, lte: to } },
+    ];
+
+    if (search?.trim()) {
+      const trimmedSearch = search.trim();
+      andParts.push({
+        OR: [
+          {
+            phoneNumber: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+          {
+            patientId: {
+              contains: trimmedSearch.toUpperCase(),
+              mode: 'insensitive',
+            },
+          },
+          {
+            firstName: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+          {
+            surname: {
+              contains: trimmedSearch,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      });
+    }
+
+    const where: Prisma.PatientWhereInput =
+      andParts.length === 1 ? andParts[0] : { AND: andParts };
+
+    const [patients, total] = await Promise.all([
+      this.prisma.patient.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          createdBy: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          ward: {
+            select: { id: true, name: true },
+          },
+          hmoProvider: {
+            select: { id: true, name: true, code: true },
+          },
+        },
+      }),
+      this.prisma.patient.count({ where }),
+    ]);
+
+    return {
+      date: from.toISOString().slice(0, 10),
+      from: from.toISOString(),
+      to: to.toISOString(),
+      patients,
+      total,
+      skip,
+      take,
+    };
+  }
+
   async findAll(
     skip = 0,
     take = 10,
@@ -325,7 +412,7 @@ export class PatientService {
       this.prisma.patient.findMany({
         where,
         skip,
-        take,
+        take: Math.min(take * 5, 100),
         orderBy,
         include: {
           createdBy: {

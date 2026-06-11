@@ -72,8 +72,19 @@ function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
     case 'THEATERE':
       return (
         user.accountType === 'PHYSICIAN' ||
-        user.staffRole === 'HEAD_NURSE' ||
-        user.staffRole === 'INPATIENT_NURSE'
+        user.staffRole === 'MATRON' ||
+        user.staffRole === 'INPATIENT_NURSE' ||
+        user.staffRole === 'WARD_CHARGE_NURSE' ||
+        user.staffRole === 'ICU_CHARGE_NURSE'
+      );
+    case 'NURSING_CHARGE':
+      return (
+        user.staffRole === 'MATRON' ||
+        user.staffRole === 'WARD_CHARGE_NURSE' ||
+        user.staffRole === 'ICU_CHARGE_NURSE' ||
+        user.staffRole === 'EMERGENCY_CHARGE_NURSE' ||
+        user.staffRole === 'OPD_CHARGE_NURSE' ||
+        user.staffRole === 'ONG_CHARGE_NURSE'
       );
     case 'DIALYSIS':
       return user.accountType === 'DIALYSIS';

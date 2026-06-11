@@ -13,12 +13,13 @@ import {
   Logger,
   Req,
 } from '@nestjs/common';
-import { Public, Roles } from '../../common/decorators';
+import { AccountTypes, Public } from '../../common/decorators';
 import { PatientService } from './patient.service';
 import { PatientChartService } from './patient-chart.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { PatientChartQueryDto } from './dto/patient-chart-query.dto';
+import { RegisteredTodayQueryDto } from './dto/registered-today-query.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('Patient')
@@ -106,6 +107,26 @@ export class PatientController {
   @ApiResponse({ status: 200, description: 'Search results' })
   search(@Query('q') query: string) {
     return this.patientService.search(query);
+  }
+
+  @Get('registered/today')
+  @AccountTypes('FRONTDESK', 'FRONT_DESK', 'MEDICAL_RECORDS')
+  @ApiOperation({
+    summary: 'Patients registered today (front desk & medical records)',
+    description:
+      'Lists all patients whose registration date (createdAt) falls on the current calendar day. Optional asOf anchor for testing or timezone-aligned "today".',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated list of patients registered today',
+  })
+  findRegisteredToday(@Query() query: RegisteredTodayQueryDto) {
+    return this.patientService.findRegisteredToday(
+      query.asOf,
+      query.skip ?? 0,
+      query.take ?? 50,
+      query.q,
+    );
   }
 
   @Get('history/:id')

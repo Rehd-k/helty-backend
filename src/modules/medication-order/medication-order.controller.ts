@@ -32,7 +32,7 @@ export class MedicationOrderController {
   @ApiOperation({
     summary: 'Create a new medication order',
     description:
-      'Creates a clinical medication order and a linked drug invoice line atomically. Use `billingQuantity` for invoice units; `quantity` is the per-administration dose when both billing and clinical amounts are needed. Legacy clients may send `quantity` alone for billing.',
+      'Creates a clinical medication order and a linked drug invoice line atomically. `quantity` is saved on the order and used for invoice billing when `billingQuantity` is omitted. Send both fields when invoice units differ from the ordered quantity on the order.',
   })
   @ApiResponse({ status: 201, description: 'Medication order created.' })
   @ApiResponse({

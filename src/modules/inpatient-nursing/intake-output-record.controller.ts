@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { IntakeOutputRecordService } from './intake-output-record.service';
 import {
   CreateIntakeOutputRecordDto,
@@ -27,7 +28,7 @@ export class IntakeOutputRecordController {
   constructor(private readonly service: IntakeOutputRecordService) {}
 
   @Get()
-  @AccountTypes('NURSE', 'HEAD_NURSE', 'INPATIENT_DOCTOR', 'CONSULTANT')
+  @AccountTypes(...INPATIENT_NURSING_READ_ACCESS)
   @ApiOperation({ summary: 'List intake/output records' })
   list(@Param('admissionId') admissionId: string) {
     return this.service.list(admissionId);
@@ -35,7 +36,7 @@ export class IntakeOutputRecordController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Create intake/output record (nurse from JWT)' })
   create(
     @Param('admissionId') admissionId: string,
@@ -46,7 +47,7 @@ export class IntakeOutputRecordController {
   }
 
   @Patch(':recordId')
-  @AccountTypes('NURSE', 'HEAD_NURSE')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Update own intake/output record' })
   update(
     @Param('admissionId') admissionId: string,
