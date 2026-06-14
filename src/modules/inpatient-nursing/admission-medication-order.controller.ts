@@ -45,7 +45,14 @@ export class AdmissionMedicationOrderController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes(...NURSING_ASSIGNMENT_WITH_DOCTORS, 'INPATIENT_NURSE', 'OUTPATIENT_NURSE')
+  @AccountTypes(
+    ...NURSING_ASSIGNMENT_WITH_DOCTORS,
+    'INPATIENT_NURSE',
+    'OUTPATIENT_NURSE',
+    'EMERGENCY_NURSE',
+    'ICU_NURSE',
+    'ONG_NURSE',
+  )
   @ApiOperation({
     summary: 'Create an admission medication order (prescriber)',
   })

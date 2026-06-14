@@ -10,6 +10,18 @@ export const NURSING_STAFF_ROLES: readonly StaffRole[] = [
   StaffRole.ONG_CHARGE_NURSE,
   StaffRole.INPATIENT_NURSE,
   StaffRole.OUTPATIENT_NURSE,
+  StaffRole.EMERGENCY_NURSE,
+  StaffRole.ICU_NURSE,
+  StaffRole.ONG_NURSE,
+] as const;
+
+/** Line nurses (non-charge clinical staff). */
+export const LINE_NURSE_ROLES: readonly StaffRole[] = [
+  StaffRole.INPATIENT_NURSE,
+  StaffRole.OUTPATIENT_NURSE,
+  StaffRole.EMERGENCY_NURSE,
+  StaffRole.ICU_NURSE,
+  StaffRole.ONG_NURSE,
 ] as const;
 
 /** Charge nurse + matron roles. */
@@ -84,11 +96,29 @@ export function isNursingChargeOrMatron(staffRole?: string): boolean {
   return isMatronRole(staffRole) || isChargeNurseRole(staffRole);
 }
 
+export const LINE_NURSE_ROLE_TO_UNIT: Partial<Record<StaffRole, NursingUnit>> = {
+  [StaffRole.EMERGENCY_NURSE]: NursingUnit.EMERGENCY,
+  [StaffRole.ICU_NURSE]: NursingUnit.ICU,
+  [StaffRole.ONG_NURSE]: NursingUnit.ONG,
+};
+
+export function isLineNurseRole(staffRole?: string): boolean {
+  if (!staffRole) return false;
+  return LINE_NURSE_ROLES.includes(staffRole as StaffRole);
+}
+
 export function staffRoleToNursingUnit(
   staffRole?: string,
 ): NursingUnit | null {
   if (!staffRole) return null;
   return CHARGE_ROLE_TO_UNIT[staffRole as StaffRole] ?? null;
+}
+
+export function lineNurseRoleToNursingUnit(
+  staffRole?: string,
+): NursingUnit | null {
+  if (!staffRole) return null;
+  return LINE_NURSE_ROLE_TO_UNIT[staffRole as StaffRole] ?? null;
 }
 
 export const NURSING_ROLE_TITLES: Record<string, string> = {
@@ -100,6 +130,9 @@ export const NURSING_ROLE_TITLES: Record<string, string> = {
   ONG_CHARGE_NURSE: 'O&G Charge Nurse',
   INPATIENT_NURSE: 'Inpatient Nurse',
   OUTPATIENT_NURSE: 'Outpatient Nurse',
+  EMERGENCY_NURSE: 'Emergency Nurse',
+  ICU_NURSE: 'ICU Nurse',
+  ONG_NURSE: 'O&G Nurse',
 };
 
 export type NursingCapability =
@@ -151,10 +184,7 @@ export function capabilitiesForStaffRole(
     return caps;
   }
 
-  if (
-    staffRole === StaffRole.INPATIENT_NURSE ||
-    staffRole === StaffRole.OUTPATIENT_NURSE
-  ) {
+  if (isLineNurseRole(staffRole)) {
     return ['view_line_dashboard', 'view_own_roster', 'clinical_nursing_writes'];
   }
 

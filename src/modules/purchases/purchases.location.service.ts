@@ -16,7 +16,7 @@ const ALLOWED_SORT = new Set(['name', 'locationType', 'createdAt']);
 
 @Injectable()
 export class PurchasesLocationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(dto: CreatePurchasesLocationDto, createdById: string) {
     if (dto.staffId) {
@@ -54,8 +54,9 @@ export class PurchasesLocationService {
       skip = 0,
       limit = 20,
     } = query;
+    console.log('findAll', query);
     const take = Math.min(Math.max(1, limit), 100);
-   
+
     const where: Prisma.PurchasesLocationWhereInput = {};
     if (search?.trim()) {
       const term = search.trim();
@@ -80,6 +81,7 @@ export class PurchasesLocationService {
       }),
       this.prisma.purchasesLocation.count({ where }),
     ]);
+    console.log(data, total, skip, take);
     return { data, total, skip, take };
   }
 

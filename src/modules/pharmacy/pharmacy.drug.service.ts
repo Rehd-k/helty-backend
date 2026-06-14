@@ -211,16 +211,32 @@ export class PharmacyDrugService {
     }
   }
 
-  async remove(id: string) {
+  async remove(id: string, updatedById?: string) {
     const drug = await this.prisma.drug.findFirst({
       where: { id, deletedAt: null },
     });
     if (!drug) {
       throw new NotFoundException(`Drug "${id}" not found.`);
     }
+
+    const sellableWhere = await getSellableDrugBatchWhere(this.prisma);
+    const stockSum = await this.prisma.drugBatch.aggregate({
+      where: mergeDrugBatchWhere(sellableWhere, { drugId: id }),
+      _sum: { quantityRemaining: true },
+    });
+    const sellableQty = stockSum._sum.quantityRemaining ?? 0;
+    if (sellableQty > 0) {
+      throw new BadRequestException(
+        'Cannot hide drug while sellable stock remains. Deplete or transfer stock first.',
+      );
+    }
+
     return this.prisma.drug.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data: {
+        deletedAt: new Date(),
+        ...(updatedById != null && { updatedById }),
+      },
     });
   }
 

@@ -81,7 +81,7 @@ export class PharmacyDrugController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Soft-delete a drug' })
-  remove(@Param('id') id: string) {
-    return this.drugService.remove(id);
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.drugService.remove(id, req.user?.sub);
   }
 }

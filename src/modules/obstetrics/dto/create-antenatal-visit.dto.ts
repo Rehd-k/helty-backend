@@ -7,12 +7,41 @@ import {
   IsNotEmpty,
   IsUUID,
   IsEnum,
+  IsIn,
   Min,
+  Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { FetalPresentation } from '@prisma/client';
+import { FETAL_DESCENT_OPTIONS } from '../obstetrics.constants';
 
-export class CreateAntenatalVisitDto {
+class AntenatalVisitClinicalFieldsDto {
+  @ApiPropertyOptional()
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  @IsOptional()
+  gestationDays?: number;
+
+  @ApiPropertyOptional({ enum: FETAL_DESCENT_OPTIONS })
+  @IsIn(FETAL_DESCENT_OPTIONS)
+  @IsOptional()
+  descent?: (typeof FETAL_DESCENT_OPTIONS)[number];
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  urineGlucose?: string;
+
+  @ApiPropertyOptional({ description: 'Packed cell volume (%)' })
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  pcv?: number;
+}
+
+export class CreateAntenatalVisitDto extends AntenatalVisitClinicalFieldsDto {
   @ApiProperty()
   @IsUUID()
   @IsNotEmpty()
@@ -94,7 +123,7 @@ export class CreateAntenatalVisitDto {
   encounterId?: string;
 }
 
-export class UpdateAntenatalVisitDto {
+export class UpdateAntenatalVisitDto extends AntenatalVisitClinicalFieldsDto {
   @ApiPropertyOptional()
   @IsDateString()
   @IsOptional()

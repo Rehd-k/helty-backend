@@ -11,6 +11,7 @@ import {
   capabilitiesForStaffRole,
   defaultDashboardRoute,
   isChargeNurseRole,
+  isLineNurseRole,
   isMatronRole,
   NURSING_CHARGE_ROLES,
   NURSING_ROLE_TITLES,
@@ -189,11 +190,7 @@ export class NursesDashboardService {
     if (staff && isChargeNurseRole(staff.staffRole)) {
       return this.chargeOverview(timeRange, asOfRaw, staffId);
     }
-    if (
-      staff &&
-      (staff.staffRole === StaffRole.INPATIENT_NURSE ||
-        staff.staffRole === StaffRole.OUTPATIENT_NURSE)
-    ) {
+    if (staff && isLineNurseRole(staff.staffRole)) {
       return this.lineOverview(timeRange, asOfRaw, staffId);
     }
     return this.hospitalOverview(timeRange, asOfRaw, staffId);

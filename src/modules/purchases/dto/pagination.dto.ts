@@ -16,11 +16,11 @@ export class PaginationDto {
   @Max(100)
   pageSize?: number = 20;
 
-  @ApiPropertyOptional({ default: 0, minimum: 0 })
+  @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()
   @Type(() => Number)
   @Min(0)
-  skip?: number = 0;
+  skip?: number;
 
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
   @IsOptional()

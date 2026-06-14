@@ -1510,6 +1510,7 @@ export class InvoiceService {
                 department: { select: { id: true, name: true } },
               },
             },
+            purchaseItem: { select: { id: true, itemName: true } },
             drug: { select: { id: true, genericName: true } },
             usageSegments: true,
             createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },

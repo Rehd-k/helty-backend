@@ -74,6 +74,7 @@ const archiveFilesInterceptor = FilesInterceptor('files', 20, {
 const ARCHIVE_UPLOAD_ROLES = [
   'FRONT_DESK',
   'OUTPATIENT_NURSE',
+  'ONG_NURSE',
   'MEDICAL_RECORDS',
   'CONSULTANT',
   'RESIDENT',

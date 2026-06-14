@@ -40,9 +40,10 @@ export class IvMonitoringController {
   create(
     @Param('admissionId') admissionId: string,
     @Param('orderId') orderId: string,
-    @Body() dto: CreateIvMonitoringDto,
+    @Body() dto: any,
     @Req() req: { user: { sub: string } },
   ) {
+    // console.log('create', admissionId, orderId, dto, req.user.sub);
     return this.service.create(admissionId, orderId, dto, req.user.sub);
   }
 }

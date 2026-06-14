@@ -28,6 +28,7 @@ import { ConsultingRoomModule } from './modules/consulting-room/consulting-room.
 import { WaitingPatientModule } from './modules/waiting-patient/waiting-patient.module';
 import { WardModule } from './modules/ward/ward.module';
 import { EncounterModule } from './modules/encounter/encounter.module';
+import { EncounterTemplateModule } from './modules/encounter-template/encounter-template.module';
 import { LabRequestModule } from './modules/lab-request/lab-request.module';
 import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { WardRoundNotesModule } from './modules/ward-round-notes/ward-round-notes.module';
@@ -100,6 +101,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     WaitingPatientModule,
     WardModule,
     EncounterModule,
+    EncounterTemplateModule,
     LabRequestModule,
     PharmacyModule,
     WardRoundNotesModule,

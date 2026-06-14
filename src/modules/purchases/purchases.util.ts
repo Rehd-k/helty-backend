@@ -30,7 +30,8 @@ export function resolvePagination(query: {
 }) {
   const pageSize = Math.min(Math.max(1, query.pageSize ?? query.limit ?? 20), 100);
   const page = Math.max(1, query.page ?? 1);
+  // skip must stay undefined when omitted (see PaginationDto) so page-based offset applies.
   const skip =
-    query.skip != null ? Math.max(0, query.skip) : (page - 1) * pageSize;
+    query.skip !== undefined ? Math.max(0, query.skip) : (page - 1) * pageSize;
   return { page, pageSize, skip, take: pageSize };
 }

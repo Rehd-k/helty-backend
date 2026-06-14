@@ -23,8 +23,11 @@ export type NursingActor = {
 
 const EMERGENCY_DEPARTMENT_NAMES = new Set([
   'emergency',
+  'emmergency',
   'er',
   'a&e',
+  'a and e',
+  'accident',
   'accident and emergency',
 ]);
 
@@ -45,7 +48,10 @@ const OPD_DEPARTMENT_NAMES = new Set([
 ]);
 
 function normalizeDeptName(name: string): string {
-  return name.trim().toLowerCase();
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s*&\s*/g, '&');
 }
 
 export function wardMatchesNursingUnit(
@@ -277,4 +283,7 @@ export const NURSING_ACCOUNT_TYPE_ROLES: ReadonlySet<StaffRole> = new Set([
   StaffRole.ONG_CHARGE_NURSE,
   StaffRole.INPATIENT_NURSE,
   StaffRole.OUTPATIENT_NURSE,
+  StaffRole.EMERGENCY_NURSE,
+  StaffRole.ICU_NURSE,
+  StaffRole.ONG_NURSE,
 ]);

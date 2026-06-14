@@ -38,13 +38,17 @@ export class AntenatalVisitService {
         pregnancyId: dto.pregnancyId,
         visitDate: new Date(dto.visitDate),
         gestationWeeks: dto.gestationWeeks ?? null,
+        gestationDays: dto.gestationDays ?? null,
         systolicBP: dto.systolicBP ?? null,
         diastolicBP: dto.diastolicBP ?? null,
         weight: dto.weight ?? null,
         fundalHeight: dto.fundalHeight ?? null,
         fetalHeartRate: dto.fetalHeartRate ?? null,
         presentation: dto.presentation ?? null,
+        descent: dto.descent ?? null,
         urineProtein: dto.urineProtein ?? null,
+        urineGlucose: dto.urineGlucose ?? null,
+        pcv: dto.pcv ?? null,
         notes: dto.notes ?? null,
         ultrasoundFindings: dto.ultrasoundFindings ?? null,
         labResultsJson: dto.labResultsJson ?? Prisma.DbNull,
@@ -128,6 +132,9 @@ export class AntenatalVisitService {
         ...(dto.gestationWeeks !== undefined && {
           gestationWeeks: dto.gestationWeeks,
         }),
+        ...(dto.gestationDays !== undefined && {
+          gestationDays: dto.gestationDays,
+        }),
         ...(dto.systolicBP !== undefined && { systolicBP: dto.systolicBP }),
         ...(dto.diastolicBP !== undefined && { diastolicBP: dto.diastolicBP }),
         ...(dto.weight !== undefined && { weight: dto.weight }),
@@ -140,9 +147,14 @@ export class AntenatalVisitService {
         ...(dto.presentation !== undefined && {
           presentation: dto.presentation,
         }),
+        ...(dto.descent !== undefined && { descent: dto.descent }),
         ...(dto.urineProtein !== undefined && {
           urineProtein: dto.urineProtein,
         }),
+        ...(dto.urineGlucose !== undefined && {
+          urineGlucose: dto.urineGlucose,
+        }),
+        ...(dto.pcv !== undefined && { pcv: dto.pcv }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.ultrasoundFindings !== undefined && {
           ultrasoundFindings: dto.ultrasoundFindings,

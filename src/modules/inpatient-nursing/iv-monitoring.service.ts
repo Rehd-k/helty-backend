@@ -45,6 +45,7 @@ export class IvMonitoringService {
     dto: CreateIvMonitoringDto,
     staffId: string,
   ) {
+    console.log('create', admissionId, orderId, dto, staffId);
     const admission = await assertAdmissionExists(this.prisma, admissionId);
     assertAdmissionWritable(admission);
 

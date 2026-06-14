@@ -13,7 +13,11 @@ import {
   loadNursingActor,
   NursingActor,
 } from './nursing-scope.utils';
-import { isMatronRole, staffRoleToNursingUnit } from './nursing.constants';
+import {
+  isLineNurseRole,
+  isMatronRole,
+  staffRoleToNursingUnit,
+} from './nursing.constants';
 import {
   CreateOutpatientNurseAssignmentDto,
   QueryOutpatientNurseAssignmentDto,
@@ -77,10 +81,7 @@ export class OutpatientNurseAssignmentService {
       !isMatronRole(actor.staffRole) &&
       !staffRoleToNursingUnit(actor.staffRole)
     ) {
-      const isLineNurse =
-        actor.staffRole === 'OUTPATIENT_NURSE' ||
-        actor.staffRole === 'INPATIENT_NURSE';
-      if (isLineNurse) {
+      if (isLineNurseRole(actor.staffRole)) {
         query.nurseId = actorId;
       } else {
         throw new ForbiddenException(
