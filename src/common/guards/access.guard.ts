@@ -27,7 +27,7 @@ const PHYSICIAN_TRAINEE_ROLES = new Set([
  * Route metadata lists legacy flat tokens from the old enum and/or new
  * accountType / StaffRole values. A match on either JWT field or legacy alias grants access.
  */
-function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
+export function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
   if (user.accountType === token || user.staffRole === token) {
     return true;
   }
@@ -91,6 +91,8 @@ function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
       );
     case 'DIALYSIS':
       return user.accountType === 'DIALYSIS';
+    case 'THEATRE':
+      return user.accountType === 'THEATRE';
     case 'HMO_DESK':
       return user.accountType === 'HMO' || user.staffRole === 'HMO_STAFF';
     case 'PURCHASES':

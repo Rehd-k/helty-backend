@@ -10,6 +10,7 @@ import { InvoiceService } from '../../invoice/invoice.service';
 import { invoiceLinkException } from '../../../common/exceptions/invoice-link.exception';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
+import { patientNameFieldsSelect } from '../../../common/utils/patient-display-name.util';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 
 @Injectable()
@@ -47,7 +48,7 @@ export class LabOrderService {
 
     const orderInclude = {
       patient: {
-        select: { id: true, firstName: true, surname: true, patientId: true },
+        select: patientNameFieldsSelect,
       },
       doctor: {
         select: { id: true, firstName: true, lastName: true, staffId: true },
@@ -184,7 +185,7 @@ export class LabOrderService {
       where: { id },
       include: {
         patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
+          select: patientNameFieldsSelect,
         },
         doctor: {
           select: { id: true, firstName: true, lastName: true, staffId: true },
@@ -240,7 +241,7 @@ export class LabOrderService {
       where: { id },
       data: { ...dto, ...timestamps },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true } },
+        patient: { select: patientNameFieldsSelect },
         doctor: { select: { id: true, firstName: true, lastName: true } },
         invoiceItem: {
           select: { id: true, invoiceId: true, serviceId: true },

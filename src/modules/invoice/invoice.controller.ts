@@ -235,7 +235,8 @@ export class InvoiceController {
     name: 'patientId',
     required: false,
     type: String,
-    description: 'Patient primary key UUID (`Patient.id`)',
+    description:
+      'When set, returns only that patient\'s PAID invoices with consumable consultation credit (visits remaining within 14 days). Accepts patient UUID or hospital chart number (e.g. BVNLI0T7). Ignores the date range.',
   })
   @ApiQuery({
     name: 'allowIP',

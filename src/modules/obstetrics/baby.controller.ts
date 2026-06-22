@@ -14,6 +14,8 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
+import { OBSTETRICS_PHYSICIAN_ACCESS } from './obstetrics.constants';
 import { BabyService } from './baby.service';
 import {
   CreateBabyDto,
@@ -25,12 +27,12 @@ import { ListBabiesQueryDto } from './dto/list-babies-query.dto';
 @ApiTags('Obstetrics - Labour & delivery')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')
 export class BabyController {
   constructor(private readonly babyService: BabyService) {}
 
   @Post('labour-deliveries/:id/babies')
   @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...OBSTETRICS_PHYSICIAN_ACCESS)
   @ApiOperation({ summary: 'Create a baby record for a delivery' })
   create(
     @Param('id') labourDeliveryId: string,
@@ -44,6 +46,7 @@ export class BabyController {
   }
 
   @Get('babies')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({
     summary: 'List babies (optional: motherId, labourDeliveryId)',
   })
@@ -52,12 +55,14 @@ export class BabyController {
   }
 
   @Get('babies/:id')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'Get baby by ID' })
   findOne(@Param('id') id: string) {
     return this.babyService.findOne(id);
   }
 
   @Patch('babies/:id')
+  @AccountTypes(...OBSTETRICS_PHYSICIAN_ACCESS)
   @ApiOperation({ summary: 'Update baby' })
   update(
     @Param('id') id: string,
@@ -69,6 +74,7 @@ export class BabyController {
 
   @Post('babies/:id/register-patient')
   @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...OBSTETRICS_PHYSICIAN_ACCESS)
   @ApiOperation({ summary: 'Register baby as a patient' })
   registerAsPatient(
     @Param('id') id: string,

@@ -187,6 +187,7 @@ export class PatientController {
   }
 
   @Delete(':id')
+  @AccountTypes('SUPER_ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a patient' })
   @ApiResponse({

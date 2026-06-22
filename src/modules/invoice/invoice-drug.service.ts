@@ -6,12 +6,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Prisma, InvoiceStatus, InvoiceAuditAction } from '@prisma/client';
+import { Prisma, InvoiceStatus, InvoiceAuditAction, MedicationRequestStatus } from '@prisma/client';
 import {
-  getSellableDrugBatchWhere,
-  mergeDrugBatchWhere,
   startOfToday,
 } from '../pharmacy/pharmacy-sellable-stock.util';
+import { DrugStockService } from '../pharmacy/drug-stock.service';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import {
@@ -27,6 +26,7 @@ export class InvoiceDrugService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
+    private readonly drugStockService: DrugStockService,
   ) { }
 
   private static readonly invoiceItemCreatedBySelect = {
@@ -54,52 +54,6 @@ export class InvoiceDrugService {
       where: { invoiceId, drugId: { not: null } },
     });
     return count > 0;
-  }
-
-  /**
-   * Reduce quantityRemaining across batches (earliest manufacturingDate, then createdAt),
-   * skipping batches with zero remaining until enough units are taken.
-   */
-  private async deductDrugStockFifo(
-    tx: Prisma.TransactionClient,
-    drugId: string,
-    quantityToDeduct: number,
-    locationId?: string,
-  ) {
-    if (quantityToDeduct <= 0) return;
-
-    const sellableWhere = await getSellableDrugBatchWhere(tx);
-    const batches = await tx.drugBatch.findMany({
-      where: mergeDrugBatchWhere(sellableWhere, {
-        drugId,
-        quantityRemaining: { gt: 0 },
-        ...(locationId ? { toLocationId: locationId } : {}),
-      }),
-      orderBy: [{ manufacturingDate: 'asc' }, { createdAt: 'asc' }],
-    });
-
-    const totalAvailable = batches.reduce(
-      (sum, b) => sum + b.quantityRemaining,
-      0,
-    );
-    if (totalAvailable < quantityToDeduct) {
-      throw new BadRequestException(
-        `Insufficient stock for this drug: need ${quantityToDeduct} unit(s), ` +
-        `${totalAvailable} available across batches.`,
-      );
-    }
-
-    let remaining = quantityToDeduct;
-    for (const batch of batches) {
-      if (remaining <= 0) break;
-      const take = Math.min(batch.quantityRemaining, remaining);
-      if (take <= 0) continue;
-      await tx.drugBatch.update({
-        where: { id: batch.id },
-        data: { quantityRemaining: batch.quantityRemaining - take },
-      });
-      remaining -= take;
-    }
   }
 
   private invoiceLineTotal(
@@ -610,7 +564,7 @@ export class InvoiceDrugService {
         }
         const dispensedAt = settlingNow ? new Date() : undefined;
         if (settlingNow) {
-          await this.deductDrugStockFifo(
+          await this.drugStockService.deductDrugStockFifo(
             tx,
             existing.drugId!,
             nextQuantity,
@@ -638,25 +592,48 @@ export class InvoiceDrugService {
         });
 
         if (settlingNow) {
-          const linkedOrder = await tx.medicationOrder.findFirst({
+          const linkedRequest = await tx.medicationRequest.findFirst({
             where: { invoiceItemId: itemId },
-            select: { id: true },
+            select: { id: true, medicationOrderId: true },
           });
-          if (linkedOrder) {
-            await tx.medicationOrder.update({
-              where: { id: linkedOrder.id },
-              data: { status: 'Dispensed' },
+          if (linkedRequest) {
+            await tx.medicationRequest.update({
+              where: { id: linkedRequest.id },
+              data: { status: MedicationRequestStatus.DISPENSED },
             });
-          } else if (invoice.encounterId) {
-            await tx.medicationOrder.updateMany({
+            const remainingBilled = await tx.medicationRequest.count({
               where: {
-                encounterId: invoice.encounterId,
-                drugId: existing.drugId!,
-                patientId: invoice.patientId,
-                status: { not: 'Cancelled' },
+                medicationOrderId: linkedRequest.medicationOrderId,
+                status: MedicationRequestStatus.BILLED,
               },
-              data: { status: 'Dispensed' },
             });
+            if (remainingBilled === 0) {
+              await tx.medicationOrder.update({
+                where: { id: linkedRequest.medicationOrderId },
+                data: { status: 'Dispensed' },
+              });
+            }
+          } else {
+            const linkedOrder = await tx.medicationOrder.findFirst({
+              where: { invoiceItemId: itemId },
+              select: { id: true },
+            });
+            if (linkedOrder) {
+              await tx.medicationOrder.update({
+                where: { id: linkedOrder.id },
+                data: { status: 'Dispensed' },
+              });
+            } else if (invoice.encounterId) {
+              await tx.medicationOrder.updateMany({
+                where: {
+                  encounterId: invoice.encounterId,
+                  drugId: existing.drugId!,
+                  patientId: invoice.patientId,
+                  status: { not: 'Cancelled' },
+                },
+                data: { status: 'Dispensed' },
+              });
+            }
           }
         }
 

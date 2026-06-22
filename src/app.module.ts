@@ -38,6 +38,7 @@ import { RedisModule } from './redis/redis.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { RadiologyModule } from './modules/radiology/radiology.module';
 import { MedicationOrderModule } from './modules/medication-order/medication-order.module';
+import { MedicationRequestModule } from './modules/medication-request/medication-request.module';
 import { StoreModule } from './modules/store/store.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
 import { DialysisModule } from './modules/dialysis/dialysis.module';
@@ -57,6 +58,7 @@ import { QualitySafetyModule } from './modules/quality-safety/quality-safety.mod
 import { CmacAnalyticsModule } from './modules/cmac-analytics/cmac-analytics.module';
 import { CmdAnalyticsModule } from './modules/cmd-analytics/cmd-analytics.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { TheatreModule } from './modules/theatre/theatre.module';
 
 @Module({
   imports: [
@@ -110,6 +112,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     ChatModule,
     RadiologyModule,
     MedicationOrderModule,
+    MedicationRequestModule,
     StoreModule,
     PurchasesModule,
     DialysisModule,
@@ -129,6 +132,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     CmacAnalyticsModule,
     CmdAnalyticsModule,
     AccountsModule,
+    TheatreModule,
   ],
   controllers: [AppController],
   providers: [

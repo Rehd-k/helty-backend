@@ -2,7 +2,17 @@ import { EncounterStatus, Prisma } from '@prisma/client';
 import { MedicationOrderService } from './medication-order.service';
 import { CreateMedicationOrderDto } from './dto/create-medication-order.dto';
 
-describe('MedicationOrderService create quantities', () => {
+jest.mock('../../common/utils/patient-outpatient.util', () => ({
+  isOutpatientPatient: jest.fn().mockResolvedValue(false),
+}));
+
+import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
+
+const mockIsOutpatientPatient = isOutpatientPatient as jest.MockedFunction<
+  typeof isOutpatientPatient
+>;
+
+describe('MedicationOrderService create', () => {
   const encounterId = 'enc-1';
   const patientId = 'pat-1';
   const doctorId = 'doc-1';
@@ -26,23 +36,41 @@ describe('MedicationOrderService create quantities', () => {
   };
 
   let medicationOrderCreate: jest.Mock;
+  let medicationRequestCreate: jest.Mock;
+  let medicationOrderFindUniqueOrThrow: jest.Mock;
+  let ensureInvoiceForEncounter: jest.Mock;
   let addDrugItem: jest.Mock;
   let service: MedicationOrderService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsOutpatientPatient.mockResolvedValue(false);
 
     medicationOrderCreate = jest.fn().mockImplementation(({ data }) => ({
       id: 'order-1',
       ...data,
     }));
+    medicationRequestCreate = jest.fn();
+    medicationOrderFindUniqueOrThrow = jest.fn().mockImplementation(({ where }) => ({
+      id: where.id,
+      status: 'Prescribed',
+      medicationRequests: [],
+    }));
+    ensureInvoiceForEncounter = jest.fn().mockResolvedValue({ id: 'inv-1' });
     addDrugItem = jest.fn().mockResolvedValue({ id: 'item-1' });
 
     const tx = {
-      medicationOrder: { create: medicationOrderCreate },
+      medicationOrder: {
+        create: medicationOrderCreate,
+        findUniqueOrThrow: medicationOrderFindUniqueOrThrow,
+      },
+      medicationRequest: {
+        create: medicationRequestCreate,
+      },
     };
 
     const prisma = {
+      medicationOrder: { create: medicationOrderCreate },
       $transaction: jest.fn(async (cb: (client: typeof tx) => unknown) =>
         cb(tx),
       ),
@@ -65,9 +93,7 @@ describe('MedicationOrderService create quantities', () => {
     };
 
     const invoiceService = {
-      ensureInvoiceForEncounter: jest
-        .fn()
-        .mockResolvedValue({ id: 'inv-1' }),
+      ensureInvoiceForEncounter,
       addDrugItem,
     };
 
@@ -77,55 +103,62 @@ describe('MedicationOrderService create quantities', () => {
     );
   });
 
-  it('persists quantity on the order and invoice when only quantity is sent', async () => {
+  it('creates a prescribed order without billing', async () => {
     await service.create({ ...baseDto, quantity: 14 });
 
-    expect(addDrugItem).toHaveBeenCalledWith(
-      expect.objectContaining({ quantity: 14 }),
-      expect.anything(),
-    );
+    expect(ensureInvoiceForEncounter).not.toHaveBeenCalled();
+    expect(addDrugItem).not.toHaveBeenCalled();
     expect(medicationOrderCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          status: 'Prescribed',
           quantity: new Prisma.Decimal(14),
+          prescribedDrugId: drugId,
+          prescribedDrugName: 'Paracetamol',
         }),
       }),
     );
   });
 
-  it('uses billingQuantity for invoice and quantity for the order when both are sent', async () => {
-    await service.create({
-      ...baseDto,
-      quantity: 2,
-      billingQuantity: 14,
-    });
-
-    expect(addDrugItem).toHaveBeenCalledWith(
-      expect.objectContaining({ quantity: 14 }),
-      expect.anything(),
-    );
-    expect(medicationOrderCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          quantity: new Prisma.Decimal(2),
-        }),
-      }),
-    );
-  });
-
-  it('defaults invoice to 1 and leaves order quantity null when neither is sent', async () => {
+  it('defaults status to Prescribed when quantity is omitted', async () => {
     await service.create(baseDto);
 
-    expect(addDrugItem).toHaveBeenCalledWith(
-      expect.objectContaining({ quantity: 1 }),
-      expect.anything(),
-    );
     expect(medicationOrderCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          status: 'Prescribed',
           quantity: undefined,
         }),
       }),
     );
+  });
+
+  it('auto-creates a medication request for outpatient prescriptions', async () => {
+    mockIsOutpatientPatient.mockResolvedValue(true);
+    medicationOrderFindUniqueOrThrow.mockResolvedValue({
+      id: 'order-1',
+      status: 'Prescribed',
+      medicationRequests: [
+        {
+          id: 'req-1',
+          requestedQuantity: 20,
+          status: 'REQUESTED',
+        },
+      ],
+    });
+
+    const result = await service.create({
+      ...baseDto,
+      requestedQuantity: 20,
+    });
+
+    expect(medicationRequestCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        medicationOrderId: 'order-1',
+        requestedQuantity: 20,
+        requestedByNurseId: doctorId,
+      }),
+    });
+    expect(result.medicationRequests).toHaveLength(1);
   });
 });

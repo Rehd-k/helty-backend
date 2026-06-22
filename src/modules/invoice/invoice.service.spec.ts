@@ -601,25 +601,94 @@ describe('InvoiceService', () => {
       );
     });
 
-    it('still filters by patientId and allowIP when provided', async () => {
+    it('returns consumable consultation credits for a patient when patientId is set', async () => {
       const findMany = jest.fn().mockResolvedValue([]);
       const count = jest.fn().mockResolvedValue(0);
-      const prisma: any = { invoice: { findMany, count } };
+      const prisma: any = {
+        patient: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'pat-1' }),
+        },
+        invoice: { findMany, count },
+      };
       const service = createInvoiceService(prisma);
 
       await service.findPaidWithoutEncounter({
         patientId: 'pat-1',
         allowIP: true,
+        fromDate: '2026-03-27',
+        toDate: '2026-03-27',
+      });
+
+      expect(prisma.patient.findFirst).toHaveBeenCalledWith({
+        where: { OR: [{ id: 'pat-1' }, { patientId: 'pat-1' }] },
+        select: { id: true },
+      });
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            patientId: 'pat-1',
+            status: InvoiceStatus.PAID,
+            encounterId: null,
+            patient: { status: PatientStatus.ADMITED },
+            invoiceItems: {
+              some: expect.objectContaining({
+                settled: false,
+                consultationVisitsConsumed: {
+                  lt: CONSULTATION_CREDIT_MAX_VISITS,
+                },
+                consultationCreditExpiresAt: { gt: now },
+              }),
+            },
+          },
+          orderBy: [{ updatedAt: 'asc' }],
+        }),
+      );
+      expect(findMany.mock.calls[0][0].where.OR).toBeUndefined();
+    });
+
+    it('resolves hospital chart number to patient UUID when patientId is set', async () => {
+      const findMany = jest.fn().mockResolvedValue([{ id: 'inv-1' }]);
+      const count = jest.fn().mockResolvedValue(1);
+      const prisma: any = {
+        patient: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: 'dc08bc32-24ed-42a0-b4a7-6062ec40e2b3' }),
+        },
+        invoice: { findMany, count },
+      };
+      const service = createInvoiceService(prisma);
+
+      const result = await service.findPaidWithoutEncounter({
+        patientId: 'BVNLI0T7',
       });
 
       expect(findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            patientId: 'pat-1',
-            patient: { status: PatientStatus.ADMITED },
+            patientId: 'dc08bc32-24ed-42a0-b4a7-6062ec40e2b3',
           }),
         }),
       );
+      expect(result.total).toBe(1);
+    });
+
+    it('returns empty when patientId does not resolve to a patient', async () => {
+      const findMany = jest.fn();
+      const count = jest.fn();
+      const prisma: any = {
+        patient: { findFirst: jest.fn().mockResolvedValue(null) },
+        invoice: { findMany, count },
+      };
+      const service = createInvoiceService(prisma);
+
+      const result = await service.findPaidWithoutEncounter({
+        patientId: 'UNKNOWN99',
+      });
+
+      expect(result).toEqual({ invoices: [], total: 0, skip: 0, take: 20 });
+      expect(findMany).not.toHaveBeenCalled();
+      expect(count).not.toHaveBeenCalled();
     });
   });
 
@@ -1446,6 +1515,140 @@ describe('InvoiceService', () => {
 
       const createCall = prisma.invoiceItem.create.mock.calls[0][0];
       expect(createCall.data.unitPrice.toString()).toBe('999');
+    });
+  });
+
+  describe('addDrugItem ward-based pricing', () => {
+    const invoiceId = 'inv-1';
+    const drugId = 'drug-1';
+    const wardId = 'ward-opd';
+    const costPrice = new Prisma.Decimal(1200);
+
+    const preloadedDrug = {
+      id: drugId,
+      batches: [{ costPrice }],
+    };
+
+    function createAddDrugItemPrisma(options: {
+      wardId?: string | null;
+      hmoId?: string | null;
+      ward?: { name: string; drugPricePercentage: Prisma.Decimal } | null;
+      inpatientWard?: { drugPricePercentage: Prisma.Decimal } | null;
+    }) {
+      const invoiceFindUnique = jest.fn().mockResolvedValue({
+        id: invoiceId,
+        status: InvoiceStatus.PENDING,
+        patient: {
+          hmoId: options.hmoId ?? null,
+          wardId: options.wardId ?? null,
+        },
+      });
+
+      const wardFindUnique = jest.fn().mockImplementation(({ where }) => {
+        if (options.wardId && where.id === options.wardId) {
+          return Promise.resolve(options.ward ?? null);
+        }
+        return Promise.resolve(null);
+      });
+
+      const wardFindFirst = jest.fn().mockResolvedValue(options.inpatientWard ?? null);
+
+      const invoiceItemCreate = jest.fn().mockImplementation(({ data }) => ({
+        id: 'item-1',
+        ...data,
+        drug: { id: drugId, genericName: 'Test Drug' },
+        invoice: { id: invoiceId, status: InvoiceStatus.PENDING, patientId: 'pat-1' },
+        createdBy: null,
+      }));
+
+      const prisma: any = {
+        invoice: {
+          findUnique: invoiceFindUnique,
+          update: jest.fn().mockResolvedValue({}),
+        },
+        ward: {
+          findUnique: wardFindUnique,
+          findFirst: wardFindFirst,
+        },
+        invoiceItem: {
+          create: invoiceItemCreate,
+        },
+      };
+
+      return { prisma, invoiceItemCreate, wardFindUnique, wardFindFirst };
+    }
+
+    async function addDrugWithPricing(prisma: any) {
+      const service = createInvoiceService(prisma);
+      (service as any).recalculateInvoiceTotals = jest.fn().mockResolvedValue({});
+      await service.addDrugItem(
+        {
+          invoiceId,
+          drugId,
+          quantity: 1,
+          preloadedDrug: preloadedDrug as any,
+        },
+        prisma,
+      );
+      return prisma.invoiceItem.create.mock.calls[0][0].data.unitPrice;
+    }
+
+    it('applies ward drugPricePercentage multiplier to batch costPrice', async () => {
+      const { prisma } = createAddDrugItemPrisma({
+        wardId: 'ward-inpatient',
+        ward: {
+          name: 'Inpatient Ward',
+          drugPricePercentage: new Prisma.Decimal(2),
+        },
+      });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('2400');
+    });
+
+    it('uses multiplier 1 when patient has no wardId', async () => {
+      const { prisma } = createAddDrugItemPrisma({ wardId: null });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('1200');
+      expect(prisma.ward.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('uses Inpatient Ward multiplier for HMO patient on OPD ward', async () => {
+      const { prisma } = createAddDrugItemPrisma({
+        wardId,
+        hmoId: 'hmo-1',
+        ward: { name: 'OPD', drugPricePercentage: new Prisma.Decimal(1) },
+        inpatientWard: { drugPricePercentage: new Prisma.Decimal(2) },
+      });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('2400');
+      expect(prisma.ward.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
+        }),
+      );
+    });
+
+    it('detects OPD ward with trim and case-insensitive name for HMO override', async () => {
+      const { prisma } = createAddDrugItemPrisma({
+        wardId,
+        hmoId: 'hmo-1',
+        ward: { name: ' opd ', drugPricePercentage: new Prisma.Decimal(1) },
+        inpatientWard: { drugPricePercentage: new Prisma.Decimal(2) },
+      });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('2400');
+    });
+
+    it('uses OPD ward multiplier only for non-HMO patient on OPD', async () => {
+      const { prisma } = createAddDrugItemPrisma({
+        wardId,
+        hmoId: null,
+        ward: { name: 'OPD', drugPricePercentage: new Prisma.Decimal(1.5) },
+        inpatientWard: { drugPricePercentage: new Prisma.Decimal(2) },
+      });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('1800');
+      expect(prisma.ward.findFirst).not.toHaveBeenCalled();
     });
   });
 });

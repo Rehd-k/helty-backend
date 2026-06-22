@@ -1,3 +1,5 @@
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
+
 /** Route guard tokens for dialysis department staff. */
 export const DIALYSIS_ACCESS = [
   'DIALYSIS',
@@ -7,6 +9,9 @@ export const DIALYSIS_ACCESS = [
   'DIALYSIS_RECEPTIONIST',
   'SUPER_ADMIN',
 ] as const;
+
+/** Patient-care read access for dialysis sessions (all clinical departments). */
+export const DIALYSIS_READ_ACCESS = [...CLINICAL_READ_ACCESS] as const;
 
 export const DIALYSIS_CLINICAL_ACCESS = [
   'DIALYSIS_NURSE',

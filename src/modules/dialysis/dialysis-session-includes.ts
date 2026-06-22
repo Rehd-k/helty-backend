@@ -1,6 +1,8 @@
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+
 export const dialysisSessionSummaryInclude = {
   patient: {
-    select: { id: true, firstName: true, surname: true, patientId: true },
+    select: patientNameFieldsSelect,
   },
   doctor: {
     select: { id: true, firstName: true, lastName: true, staffId: true },

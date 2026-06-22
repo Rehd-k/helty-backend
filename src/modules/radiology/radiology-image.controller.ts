@@ -17,9 +17,11 @@ import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
-import { nanoid } from 'nanoid';
+import { generateSafeNanoid } from '../../common/utils/human-readable-id.util';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
+import { RADIOLOGY_IMAGE_WRITE_ACCESS } from './radiology.constants';
 import { RadiologyImageService } from './radiology-image.service';
 // import * as express from 'express';
 
@@ -40,7 +42,7 @@ const radiologyFileInterceptor = FileInterceptor('file', {
     },
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname) || '.bin';
-      cb(null, `${nanoid()}${ext}`);
+      cb(null, `${generateSafeNanoid()}${ext}`);
     },
   }),
   limits: { fileSize: MAX_FILE_SIZE },
@@ -68,18 +70,12 @@ const radiologyFileInterceptor = FileInterceptor('file', {
 @ApiTags('Radiology – Images')
 @Controller('radiology')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes(
-  'CONSULTANT',
-  'INPATIENT_DOCTOR',
-  'RADIOLOGIST',
-  'RADIOGRAPHER',
-  'RADIOLOGY',
-)
 export class RadiologyImageController {
   constructor(private readonly radiologyImageService: RadiologyImageService) {}
 
   @Post('order-items/:orderItemId/images')
   @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...RADIOLOGY_IMAGE_WRITE_ACCESS)
   @UseInterceptors(radiologyFileInterceptor)
   @ApiOperation({ summary: 'Upload an image/file for a radiology order item' })
   @ApiConsumes('multipart/form-data')
@@ -102,12 +98,14 @@ export class RadiologyImageController {
   }
 
   @Get('order-items/:orderItemId/images')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'List images for a radiology order item' })
   list(@Param('orderItemId') orderItemId: string) {
     return this.radiologyImageService.listByOrderItemId(orderItemId);
   }
 
   @Get('images/:id/file')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'Download/serve image file' })
   async getFile(@Param('id') id: string, @Res() res: any) {
     const { filePath, fileName, mimeType } =
@@ -122,6 +120,7 @@ export class RadiologyImageController {
 
   @Delete('images/:id')
   @HttpCode(HttpStatus.OK)
+  @AccountTypes(...RADIOLOGY_IMAGE_WRITE_ACCESS)
   @ApiOperation({ summary: 'Delete an image and its file' })
   remove(@Param('id') id: string) {
     return this.radiologyImageService.remove(id);

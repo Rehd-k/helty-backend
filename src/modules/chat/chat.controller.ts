@@ -28,7 +28,7 @@ import {
 import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
-import { nanoid } from 'nanoid';
+import { generateSafeNanoid } from '../../common/utils/human-readable-id.util';
 import type { Response } from 'express';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { ChatService } from './chat.service';
@@ -318,7 +318,7 @@ export class ChatController {
         },
         filename: (_req, file, cb) => {
           const ext = path.extname(file.originalname) || '.bin';
-          cb(null, `${nanoid()}${ext}`);
+          cb(null, `${generateSafeNanoid()}${ext}`);
         },
       }),
       limits: {
@@ -376,7 +376,7 @@ export class ChatController {
         },
         filename: (_req, file, cb) => {
           const ext = path.extname(file.originalname) || '.bin';
-          cb(null, `${nanoid()}${ext}`);
+          cb(null, `${generateSafeNanoid()}${ext}`);
         },
       }),
       limits: {

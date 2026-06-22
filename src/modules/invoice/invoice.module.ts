@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { StoreModule } from '../store/store.module';
 import { PurchasesModule } from '../purchases/purchases.module';
+import { DrugStockModule } from '../pharmacy/drug-stock.module';
 import { InvoiceController } from './invoice.controller';
 import { InvoiceService } from './invoice.service';
 import { InvoiceDrugController } from './invoice-drug.controller';
@@ -16,7 +17,7 @@ import { InvoiceItemRefundController } from './invoice-item-refund.controller';
 import { InvoiceItemRefundService } from './invoice-item-refund.service';
 
 @Module({
-  imports: [PrismaModule, StoreModule, PurchasesModule],
+  imports: [PrismaModule, StoreModule, PurchasesModule, DrugStockModule],
   controllers: [
     InvoiceController,
     InvoiceDrugController,

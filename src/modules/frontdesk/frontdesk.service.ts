@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { compareMetrics } from '../billing-analytics/billing-analytics-math';
 import { startOfDay, endOfDay } from '../../common/utils/date-range';
+import { formatPatientDisplayName } from '../../common/utils/patient-display-name.util';
 
 /** Matches seed / REF_Categories: Consultations & Reviews */
 export const CONSULTATIONS_REVIEWS_CATEGORY = 'Consultations & Reviews';
@@ -207,14 +208,6 @@ export class FrontdeskService {
     };
   }
 
-  private formatPatientName(p: {
-    firstName: string | null;
-    surname: string | null;
-  }): string {
-    const parts = [p.firstName, p.surname].filter(Boolean);
-    return parts.length ? parts.join(' ') : 'Unknown';
-  }
-
   async liveQueue(asOf?: string): Promise<FrontdeskQueueRow[]> {
     const anchor = this.anchor(asOf);
     const { from, to } = this.dayWindow(anchor);
@@ -276,7 +269,7 @@ export class FrontdeskService {
       out.push({
         id: `en:${e.id}`,
         patientId: e.patientId,
-        patientName: this.formatPatientName(e.patient),
+        patientName: formatPatientDisplayName(e.patient),
         time: e.startTime.toISOString(),
         doctor: e.doctor
           ? {
@@ -304,7 +297,7 @@ export class FrontdeskService {
       out.push({
         id: `wp:${w.id}`,
         patientId: w.patientId,
-        patientName: this.formatPatientName(w.patient),
+        patientName: formatPatientDisplayName(w.patient),
         time: w.createdAt.toISOString(),
         doctor: roomDoc
           ? {

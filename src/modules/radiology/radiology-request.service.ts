@@ -12,6 +12,7 @@ import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
 import { UpdateRadiologyOrderItemDto } from './dto/update-radiology-order-item.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class RadiologyRequestService {
@@ -61,7 +62,7 @@ export class RadiologyRequestService {
 
     const orderInclude = {
       patient: {
-        select: { id: true, firstName: true, surname: true, patientId: true },
+        select: patientNameFieldsSelect,
       },
       encounter: { select: { id: true, encounterType: true, status: true } },
       requestedBy: {
@@ -323,7 +324,7 @@ export class RadiologyRequestService {
           where: { id },
           data: { status: RadiologyRequestStatus.CANCELLED },
           include: {
-            patient: { select: { id: true, firstName: true, surname: true } },
+            patient: { select: patientNameFieldsSelect },
             requestedBy: {
               select: { id: true, firstName: true, lastName: true },
             },
@@ -339,7 +340,7 @@ export class RadiologyRequestService {
         ...(dto.status !== undefined && { status: dto.status }),
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true } },
+        patient: { select: patientNameFieldsSelect },
         requestedBy: { select: { id: true, firstName: true, lastName: true } },
         items: true,
       },

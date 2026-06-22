@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 /** Nested billing + lab order/results for API responses and encounter expand. */
 export const labRequestWithBillingInclude = {
@@ -6,7 +7,7 @@ export const labRequestWithBillingInclude = {
     select: { id: true, encounterType: true, status: true },
   },
   patient: {
-    select: { id: true, firstName: true, surname: true, patientId: true },
+    select: patientNameFieldsSelect,
   },
   requestedBy: {
     select: { id: true, firstName: true, lastName: true, staffId: true },

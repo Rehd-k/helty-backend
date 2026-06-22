@@ -117,12 +117,7 @@ export function buildAppointmentMessages(params: {
   }
 }
 
-export function formatPatientName(patient: {
-  firstName?: string | null;
-  surname?: string | null;
-}): string {
-  return [patient.firstName, patient.surname].filter(Boolean).join(' ');
-}
+export { formatPatientDisplayName as formatPatientName } from '../../../common/utils/patient-display-name.util';
 
 export function isCancelledStatus(status: string | null | undefined): boolean {
   return status?.trim().toLowerCase() === 'cancelled';

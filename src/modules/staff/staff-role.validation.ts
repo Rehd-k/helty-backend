@@ -6,10 +6,19 @@ import {
 } from '../nursing/nursing.constants';
 import { NURSING_ACCOUNT_TYPE_ROLES } from '../nursing/nursing-scope.utils';
 
+const THEATRE_ACCOUNT_TYPE_ROLES = new Set<StaffRole>([
+  StaffRole.THEATRE_HEAD,
+  StaffRole.THEATRE_NURSE,
+  StaffRole.THEATRE_SCRUB,
+  StaffRole.THEATRE_ANAESTHETIST,
+  StaffRole.THEATRE_RECEPTIONIST,
+]);
+
 const ACCOUNT_TYPE_ALLOWED_ROLES: Partial<
   Record<AccountType, ReadonlySet<StaffRole>>
 > = {
   [AccountType.NURSE]: NURSING_ACCOUNT_TYPE_ROLES,
+  [AccountType.THEATRE]: THEATRE_ACCOUNT_TYPE_ROLES,
 };
 
 export function validateStaffRolePairing(input: {

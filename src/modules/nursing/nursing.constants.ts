@@ -1,4 +1,5 @@
 import { NursingUnit, StaffRole } from '@prisma/client';
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
 
 /** All nursing staff roles (line + charge + matron). */
 export const NURSING_STAFF_ROLES: readonly StaffRole[] = [
@@ -55,12 +56,8 @@ export const NURSING_ASSIGNMENT_ADMIN = [
   'SUPER_ADMIN',
 ] as const;
 
-/** Inpatient clinical nursing read access (doctors + all nurses). */
-export const INPATIENT_NURSING_READ_ACCESS = [
-  ...NURSING_ACCESS,
-  'INPATIENT_DOCTOR',
-  'CONSULTANT',
-] as const;
+/** Inpatient clinical nursing read access (all clinical departments). */
+export const INPATIENT_NURSING_READ_ACCESS = [...CLINICAL_READ_ACCESS] as const;
 
 /** Inpatient clinical nursing write access. */
 export const INPATIENT_NURSING_WRITE_ACCESS = [...NURSING_ACCESS] as const;

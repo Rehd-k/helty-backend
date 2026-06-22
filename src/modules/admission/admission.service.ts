@@ -240,7 +240,17 @@ export class AdmissionService {
             medicationOrders: true,
           },
         },
-        patientVitals: true,
+        patientVitals: {
+          include: {
+            nurse: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
         medicationOrders: {
           include: {
             doctor: {
@@ -311,6 +321,7 @@ export class AdmissionService {
     if (!admission) {
       throw new NotFoundException('Admission not found');
     }
+    console.log(admission.patientVitals);
     return admission;
   }
 

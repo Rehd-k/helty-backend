@@ -21,6 +21,8 @@ import { LabAstResultOptionController } from './lab-ast-result-option/lab-ast-re
 import { LabAstResultOptionService } from './lab-ast-result-option/lab-ast-result-option.service';
 import { LabAstResultController } from './lab-ast-result/lab-ast-result.controller';
 import { LabAstResultService } from './lab-ast-result/lab-ast-result.service';
+import { LabInvestigationsController } from './lab-investigations/lab-investigations.controller';
+import { LabInvestigationsService } from './lab-investigations/lab-investigations.service';
 
 @Module({
   imports: [PrismaModule, InvoiceModule],
@@ -35,6 +37,7 @@ import { LabAstResultService } from './lab-ast-result/lab-ast-result.service';
     LabAntibioticController,
     LabAstResultOptionController,
     LabAstResultController,
+    LabInvestigationsController,
   ],
   providers: [
     LabCategoryService,
@@ -47,6 +50,7 @@ import { LabAstResultService } from './lab-ast-result/lab-ast-result.service';
     LabAntibioticService,
     LabAstResultOptionService,
     LabAstResultService,
+    LabInvestigationsService,
   ],
   exports: [
     LabCategoryService,
@@ -59,6 +63,7 @@ import { LabAstResultService } from './lab-ast-result/lab-ast-result.service';
     LabAntibioticService,
     LabAstResultOptionService,
     LabAstResultService,
+    LabInvestigationsService,
   ],
 })
 export class LabModule {}

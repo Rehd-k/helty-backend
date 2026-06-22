@@ -1,5 +1,5 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
-import { nanoid } from 'nanoid';
+import { generateSafeNanoid } from '../../common/utils/human-readable-id.util';
 import type { OnlineUserInfo } from './chat.types';
 import { PresenceService } from './presence/presence.service';
 
@@ -61,7 +61,7 @@ export class ChatService {
   }
 
   registerGuestSocket(socketId: string, username: string): string {
-    const userId = `guest-${nanoid()}`;
+    const userId = `guest-${generateSafeNanoid()}`;
     this.registerSocket(
       userId,
       socketId,
@@ -120,7 +120,7 @@ export class ChatService {
   }
 
   generateMessageId(): string {
-    return nanoid();
+    return generateSafeNanoid();
   }
 
   async saveMessage(

@@ -17,7 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
-import { nanoid } from 'nanoid';
+import { generateSafeNanoid } from '../../common/utils/human-readable-id.util';
 import type { Response } from 'express';
 import type { Request } from 'express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -37,7 +37,7 @@ const uploadInterceptor = FileInterceptor('file', {
       cb(null, TMP_DIR);
     },
     filename: (_req, _file, cb) => {
-      cb(null, `${nanoid()}.upload`);
+      cb(null, `${generateSafeNanoid()}.upload`);
     },
   }),
   limits: { fileSize: MAX_FILE_BYTES },

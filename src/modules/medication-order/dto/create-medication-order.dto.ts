@@ -13,6 +13,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export const MEDICATION_ORDER_STATUSES = [
+  'Prescribed',
   'Pending Dispense',
   'Dispensed',
   'Cancelled',
@@ -63,7 +64,7 @@ export class CreateMedicationOrderDto {
 
   @ApiPropertyOptional({
     description:
-      'Ordered quantity saved on the medication order. Also used for invoice billing when billingQuantity is omitted.',
+      'Ordered quantity saved on the medication order (clinical dose per administration). Billing quantity is entered by nurses when requesting.',
   })
   @IsNumber()
   @IsPositive()
@@ -72,14 +73,13 @@ export class CreateMedicationOrderDto {
 
   @ApiPropertyOptional({
     description:
-      'Units to bill on the invoice (integer). When both billingQuantity and quantity are sent, billing uses this field and quantity is stored on the order only.',
-    example: 1,
-    default: 1,
+      'Billing/dispense units. Required for outpatients (ward OPD, no active admission) — creates a medication request immediately. Omit for inpatients; nurses enter billing quantity via POST /medication-requests.',
+    example: 20,
   })
   @IsInt()
   @IsPositive()
   @IsOptional()
-  billingQuantity?: number;
+  requestedQuantity?: number;
 
   @ApiPropertyOptional({ description: 'Duration (e.g. 7 days, 2 weeks)' })
   @IsString()

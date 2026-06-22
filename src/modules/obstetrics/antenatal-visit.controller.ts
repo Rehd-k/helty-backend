@@ -9,11 +9,15 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
-import { NURSING_ACCESS } from '../nursing/nursing.constants';
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
+import {
+  OBSTETRICS_NURSING_WRITE_ACCESS,
+} from './obstetrics.constants';
 import { AntenatalVisitService } from './antenatal-visit.service';
 import {
   CreateAntenatalVisitDto,
@@ -24,12 +28,12 @@ import { ListAntenatalVisitsQueryDto } from './dto/list-antenatal-visits-query.d
 @ApiTags('Obstetrics - Antenatal')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR', ...NURSING_ACCESS)
 export class AntenatalVisitController {
-  constructor(private readonly antenatalVisitService: AntenatalVisitService) { }
+  constructor(private readonly antenatalVisitService: AntenatalVisitService) {}
 
   @Post('pregnancies/:pregnancyId/visits')
   @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...OBSTETRICS_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Create an antenatal visit for a pregnancy' })
   create(
     @Param('pregnancyId') pregnancyId: string,
@@ -39,6 +43,7 @@ export class AntenatalVisitController {
   }
 
   @Get('pregnancies/:pregnancyId/visits')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'List antenatal visits for a pregnancy' })
   findByPregnancy(
     @Param('pregnancyId') pregnancyId: string,
@@ -48,12 +53,14 @@ export class AntenatalVisitController {
   }
 
   @Get('antenatal-visits/:id')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'Get antenatal visit by ID' })
   findOne(@Param('id') id: string) {
     return this.antenatalVisitService.findOne(id);
   }
 
   @Patch('antenatal-visits/:id')
+  @AccountTypes(...OBSTETRICS_NURSING_WRITE_ACCESS)
   @ApiOperation({ summary: 'Update antenatal visit' })
   update(@Param('id') id: string, @Body() dto: UpdateAntenatalVisitDto) {
     return this.antenatalVisitService.update(id, dto);

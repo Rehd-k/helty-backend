@@ -1,0 +1,36 @@
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
+
+export const RADIOLOGY_REQUEST_WRITE_ACCESS = [
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+  'RADIOLOGIST',
+  'RADIOGRAPHER',
+  'RADIOLOGY_RECEPTIONIST',
+  'RADIOLOGY',
+  'MEDICAL_RECORDS',
+] as const;
+
+export const RADIOLOGY_REQUEST_READ_ACCESS = [
+  ...CLINICAL_READ_ACCESS,
+  'MEDICAL_RECORDS',
+] as const;
+
+export const RADIOLOGY_REPORT_WRITE_ACCESS = [
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+  'RADIOLOGIST',
+  'RADIOLOGY',
+] as const;
+
+export const RADIOLOGY_IMAGE_WRITE_ACCESS = [
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+  'RADIOLOGIST',
+  'RADIOGRAPHER',
+  'RADIOLOGY',
+] as const;
+
+export const RADIOLOGY_PROCEDURE_WRITE_ACCESS = [
+  'RADIOGRAPHER',
+  'RADIOLOGY',
+] as const;

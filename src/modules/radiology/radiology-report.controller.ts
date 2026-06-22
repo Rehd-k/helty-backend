@@ -13,6 +13,8 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
+import { RADIOLOGY_REPORT_WRITE_ACCESS } from './radiology.constants';
 import { RadiologyReportService } from './radiology-report.service';
 import {
   CreateRadiologyStudyReportDto,
@@ -22,7 +24,6 @@ import {
 @ApiTags('Radiology – Reporting')
 @Controller('radiology/order-items/:orderItemId/report')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('CONSULTANT', 'INPATIENT_DOCTOR', 'RADIOLOGIST', 'RADIOLOGY')
 export class RadiologyReportController {
   constructor(
     private readonly radiologyReportService: RadiologyReportService,
@@ -30,6 +31,7 @@ export class RadiologyReportController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...RADIOLOGY_REPORT_WRITE_ACCESS)
   @ApiOperation({
     summary: 'Create radiology report (digitally signed by radiologist)',
   })
@@ -46,6 +48,7 @@ export class RadiologyReportController {
   }
 
   @Patch()
+  @AccountTypes(...RADIOLOGY_REPORT_WRITE_ACCESS)
   @ApiOperation({ summary: 'Update radiology report' })
   update(
     @Param('orderItemId') orderItemId: string,
@@ -55,6 +58,7 @@ export class RadiologyReportController {
   }
 
   @Get()
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'Get report for an order item (for viewing/print)' })
   getReport(@Param('orderItemId') orderItemId: string) {
     return this.radiologyReportService.getByOrderItemId(orderItemId);

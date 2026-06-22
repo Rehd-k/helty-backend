@@ -51,9 +51,7 @@ export class MedicationAdministrationController {
     @Body() dto: CreateMedicationAdministrationDto,
     @Req() req: { user: { sub: string } },
   ) {
-    console.log(dto);
-    const addmi = await this.service.create(admissionId, dto, req.user.sub);
-    return addmi;
+    return this.service.create(admissionId, dto, req.user.sub);
   }
 
   @Patch(':administrationId')

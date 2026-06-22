@@ -95,6 +95,7 @@ export class WardRoundNotesService {
             id: true,
             firstName: true,
             lastName: true,
+            accountType: true,
           },
         },
       },

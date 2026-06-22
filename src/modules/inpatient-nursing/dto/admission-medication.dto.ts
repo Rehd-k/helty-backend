@@ -9,7 +9,7 @@ import {
   IsNumber,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { MedicationAdminStatus } from '@prisma/client';
 
 const MEDICATION_ROUTES = ['IV', 'ORAL', 'IM', 'SC'] as const;
@@ -134,6 +134,15 @@ export class CreateMedicationAdministrationDto {
   @IsOptional()
   @IsString()
   remarks?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Active dispensary to deduct stock from when status is GIVEN.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value === null ? undefined : value))
+  @IsUUID()
+  pharmacyLocationId?: string;
 }
 
 export class UpdateMedicationAdministrationDto {

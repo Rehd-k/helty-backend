@@ -10,6 +10,7 @@ import {
   CreateMedicationOrderDto,
   UpdateMedicationOrderDto,
 } from './dto/create-medication-order.dto';
+import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
 
 const drugWithPricingBatchInclude = {
   batches: {
@@ -45,34 +46,37 @@ export class MedicationOrderService {
       );
     }
 
-    const { billingQuantity, clinicalQuantity } =
-      this.resolveCreateQuantities(dto);
+    const isOutpatient = await isOutpatientPatient(this.prisma, dto.patientId);
+
+    if (isOutpatient) {
+      if (dto.admissionId) {
+        throw new BadRequestException(
+          'Outpatient medication orders cannot include admissionId.',
+        );
+      }
+      if (dto.requestedQuantity == null) {
+        throw new BadRequestException(
+          'requestedQuantity is required for outpatient prescriptions.',
+        );
+      }
+    } else if (dto.requestedQuantity != null) {
+      throw new BadRequestException(
+        'requestedQuantity is only for outpatient prescriptions. Nurses enter billing quantity via medication requests for inpatients.',
+      );
+    }
+
+    const clinicalQuantity =
+      dto.quantity != null ? new Prisma.Decimal(dto.quantity) : undefined;
 
     return this.prisma.$transaction(async (tx) => {
-      const invoice = await this.invoiceService.ensureInvoiceForEncounter(
-        {
-          encounterId: dto.encounterId,
-          patientId: dto.patientId,
-          staffId: dto.doctorId,
-        },
-        tx,
-      );
-      const invoiceItem = await this.invoiceService.addDrugItem(
-        {
-          invoiceId: invoice.id,
-          drugId: dto.drugId,
-          quantity: billingQuantity,
-          createdByStaffId: dto.doctorId,
-          preloadedDrug: drug,
-        },
-        tx,
-      );
-      return tx.medicationOrder.create({
+      const order = await tx.medicationOrder.create({
         data: {
           encounterId: dto.encounterId,
           admissionId: dto.admissionId,
           drugId: dto.drugId,
           drugName: drug.genericName,
+          prescribedDrugId: dto.drugId,
+          prescribedDrugName: drug.genericName,
           dose: dto.dose ?? undefined,
           quantity: clinicalQuantity,
           frequency: dto.frequency ?? undefined,
@@ -87,9 +91,26 @@ export class MedicationOrderService {
           administrationStatus: dto.administrationStatus ?? undefined,
           patientId: patient.id,
           doctorId: doctor.id,
-          invoiceItemId: invoiceItem.id,
+          status: 'Prescribed',
         },
-        include: this.defaultInclude(),
+      });
+
+      if (isOutpatient) {
+        await tx.medicationRequest.create({
+          data: {
+            medicationOrderId: order.id,
+            encounterId: order.encounterId,
+            patientId: order.patientId,
+            requestedQuantity: dto.requestedQuantity!,
+            requestedByNurseId: doctor.id,
+            notes: dto.notes ?? undefined,
+          },
+        });
+      }
+
+      return tx.medicationOrder.findUniqueOrThrow({
+        where: { id: order.id },
+        select: this.defaultSelect(),
       });
     });
   }
@@ -116,7 +137,7 @@ export class MedicationOrderService {
         skip,
         take,
         orderBy: this.defaultOrderBy(),
-        include: this.defaultInclude(),
+        select: this.defaultSelect(),
       }),
       this.prisma.medicationOrder.count({ where }),
     ]);
@@ -127,7 +148,7 @@ export class MedicationOrderService {
   async findOne(id: string) {
     const order = await this.prisma.medicationOrder.findUnique({
       where: { id },
-      include: this.defaultInclude(),
+      select: this.defaultSelect(),
     });
     if (!order) {
       throw new NotFoundException(
@@ -150,15 +171,15 @@ export class MedicationOrderService {
     return this.prisma.medicationOrder.findMany({
       where: { encounterId },
       orderBy: this.defaultOrderBy(),
-      include: this.defaultInclude(),
+      select: this.defaultSelect(),
     });
   }
 
   async update(id: string, dto: UpdateMedicationOrderDto) {
     const existing = await this.prisma.medicationOrder.findUnique({
       where: { id },
-      include: {
-        ...this.defaultInclude(),
+      select: {
+        ...this.defaultSelect(),
         invoiceItem: {
           select: {
             id: true,
@@ -250,7 +271,7 @@ export class MedicationOrderService {
           }),
           ...(dto.notes !== undefined && { notes: dto.notes }),
         },
-        include: this.defaultInclude(),
+        select: this.defaultSelect(),
       });
     });
   }
@@ -267,9 +288,21 @@ export class MedicationOrderService {
         `Medication order with id "${id}" not found.`,
       );
     }
+    const billedOrDispensedRequests =
+      await this.prisma.medicationRequest.count({
+        where: {
+          medicationOrderId: id,
+          status: { in: ['BILLED', 'DISPENSED'] },
+        },
+      });
     if (existing._count.administrations > 0) {
       throw new BadRequestException(
         'Cannot delete an order that already has administration records.',
+      );
+    }
+    if (billedOrDispensedRequests > 0) {
+      throw new BadRequestException(
+        'Cannot delete an order that has billed or dispensed medication requests.',
       );
     }
     if (existing.status === 'Dispensed') {
@@ -287,23 +320,6 @@ export class MedicationOrderService {
       }
       await tx.medicationOrder.delete({ where: { id } });
     });
-  }
-
-  private resolveCreateQuantities(dto: CreateMedicationOrderDto): {
-    billingQuantity: number;
-    clinicalQuantity: Prisma.Decimal | undefined;
-  } {
-    const hasExplicitBilling = dto.billingQuantity != null;
-    const billingQuantity = hasExplicitBilling
-      ? dto.billingQuantity!
-      : dto.quantity != null
-        ? Math.round(dto.quantity)
-        : 1;
-    const clinicalQuantity =
-      dto.quantity != null
-        ? new Prisma.Decimal(dto.quantity)
-        : undefined;
-    return { billingQuantity, clinicalQuantity };
   }
 
   private async loadEncounterForPatient(
@@ -412,8 +428,32 @@ export class MedicationOrderService {
     ];
   }
 
-  private defaultInclude() {
+  private defaultSelect(): Prisma.MedicationOrderSelect {
     return {
+      id: true,
+      encounterId: true,
+      admissionId: true,
+      drugId: true,
+      drugName: true,
+      prescribedDrugId: true,
+      prescribedDrugName: true,
+      substitutedAt: true,
+      dose: true,
+      quantity: true,
+      frequency: true,
+      duration: true,
+      route: true,
+      specialInstructions: true,
+      startDateTime: true,
+      endDateTime: true,
+      notes: true,
+      administrationStatus: true,
+      patientId: true,
+      doctorId: true,
+      status: true,
+      invoiceItemId: true,
+      createdAt: true,
+      updatedAt: true,
       encounter: {
         select: {
           id: true,
@@ -434,7 +474,14 @@ export class MedicationOrderService {
           id: true,
           firstName: true,
           lastName: true,
+          staffId: true,
         },
+      },
+      prescribedDrug: {
+        select: { id: true, genericName: true, brandName: true },
+      },
+      substitutedByPharmacist: {
+        select: { id: true, firstName: true, lastName: true, staffId: true },
       },
       drug: {
         select: {
@@ -444,6 +491,19 @@ export class MedicationOrderService {
       },
       invoiceItem: {
         select: { id: true },
+      },
+      medicationRequests: {
+        select: {
+          id: true,
+          requestedQuantity: true,
+          status: true,
+          createdAt: true,
+          requestedByNurse: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          invoiceItem: { select: { id: true, settled: true } },
+        },
+        orderBy: { createdAt: 'desc' as const },
       },
     };
   }

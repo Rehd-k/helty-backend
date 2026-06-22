@@ -1,4 +1,3 @@
-import { randomBytes } from 'crypto';
 import {
   BadRequestException,
   forwardRef,
@@ -18,6 +17,7 @@ import {
   WalletTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { formatPatientDisplayName } from '../../common/utils/patient-display-name.util';
 import {
   AddInvoiceItemDto,
   AllocateInvoiceItemPaymentDto,
@@ -46,16 +46,11 @@ import {
 import { ConsumableStockService } from '../store/consumable-stock.service';
 import { PurchaseItemStockService } from '../purchases/purchase-item-stock.service';
 import { InvoiceItemRefundService } from './invoice-item-refund.service';
-
-const INVOICE_ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+import { isOpdWardName } from '../../common/utils/ward-name.util';
+import { generateHumanReadableId } from '../../common/utils/human-readable-id.util';
 
 function generateInvoiceHumanId(): string {
-  const buf = randomBytes(10);
-  let s = '';
-  for (let i = 0; i < 10; i++) {
-    s += INVOICE_ID_ALPHABET[buf[i] % INVOICE_ID_ALPHABET.length];
-  }
-  return s;
+  return generateHumanReadableId(10);
 }
 
 const drugWithPricingBatchInclude = {
@@ -1395,7 +1390,43 @@ export class InvoiceService {
   }
 
   /**
+   * PAID invoices with consumable consultation credit for one patient
+   * (visits remaining, not expired, no active encounter hold).
+   */
+  private static patientConsumableConsultationCreditWhere(
+    patientId: string,
+    now: Date,
+    patientStatus: PatientStatus,
+  ): Prisma.InvoiceWhereInput {
+    return {
+      patientId,
+      status: InvoiceStatus.PAID,
+      encounterId: null,
+      patient: { status: patientStatus },
+      invoiceItems: {
+        some: InvoiceService.consumableConsultationItemWhere(now),
+      },
+    };
+  }
+
+  /** Accept patient UUID (`Patient.id`) or hospital chart number (`Patient.patientId`). */
+  private async resolvePatientPk(patientRef: string): Promise<string | null> {
+    const trimmed = patientRef.trim();
+    if (!trimmed) return null;
+    const patient = await this.prisma.patient.findFirst({
+      where: {
+        OR: [{ id: trimmed }, { patientId: trimmed }],
+      },
+      select: { id: true },
+    });
+    return patient?.id ?? null;
+  }
+
+  /**
    * Paginated PAID invoices with no linked encounter (`encounterId` is null).
+   * When `patientId` is set, returns only that patient's invoices that still
+   * have consumable consultation credit (visits left within the 14-day window).
+   * Otherwise uses the waiting-room filter (date range + reusable credit OR).
    * Consultation lines expose `consultationVisitsConsumed`,
    * `consultationCreditExpiresAt`, and `settled` on each `invoiceItem`.
    */
@@ -1406,27 +1437,42 @@ export class InvoiceService {
     },
   ) {
     const { skip = 0, take = 20, fromDate, toDate, patientId } = params;
+    const now = new Date();
     const { from, to } = parseDateRange(fromDate, toDate);
     const allowInpatient = this.parseAllowInpatient(params.allowIP);
     const patientStatus = allowInpatient
       ? PatientStatus.ADMITED
       : PatientStatus.OUTPATIENT;
-    const patientPkScope: Prisma.InvoiceWhereInput = patientId?.trim()
-      ? { patientId: patientId.trim() }
-      : {};
-    const where = InvoiceService.paidWithoutEncounterWhere(
-      from,
-      to,
-      new Date(),
-      patientStatus,
-      patientPkScope,
-    );
+    const trimmedPatientRef = patientId?.trim();
+    let resolvedPatientPk: string | undefined;
+    if (trimmedPatientRef) {
+      const pk = await this.resolvePatientPk(trimmedPatientRef);
+      if (!pk) {
+        return { invoices: [], total: 0, skip, take };
+      }
+      resolvedPatientPk = pk;
+    }
+    const where = resolvedPatientPk
+      ? InvoiceService.patientConsumableConsultationCreditWhere(
+          resolvedPatientPk,
+          now,
+          patientStatus,
+        )
+      : InvoiceService.paidWithoutEncounterWhere(
+          from,
+          to,
+          now,
+          patientStatus,
+          {},
+        );
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
         skip,
         take,
-        orderBy: { updatedAt: 'desc' },
+        orderBy: resolvedPatientPk
+          ? [{ updatedAt: 'asc' }]
+          : [{ updatedAt: 'desc' }],
         include: InvoiceService.invoiceFindAllInclude,
       }),
       this.prisma.invoice.count({ where }),
@@ -3228,7 +3274,9 @@ export class InvoiceService {
     const rows = invoices.map((inv) => {
       const p = inv.patient;
       const patientDisplayName =
-        [p.firstName, p.surname].filter(Boolean).join(' ').trim() || null;
+        formatPatientDisplayName(p) === 'Unknown'
+          ? null
+          : formatPatientDisplayName(p);
       return {
         patientName: patientDisplayName,
         phone: p.phoneNumber ?? null,
@@ -3354,7 +3402,9 @@ export class InvoiceService {
     const rows = invoices.map((inv) => {
       const p = inv.patient;
       const patientName =
-        [p.firstName, p.surname].filter(Boolean).join(' ').trim() || null;
+        formatPatientDisplayName(p) === 'Unknown'
+          ? null
+          : formatPatientDisplayName(p);
       return {
         patientId: p.id,
         patientName,
@@ -3704,7 +3754,9 @@ export class InvoiceService {
   }
 
   /**
-   * Resolve drug price multiplier using patient's ward and HMO/OPD override rule.
+   * Resolve drug cost multiplier from the patient's ward (drugPricePercentage is a
+   * multiplier, not a percentage — e.g. 2 × cost 1200 → 2400). HMO patients on OPD
+   * use the Inpatient Ward multiplier instead.
    */
   private async resolveDrugPriceMultiplierForInvoice(
     invoiceId: string,
@@ -3716,7 +3768,7 @@ export class InvoiceService {
         patient: {
           select: {
             hmoId: true,
-            ward: { select: { name: true, drugPricePercentage: true } },
+            wardId: true,
           },
         },
       },
@@ -3726,13 +3778,20 @@ export class InvoiceService {
     const defaultMultiplier = new Prisma.Decimal(1);
     if (!patient) return defaultMultiplier;
 
-    let multiplier = patient.ward?.drugPricePercentage
-      ? this.asDecimal(patient.ward.drugPricePercentage)
+    const ward = patient.wardId
+      ? await tx.ward.findUnique({
+          where: { id: patient.wardId },
+          select: { name: true, drugPricePercentage: true },
+        })
+      : null;
+
+    let multiplier = ward?.drugPricePercentage
+      ? this.asDecimal(ward.drugPricePercentage)
       : defaultMultiplier;
 
-    if (patient.hmoId && patient.ward?.name === 'OPD') {
+    if (patient.hmoId && isOpdWardName(ward?.name)) {
       const inpatientWard = await tx.ward.findFirst({
-        where: { name: 'Inpatient Ward' },
+        where: { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
         select: { drugPricePercentage: true },
       });
       if (inpatientWard?.drugPricePercentage) {
@@ -3943,6 +4002,69 @@ export class InvoiceService {
     });
     await this.recalculateInvoiceTotals(params.invoiceId, tx);
     return item;
+  }
+
+  /**
+   * Ensure encounter invoice, add a drug line, and mark it settled/dispensed.
+   * Used when inpatient MAR deducts stock from a ward dispensary (bill on administration).
+   */
+  async billSettledDrugDispenseLine(
+    params: {
+      encounterId: string;
+      patientId: string;
+      drugId: string;
+      quantity: number;
+      staffId: string;
+      dispensaryLocationId: string;
+    },
+    tx: Prisma.TransactionClient = this.prisma,
+  ) {
+    const invoice = await this.ensureInvoiceForEncounter(
+      {
+        encounterId: params.encounterId,
+        patientId: params.patientId,
+        staffId: params.staffId,
+      },
+      tx,
+    );
+
+    const item = await this.addDrugItem(
+      {
+        invoiceId: invoice.id,
+        drugId: params.drugId,
+        quantity: params.quantity,
+        createdByStaffId: params.staffId,
+      },
+      tx,
+    );
+
+    const dispensedAt = new Date();
+    return tx.invoiceItem.update({
+      where: { id: item.id },
+      data: {
+        settled: true,
+        dispensedById: params.staffId,
+        dispensaryLocationId: params.dispensaryLocationId,
+        dispensedAt,
+      },
+      include: {
+        drug: { select: { id: true, genericName: true } },
+        invoice: {
+          select: {
+            id: true,
+            invoiceID: true,
+            status: true,
+            totalAmount: true,
+            amountPaid: true,
+          },
+        },
+        createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+        dispensedBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+        dispensaryLocation: {
+          select: { id: true, name: true, locationType: true },
+        },
+      },
+    });
   }
 }
 

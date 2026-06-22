@@ -7,13 +7,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
-import { customAlphabet } from 'nanoid';
 import { PatientStatus, Prisma } from '@prisma/client';
 import { endOfDay, startOfDay } from '../../common/utils/date-range';
+import { generateHumanReadableId } from '../../common/utils/human-readable-id.util';
 
 @Injectable()
 export class PatientService {
-  private nanoid = customAlphabet('1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ', 8);
   private readonly logger = new Logger(PatientService.name);
 
   constructor(private prisma: PrismaService) { }
@@ -60,7 +59,7 @@ export class PatientService {
       throw new NotFoundException(`HMO "${hmoId}" not found.`);
     }
 
-    const patientId = this.nanoid();
+    const patientId = generateHumanReadableId();
 
     const data: Prisma.PatientUncheckedCreateInput = {
       patientId,
@@ -576,7 +575,7 @@ export class PatientService {
 
     // Only backfill when the record never had a hospital id; do not rotate id on every partial PATCH.
     if (!existing.patientId && updatePatientDto.patientId === undefined) {
-      (data as Record<string, unknown>).patientId = this.nanoid();
+      (data as Record<string, unknown>).patientId = generateHumanReadableId();
     }
     try {
       return await this.prisma.patient.update({
@@ -599,9 +598,24 @@ export class PatientService {
     }
   }
   async remove(id: string) {
-    return this.prisma.patient.delete({
-      where: { id },
-    });
+    const existing = await this.prisma.patient.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Patient "${id}" not found.`);
+    }
+
+    try {
+      await this.prisma.patient.delete({ where: { id } });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2003'
+      ) {
+        throw new ConflictException(
+          'Patient cannot be deleted because linked medical or billing records exist.',
+        );
+      }
+      throw e;
+    }
   }
 
   async search(query: string) {

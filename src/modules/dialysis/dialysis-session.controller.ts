@@ -17,6 +17,7 @@ import { AccountTypes } from '../../common/decorators';
 import {
   DIALYSIS_ACCESS,
   DIALYSIS_CLINICAL_ACCESS,
+  DIALYSIS_READ_ACCESS,
 } from './dialysis.constants';
 import { DialysisSessionService } from './dialysis-session.service';
 import { CreateDialysisSessionDto } from './dto/create-dialysis-session.dto';
@@ -43,14 +44,14 @@ export class DialysisSessionController {
   }
 
   @Get()
-  @AccountTypes(...DIALYSIS_ACCESS)
+  @AccountTypes(...DIALYSIS_READ_ACCESS)
   @ApiOperation({ summary: 'List dialysis sessions with optional filters' })
   findAll(@Query() query: ListDialysisSessionsQueryDto) {
     return this.dialysisSessionService.findAll(query);
   }
 
   @Get(':id')
-  @AccountTypes(...DIALYSIS_ACCESS)
+  @AccountTypes(...DIALYSIS_READ_ACCESS)
   @ApiOperation({
     summary: 'Get dialysis session by ID including consumables',
   })

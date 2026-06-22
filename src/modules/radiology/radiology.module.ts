@@ -18,6 +18,8 @@ import { RadiologyHistoryController } from './radiology-history.controller';
 import { RadiologyHistoryService } from './radiology-history.service';
 import { RadiologyMachineController } from './radiology-machine.controller';
 import { RadiologyMachineService } from './radiology-machine.service';
+import { RadiologyInvestigationsController } from './radiology-investigations/radiology-investigations.controller';
+import { RadiologyInvestigationsService } from './radiology-investigations/radiology-investigations.service';
 
 @Module({
   imports: [PrismaModule, InvoiceModule],
@@ -31,6 +33,7 @@ import { RadiologyMachineService } from './radiology-machine.service';
     RadiologyDashboardController,
     RadiologyHistoryController,
     RadiologyMachineController,
+    RadiologyInvestigationsController,
   ],
   providers: [
     RadiologyRequestService,
@@ -41,6 +44,7 @@ import { RadiologyMachineService } from './radiology-machine.service';
     RadiologyDashboardService,
     RadiologyHistoryService,
     RadiologyMachineService,
+    RadiologyInvestigationsService,
   ],
   exports: [
     RadiologyRequestService,
@@ -51,6 +55,7 @@ import { RadiologyMachineService } from './radiology-machine.service';
     RadiologyDashboardService,
     RadiologyHistoryService,
     RadiologyMachineService,
+    RadiologyInvestigationsService,
   ],
 })
 export class RadiologyModule {}

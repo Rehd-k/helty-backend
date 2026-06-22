@@ -12,6 +12,8 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
+import { OBSTETRICS_PHYSICIAN_ACCESS } from './obstetrics.constants';
 import { LabourDeliveryService } from './labour-delivery.service';
 import {
   CreateLabourDeliveryDto,
@@ -21,12 +23,12 @@ import {
 @ApiTags('Obstetrics - Labour & delivery')
 @Controller('obstetrics')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes('ONG', 'CONSULTANT', 'INPATIENT_DOCTOR')
 export class LabourDeliveryController {
   constructor(private readonly labourDeliveryService: LabourDeliveryService) {}
 
   @Post('pregnancies/:pregnancyId/labour-deliveries')
   @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...OBSTETRICS_PHYSICIAN_ACCESS)
   @ApiOperation({ summary: 'Create a labour/delivery record for a pregnancy' })
   create(
     @Param('pregnancyId') pregnancyId: string,
@@ -36,18 +38,21 @@ export class LabourDeliveryController {
   }
 
   @Get('labour-deliveries/:id')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'Get labour/delivery by ID' })
   findOne(@Param('id') id: string) {
     return this.labourDeliveryService.findOne(id);
   }
 
   @Get('admissions/:admissionId/labour-delivery')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
   @ApiOperation({ summary: 'Get labour/delivery for an admission' })
   findByAdmission(@Param('admissionId') admissionId: string) {
     return this.labourDeliveryService.findByAdmission(admissionId);
   }
 
   @Patch('labour-deliveries/:id')
+  @AccountTypes(...OBSTETRICS_PHYSICIAN_ACCESS)
   @ApiOperation({ summary: 'Update labour/delivery' })
   update(@Param('id') id: string, @Body() dto: UpdateLabourDeliveryDto) {
     return this.labourDeliveryService.update(id, dto);

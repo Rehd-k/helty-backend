@@ -14,6 +14,10 @@ import {
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
+import {
+  RADIOLOGY_REQUEST_READ_ACCESS,
+  RADIOLOGY_REQUEST_WRITE_ACCESS,
+} from './radiology.constants';
 import { RadiologyRequestService } from './radiology-request.service';
 import { CreateRadiologyRequestDto } from './dto/create-radiology-request.dto';
 import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
@@ -23,15 +27,6 @@ import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-que
 @ApiTags('Radiology - Requests')
 @Controller('radiology/orders')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes(
-  'CONSULTANT',
-  'INPATIENT_DOCTOR',
-  'RADIOLOGIST',
-  'RADIOGRAPHER',
-  'RADIOLOGY_RECEPTIONIST',
-  'RADIOLOGY',
-  'MEDICAL_RECORDS',
-)
 export class RadiologyRequestController {
   constructor(
     private readonly radiologyRequestService: RadiologyRequestService,
@@ -39,6 +34,7 @@ export class RadiologyRequestController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...RADIOLOGY_REQUEST_WRITE_ACCESS)
   @ApiOperation({
     summary: 'Create a radiology order with one or more items',
   })
@@ -47,6 +43,7 @@ export class RadiologyRequestController {
   }
 
   @Get()
+  @AccountTypes(...RADIOLOGY_REQUEST_READ_ACCESS)
   @ApiOperation({
     summary: 'List radiology orders with optional filters (worklist)',
   })
@@ -55,6 +52,7 @@ export class RadiologyRequestController {
   }
 
   @Get(':id')
+  @AccountTypes(...RADIOLOGY_REQUEST_READ_ACCESS)
   @ApiOperation({
     summary: 'Get one radiology order with items and workflow artifacts',
   })
@@ -63,6 +61,7 @@ export class RadiologyRequestController {
   }
 
   @Patch(':orderId/items/:itemId')
+  @AccountTypes(...RADIOLOGY_REQUEST_WRITE_ACCESS)
   @ApiOperation({
     summary:
       'Update a radiology order item. Cancelling removes its invoice line and recalculates when allowed.',
@@ -77,6 +76,7 @@ export class RadiologyRequestController {
 
   @Delete(':orderId/items/:itemId')
   @HttpCode(HttpStatus.OK)
+  @AccountTypes(...RADIOLOGY_REQUEST_WRITE_ACCESS)
   @ApiOperation({
     summary:
       'Delete one radiology order item and remove its invoice line when allowed',
@@ -89,6 +89,7 @@ export class RadiologyRequestController {
   }
 
   @Patch(':id')
+  @AccountTypes(...RADIOLOGY_REQUEST_WRITE_ACCESS)
   @ApiOperation({
     summary:
       'Update radiology order (e.g. status). Cancelling removes billed lines and recalculates the invoice when allowed.',
@@ -99,6 +100,7 @@ export class RadiologyRequestController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
+  @AccountTypes(...RADIOLOGY_REQUEST_WRITE_ACCESS)
   @ApiOperation({
     summary:
       'Delete a radiology order and remove its billed lines from open invoices',
