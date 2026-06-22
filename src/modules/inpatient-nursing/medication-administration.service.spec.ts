@@ -452,6 +452,37 @@ describe('MedicationAdministrationService', () => {
     ).rejects.toThrow(new NotFoundException('Medication order not found'));
   });
 
+  it('accepts legacy orders linked via encounter only (no admissionId on order)', async () => {
+    const legacyOrder = {
+      ...baseOrder,
+      admissionId: null,
+      encounterId: 'enc-1',
+    };
+    const created = marCreateResult();
+    const prisma: any = {
+      ...admissionPrismaMocks(),
+      medicationOrder: {
+        findFirst: jest.fn().mockResolvedValue(legacyOrder),
+      },
+      $transaction: jest
+        .fn()
+        .mockImplementation(async (cb: (tx: any) => unknown) => cb(prisma)),
+      medicationAdministration: {
+        create: jest.fn().mockResolvedValue(created),
+      },
+    };
+    const service = createService(prisma);
+
+    await service.create(admissionId, baseDto, nurseId);
+
+    expect(prisma.medicationOrder.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: orderId,
+        OR: [{ admissionId }, { encounter: { admissionId } }],
+      },
+    });
+  });
+
   it('throws 400 when order has no drugId but dispensary selected', async () => {
     const prisma: any = {
       ...admissionPrismaMocks(),

@@ -27,6 +27,7 @@ import {
 } from './medication-administration.utils';
 import { DrugStockService } from '../pharmacy/drug-stock.service';
 import { InvoiceService } from '../invoice/invoice.service';
+import { medicationOrderForAdmissionWhere } from './admission-medication-order.util';
 
 const nurseSelect = {
   id: true,
@@ -110,7 +111,10 @@ export class MedicationAdministrationService {
     await assertStaffIsNurseOrThrow(this.prisma, staffId);
 
     const order = await this.prisma.medicationOrder.findFirst({
-      where: { id: dto.medicationOrderId, admissionId },
+      where: medicationOrderForAdmissionWhere(
+        dto.medicationOrderId,
+        admissionId,
+      ),
     });
     if (!order) {
       throw new NotFoundException('Medication order not found');

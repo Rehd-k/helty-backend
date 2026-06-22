@@ -13,6 +13,10 @@ import {
   CreateAdmissionMedicationOrderDto,
   UpdateAdmissionMedicationOrderDto,
 } from './dto/admission-medication.dto';
+import {
+  medicationOrderForAdmissionWhere,
+  medicationOrdersForAdmissionWhere,
+} from './admission-medication-order.util';
 
 @Injectable()
 export class AdmissionMedicationOrderService {
@@ -26,7 +30,7 @@ export class AdmissionMedicationOrderService {
   async list(admissionId: string) {
     await assertAdmissionExists(this.prisma, admissionId);
     const rows = await this.prisma.medicationOrder.findMany({
-      where: { admissionId },
+      where: medicationOrdersForAdmissionWhere(admissionId),
       orderBy: { startDateTime: 'desc' },
       include: {
         doctor: {
@@ -101,7 +105,7 @@ export class AdmissionMedicationOrderService {
     dto: UpdateAdmissionMedicationOrderDto,
   ) {
     const order = await this.prisma.medicationOrder.findFirst({
-      where: { id: orderId, admissionId },
+      where: medicationOrderForAdmissionWhere(orderId, admissionId),
     });
     if (!order) {
       throw new NotFoundException(
@@ -135,7 +139,7 @@ export class AdmissionMedicationOrderService {
 
   async remove(admissionId: string, orderId: string) {
     const order = await this.prisma.medicationOrder.findFirst({
-      where: { id: orderId, admissionId },
+      where: medicationOrderForAdmissionWhere(orderId, admissionId),
       include: { _count: { select: { administrations: true } } },
     });
     if (!order) {
