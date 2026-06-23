@@ -23,4 +23,6 @@ export const patientNameFieldsSelect = {
   firstName: true,
   otherName: true,
   surname: true,
+  gender: true,
+  dob: true,
 } as const;

@@ -16,6 +16,22 @@ import {
   Prisma,
 } from '@prisma/client';
 
+const ADMISSION_UPDATE_INCLUDE = {
+  updatedBy: {
+    select: { id: true, firstName: true, lastName: true },
+  },
+  patient: true,
+  wardEntity: true,
+  bed: true,
+  encounter: true,
+  clinicallyDischargedBy: {
+    select: { id: true, firstName: true, lastName: true },
+  },
+  billingClearedBy: {
+    select: { id: true, firstName: true, lastName: true },
+  },
+} as const;
+
 @Injectable()
 export class AdmissionService {
   constructor(private prisma: PrismaService) { }
@@ -51,6 +67,42 @@ export class AdmissionService {
       totalDays += Math.ceil(ms / this.dayMs);
     }
     return unitPrice.mul(totalDays);
+  }
+
+  private asDecimal(
+    v: Prisma.Decimal | number | string | null | undefined,
+  ): Prisma.Decimal {
+    if (v === null || v === undefined) return new Prisma.Decimal(0);
+    if (v instanceof Prisma.Decimal) return v;
+    return new Prisma.Decimal(v);
+  }
+
+  private admissionInvoiceConditions(
+    admissionId: string,
+    encounterId?: string | null,
+  ): Prisma.InvoiceWhereInput[] {
+    const conditions: Prisma.InvoiceWhereInput[] = [
+      { encounter: { admissionId } },
+    ];
+    if (encounterId) {
+      conditions.push({ encounterId });
+    }
+    return conditions;
+  }
+
+  private async getAdmissionInvoices(
+    tx: Prisma.TransactionClient,
+    admission: { id: string; patientId: string; encounter?: { id: string } | null },
+  ) {
+    return tx.invoice.findMany({
+      where: {
+        patientId: admission.patientId,
+        OR: this.admissionInvoiceConditions(
+          admission.id,
+          admission.encounter?.id,
+        ),
+      },
+    });
   }
 
   private async recalculateInvoiceTotalsForDischarge(
@@ -92,6 +144,120 @@ export class AdmissionService {
         status,
         ...(updatedByStaffId ? { updatedById: updatedByStaffId } : {}),
       },
+    });
+  }
+
+  private async closeUsageSegmentsForDischarge(
+    tx: Prisma.TransactionClient,
+    invoiceIds: string[],
+    dischargedAt: Date,
+  ) {
+    if (!invoiceIds.length) return;
+    await tx.invoiceItemUsageSegment.updateMany({
+      where: {
+        endAt: null,
+        invoiceItem: {
+          invoice: { id: { in: invoiceIds } },
+        },
+      },
+      data: { endAt: dischargedAt },
+    });
+  }
+
+  private async areAllAdmissionInvoicesPaid(
+    tx: Prisma.TransactionClient,
+    invoiceIds: string[],
+  ): Promise<boolean> {
+    if (!invoiceIds.length) return true;
+    const unpaidCount = await tx.invoice.count({
+      where: {
+        id: { in: invoiceIds },
+        status: { not: InvoiceStatus.PAID },
+      },
+    });
+    return unpaidCount === 0;
+  }
+
+  private buildBillingSummary(
+    invoices: Array<{
+      id: string;
+      invoiceID: string;
+      status: InvoiceStatus;
+      totalAmount: Prisma.Decimal;
+      amountPaid: Prisma.Decimal;
+    }>,
+  ) {
+    let totalBalance = new Prisma.Decimal(0);
+    const rows = invoices.map((invoice) => {
+      const total = this.asDecimal(invoice.totalAmount);
+      const paid = this.asDecimal(invoice.amountPaid);
+      const balance = total.sub(paid);
+      if (balance.gt(0)) {
+        totalBalance = totalBalance.add(balance);
+      }
+      return {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceID,
+        status: invoice.status,
+        totalAmount: total.toFixed(2),
+        amountPaid: paid.toFixed(2),
+        balance: balance.gt(0) ? balance.toFixed(2) : '0.00',
+      };
+    });
+    return {
+      invoices: rows,
+      totalBalance: totalBalance.toFixed(2),
+      allPaid: totalBalance.lte(0),
+    };
+  }
+
+  private async finalizeAdmission(
+    tx: Prisma.TransactionClient,
+    params: {
+      admissionId: string;
+      patientId: string;
+      outcome: string;
+      staffId: string;
+      billingClearedById?: string;
+    },
+  ) {
+    const isDeath = params.outcome === 'Death';
+    const clearedAt = new Date();
+
+    if (isDeath) {
+      await tx.patient.update({
+        where: { id: params.patientId },
+        data: {
+          wardId: null,
+          status: PatientStatus.DECEASED,
+          updatedById: params.staffId,
+        },
+      });
+    } else {
+      const opdWardId = await this.resolveOpdWardId(tx);
+      await tx.patient.update({
+        where: { id: params.patientId },
+        data: {
+          wardId: opdWardId,
+          status: PatientStatus.OUTPATIENT,
+          updatedById: params.staffId,
+        },
+      });
+    }
+
+    return tx.admission.update({
+      where: { id: params.admissionId },
+      data: {
+        status: isDeath ? AdmissionStatus.DECEASED : AdmissionStatus.DISCHARGED,
+        updatedById: params.staffId,
+        ...(params.billingClearedById
+          ? {
+            billingClearedById: params.billingClearedById,
+            billingClearedAt: clearedAt,
+          }
+          : {}),
+      },
+      include: ADMISSION_UPDATE_INCLUDE,
     });
   }
 
@@ -214,6 +380,103 @@ export class AdmissionService {
     return { admissions, total, skip, take };
   }
 
+  async findPendingBillingClearance(skip = 0, take = 20) {
+    const where = { status: AdmissionStatus.PENDING_BILLING_CLEARANCE };
+
+    const [admissions, total] = await Promise.all([
+      this.prisma.admission.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { dischargeDateTime: 'asc' },
+        include: {
+          wardEntity: { select: { id: true, name: true } },
+          bed: { select: { bedNumber: true } },
+          attendingDoctor: {
+            select: { id: true, firstName: true, lastName: true, staffId: true },
+          },
+          clinicallyDischargedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          patient: {
+            select: {
+              id: true,
+              patientId: true,
+              firstName: true,
+              surname: true,
+              phoneNumber: true,
+            },
+          },
+          encounter: { select: { id: true } },
+        },
+      }),
+      this.prisma.admission.count({ where }),
+    ]);
+
+    const rows = await Promise.all(
+      admissions.map(async (admission) => {
+        const invoices = await this.getAdmissionInvoices(this.prisma, admission);
+        return {
+          id: admission.id,
+          admissionDate: admission.admissionDate,
+          dischargeDateTime: admission.dischargeDateTime,
+          outcome: admission.outcome,
+          dischargeSummary: admission.dischargeSummary,
+          room: admission.room,
+          wardEntity: admission.wardEntity,
+          bed: admission.bed,
+          attendingDoctor: admission.attendingDoctor,
+          clinicallyDischargedBy: admission.clinicallyDischargedBy,
+          patient: admission.patient,
+          billing: this.buildBillingSummary(invoices),
+        };
+      }),
+    );
+
+    return { admissions: rows, total, skip, take };
+  }
+
+  async clearBillingClearance(admissionId: string, staffId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const admission = await tx.admission.findUnique({
+        where: { id: admissionId },
+        include: { encounter: true },
+      });
+      if (!admission) {
+        throw new NotFoundException('Admission not found');
+      }
+      if (admission.status !== AdmissionStatus.PENDING_BILLING_CLEARANCE) {
+        throw new BadRequestException(
+          'Admission is not awaiting billing clearance.',
+        );
+      }
+      if (!admission.outcome) {
+        throw new BadRequestException(
+          'Admission has no discharge outcome recorded.',
+        );
+      }
+
+      const invoices = await this.getAdmissionInvoices(tx, admission);
+      const invoiceIds = invoices.map((invoice) => invoice.id);
+      const allPaid = await this.areAllAdmissionInvoicesPaid(tx, invoiceIds);
+      if (!allPaid) {
+        throw new BadRequestException({
+          message:
+            'Cannot clear billing while linked invoices are unpaid. Record payments first.',
+          billing: this.buildBillingSummary(invoices),
+        });
+      }
+
+      return this.finalizeAdmission(tx, {
+        admissionId: admission.id,
+        patientId: admission.patientId,
+        outcome: admission.outcome,
+        staffId,
+        billingClearedById: staffId,
+      });
+    });
+  }
+
   async findOne(id: string) {
     const admission = await this.prisma.admission.findUnique({
       where: { id },
@@ -315,6 +578,12 @@ export class AdmissionService {
             staffId: true,
           },
         },
+        clinicallyDischargedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        billingClearedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
       },
     });
 
@@ -368,15 +637,7 @@ export class AdmissionService {
             attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
           }),
         },
-        include: {
-          updatedBy: {
-            select: { id: true, firstName: true, lastName: true },
-          },
-          patient: true,
-          wardEntity: true,
-          bed: true,
-          encounter: true,
-        },
+        include: ADMISSION_UPDATE_INCLUDE,
       });
     }
 
@@ -389,23 +650,17 @@ export class AdmissionService {
     const result = await this.prisma.$transaction(async (tx) => {
       const admission = await tx.admission.findUnique({
         where: { id },
-        include: { encounter: true },
+        include: { encounter: true, bed: { select: { bedNumber: true } } },
       });
       if (!admission) throw new NotFoundException('Admission not found');
-
-      const invoiceConditions: Prisma.InvoiceWhereInput[] = [
-        { encounter: { admissionId: id } },
-      ];
-      if (admission.encounter?.id) {
-        invoiceConditions.push({ encounterId: admission.encounter.id });
+      if (admission.status !== AdmissionStatus.ACTIVE) {
+        throw new BadRequestException(
+          'Only active admissions can be clinically discharged.',
+        );
       }
 
-      const admissionInvoices = await tx.invoice.findMany({
-        where: {
-          patientId: admission.patientId,
-          OR: invoiceConditions,
-        },
-      });
+      const admissionInvoices = await this.getAdmissionInvoices(tx, admission);
+      const invoiceIds = admissionInvoices.map((invoice) => invoice.id);
 
       const dischargedAt = new Date(updateAdmissionDto.dischargeDate!);
       for (const invoice of admissionInvoices) {
@@ -417,83 +672,67 @@ export class AdmissionService {
         );
       }
 
-      const unpaidCount = await tx.invoice.count({
-        where: {
-          id: { in: admissionInvoices.map((invoice) => invoice.id) },
-          status: { not: InvoiceStatus.PAID },
-        },
-      });
-
-      if (unpaidCount > 0) {
-        throw new BadRequestException(
-          'Cannot discharge patient while linked invoices are unpaid.',
-        );
-      }
-
-      await tx.invoiceItemUsageSegment.updateMany({
-        where: {
-          endAt: null,
-          invoiceItem: {
-            invoice: {
-              id: { in: admissionInvoices.map((invoice) => invoice.id) },
-            },
-          },
-        },
-        data: { endAt: dischargedAt },
-      });
-
-      if (isDeath) {
-        await tx.patient.update({
-          where: { id: admission.patientId },
-          data: {
-            wardId: null,
-            status: PatientStatus.DECEASED,
-            updatedById: staffId,
-          },
-        });
-      } else {
-        const opdWardId = await this.resolveOpdWardId(tx);
-        await tx.patient.update({
-          where: { id: admission.patientId },
-          data: {
-            wardId: opdWardId,
-            status: PatientStatus.OUTPATIENT,
-            updatedById: staffId,
-          },
-        });
-      }
+      await this.closeUsageSegmentsForDischarge(tx, invoiceIds, dischargedAt);
 
       const dischargeSummary =
         updateAdmissionDto.dischargeSummary?.trim() || null;
+      const roomSnapshot =
+        updateAdmissionDto.room ??
+        admission.room ??
+        admission.bed?.bedNumber ??
+        null;
+
+      const clinicalData = {
+        dischargeDate: dischargedAt,
+        dischargeDateTime: dischargedAt,
+        outcome,
+        dischargeSummary,
+        bedId: null,
+        clinicallyDischargedById: staffId,
+        ward: updateAdmissionDto.ward,
+        room: roomSnapshot,
+        reason: updateAdmissionDto.reason,
+        updatedById: staffId,
+        ...(updateAdmissionDto.attendingDoctorId !== undefined && {
+          attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
+        }),
+      };
+
+      if (isDeath) {
+        await tx.admission.update({
+          where: { id },
+          data: clinicalData,
+        });
+        return this.finalizeAdmission(tx, {
+          admissionId: id,
+          patientId: admission.patientId,
+          outcome,
+          staffId,
+        });
+      }
+
+      const allPaid = await this.areAllAdmissionInvoicesPaid(tx, invoiceIds);
+      if (allPaid) {
+        await tx.admission.update({
+          where: { id },
+          data: clinicalData,
+        });
+        return this.finalizeAdmission(tx, {
+          admissionId: id,
+          patientId: admission.patientId,
+          outcome,
+          staffId,
+          billingClearedById: staffId,
+        });
+      }
 
       return tx.admission.update({
         where: { id },
         data: {
-          dischargeDate: dischargedAt,
-          dischargeDateTime: dischargedAt,
-          status: isDeath
-            ? AdmissionStatus.DECEASED
-            : AdmissionStatus.DISCHARGED,
-          bedId: null,
-          outcome,
-          dischargeSummary,
-          ward: updateAdmissionDto.ward,
-          room: updateAdmissionDto.room,
-          reason: updateAdmissionDto.reason,
-          updatedById: staffId,
-          ...(updateAdmissionDto.attendingDoctorId !== undefined && {
-            attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
-          }),
+          ...clinicalData,
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
         },
-        include: {
-          updatedBy: {
-            select: { id: true, firstName: true, lastName: true },
-          },
-          patient: true,
-          wardEntity: true,
-          bed: true,
-          encounter: true,
-        },
+        include: ADMISSION_UPDATE_INCLUDE,
       });
     });
     return result;

@@ -13,6 +13,7 @@ import {
 } from './dto/create-lab-request.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { labRequestWithBillingInclude } from './lab-request-includes';
+import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
 
 @Injectable()
 export class LabRequestService {
@@ -21,9 +22,15 @@ export class LabRequestService {
     private readonly invoiceService: InvoiceService,
   ) {}
 
-  async create(dto: CreateLabRequestDto) {
+  async create(dto: CreateLabRequestDto, actingStaffId: string) {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: dto.encounterId },
+      select: {
+        id: true,
+        patientId: true,
+        admissionId: true,
+        admission: { select: { status: true } },
+      },
     });
     if (!encounter) {
       throw new NotFoundException(`Encounter "${dto.encounterId}" not found.`);
@@ -31,11 +38,16 @@ export class LabRequestService {
     if (encounter.patientId !== dto.patientId) {
       throw new BadRequestException('Patient does not match the encounter.');
     }
+    const requestedByDoctorId = resolveOrderingDoctorId(
+      encounter,
+      actingStaffId,
+      dto.requestedByDoctorId,
+    );
     const labRequest = await this.prisma.labRequest.create({
       data: {
         encounterId: dto.encounterId,
         patientId: dto.patientId,
-        requestedByDoctorId: dto.requestedByDoctorId,
+        requestedByDoctorId,
         testType: dto.testType,
         notes: dto.notes,
       },
@@ -49,7 +61,7 @@ export class LabRequestService {
         await this.invoiceService.createWithServiceItem({
           patientId: dto.patientId,
           encounterId: dto.encounterId,
-          staffId: dto.requestedByDoctorId,
+          staffId: requestedByDoctorId,
           serviceId: dto.serviceId,
         });
       return this.prisma.labRequest.update({

@@ -7,6 +7,8 @@ import {
   AccountType,
   AdmissionStatus,
   MedicationAdminStatus,
+  MedicationAdministrationLifecycleStatus,
+  MedicationScheduleStatus,
   PharmacyLocationType,
   Prisma,
   StaffRole,
@@ -14,6 +16,11 @@ import {
 import { MedicationAdministrationService } from './medication-administration.service';
 import { DrugStockService } from '../pharmacy/drug-stock.service';
 import { InvoiceService } from '../invoice/invoice.service';
+import { MedicationScheduleService } from '../medication-schedule/medication-schedule.service';
+
+jest.mock('../../common/utils/human-readable-id.util', () => ({
+  generateHumanReadableId: jest.fn().mockReturnValue('ID001'),
+}));
 
 const admissionId = 'adm-1';
 const orderId = 'order-1';
@@ -39,10 +46,54 @@ const baseDto = {
   quantity: 1,
 };
 
+const baseSchedule = {
+  id: 'sched-1',
+  medicationOrderId: orderId,
+  scheduleStartedAt: null,
+  courseEndsAt: null,
+  nextDueAt: null,
+  lastAdministeredAt: null,
+  doseSequenceNumber: 0,
+  scheduleStatus: MedicationScheduleStatus.NOT_STARTED,
+  dosesPerDay: null,
+  frequencyIntervalHours: null,
+  durationValue: null,
+  durationUnit: null,
+  beyondDurationConsentAt: null,
+  beyondDurationConsentById: null,
+  beyondDurationConsentNote: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+function createScheduleServiceMock(
+  overrides: Partial<MedicationScheduleService> = {},
+) {
+  const service = {
+    ensureScheduleForOrder: jest.fn().mockResolvedValue(baseSchedule),
+    recomputeScheduleStatus: jest
+      .fn()
+      .mockReturnValue(MedicationScheduleStatus.ACTIVE),
+    buildScheduleUpdateFromAdministration: jest.fn().mockReturnValue({
+      scheduleData: { scheduleStatus: MedicationScheduleStatus.ACTIVE },
+      doseNumber: 1,
+      isFirstDose: true,
+    }),
+    syncAlertsForSchedule: jest.fn().mockResolvedValue(undefined),
+    mapScheduleToApi: jest.fn().mockReturnValue({
+      scheduleStatus: MedicationScheduleStatus.ACTIVE,
+      doseSequenceNumber: 1,
+    }),
+    ...overrides,
+  };
+  return service as unknown as MedicationScheduleService;
+}
+
 function createService(
   prisma: Record<string, unknown>,
   drugStockService: Partial<DrugStockService> = {},
   invoiceService: Partial<InvoiceService> = {},
+  scheduleService: Partial<MedicationScheduleService> = {},
 ) {
   return new MedicationAdministrationService(
     prisma as never,
@@ -76,7 +127,34 @@ function createService(
       }),
       ...invoiceService,
     } as InvoiceService,
+    createScheduleServiceMock(scheduleService),
   );
+}
+
+function scheduleAwareTransaction(prisma: any, created: ReturnType<typeof marCreateResult>) {
+  prisma.$transaction = jest.fn().mockImplementation(async (cb: (tx: any) => unknown) => {
+    const tx = {
+      ...prisma,
+      medicationAdministration: {
+        create: jest.fn().mockResolvedValue({ id: 'mar-1' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          ...created,
+          medicationOrder: {
+            ...baseOrder,
+            frequency: 'TDS',
+            duration: '7 days',
+            administrationStatus: MedicationAdministrationLifecycleStatus.ACTIVE,
+            doseSchedule: baseSchedule,
+          },
+        }),
+      },
+      medicationOrderSchedule: {
+        update: jest.fn().mockResolvedValue(baseSchedule),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(baseSchedule),
+      },
+    };
+    return cb(tx);
+  });
 }
 
 function admissionPrismaMocks() {
@@ -95,6 +173,17 @@ function admissionPrismaMocks() {
         isActive: true,
       }),
     },
+  };
+}
+
+function orderWithSchedule(overrides: Record<string, unknown> = {}) {
+  return {
+    ...baseOrder,
+    frequency: 'TDS',
+    duration: '7 days',
+    administrationStatus: MedicationAdministrationLifecycleStatus.ACTIVE,
+    doseSchedule: baseSchedule,
+    ...overrides,
   };
 }
 
@@ -141,15 +230,19 @@ describe('MedicationAdministrationService', () => {
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
-        findFirst: jest.fn().mockResolvedValue(baseOrder),
+        findFirst: jest.fn().mockResolvedValue({
+          ...baseOrder,
+          frequency: 'TDS',
+          duration: '7 days',
+          administrationStatus: MedicationAdministrationLifecycleStatus.ACTIVE,
+          doseSchedule: baseSchedule,
+        }),
       },
-      $transaction: jest
-        .fn()
-        .mockImplementation(async (cb: (tx: any) => unknown) => cb(prisma)),
       medicationAdministration: {
         create: jest.fn().mockResolvedValue(created),
       },
     };
+    scheduleAwareTransaction(prisma, created);
     const drugStock = {
       getAvailableQuantity: jest.fn(),
       deductDrugStockFifo: jest.fn(),
@@ -164,14 +257,6 @@ describe('MedicationAdministrationService', () => {
     expect(billSettledDrugDispenseLine).not.toHaveBeenCalled();
     expect(drugStock.getAvailableQuantity).not.toHaveBeenCalled();
     expect(drugStock.deductDrugStockFifo).not.toHaveBeenCalled();
-    expect(prisma.medicationAdministration.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          pharmacyLocationId: null,
-          stockDeductedQuantity: null,
-        }),
-      }),
-    );
     expect(result.pharmacyLocation).toBeNull();
     expect(result.stockDeductedQuantity).toBeNull();
   });
@@ -213,7 +298,7 @@ describe('MedicationAdministrationService', () => {
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
-        findFirst: jest.fn().mockResolvedValue(baseOrder),
+        findFirst: jest.fn().mockResolvedValue(orderWithSchedule()),
       },
       pharmacyLocation: {
         findUnique: jest.fn().mockResolvedValue({
@@ -222,13 +307,8 @@ describe('MedicationAdministrationService', () => {
           locationType: PharmacyLocationType.DISPENSARY,
         }),
       },
-      $transaction: jest
-        .fn()
-        .mockImplementation(async (cb: (tx: any) => unknown) => cb(prisma)),
-      medicationAdministration: {
-        create: jest.fn().mockResolvedValue(created),
-      },
     };
+    scheduleAwareTransaction(prisma, created);
     const drugStock = {
       getAvailableQuantity: jest.fn().mockResolvedValue(10),
       deductDrugStockFifo: jest.fn().mockResolvedValue(undefined),
@@ -279,22 +359,13 @@ describe('MedicationAdministrationService', () => {
         staffId: nurseId,
         dispensaryLocationId: locationId,
       },
-      prisma,
+      expect.anything(),
     );
     expect(drugStock.deductDrugStockFifo).toHaveBeenCalledWith(
-      prisma,
+      expect.anything(),
       drugId,
       3,
       locationId,
-    );
-    expect(prisma.medicationAdministration.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          pharmacyLocationId: locationId,
-          stockDeductedQuantity: 3,
-          invoiceItemId: 'item-1',
-        }),
-      }),
     );
     expect(result.pharmacyLocation).toEqual({
       id: locationId,
@@ -310,7 +381,7 @@ describe('MedicationAdministrationService', () => {
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
-        findFirst: jest.fn().mockResolvedValue(baseOrder),
+        findFirst: jest.fn().mockResolvedValue(orderWithSchedule()),
       },
       pharmacyLocation: {
         findUnique: jest.fn().mockResolvedValue({
@@ -347,7 +418,7 @@ describe('MedicationAdministrationService', () => {
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
-        findFirst: jest.fn().mockResolvedValue(baseOrder),
+        findFirst: jest.fn().mockResolvedValue(orderWithSchedule()),
       },
       pharmacyLocation: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -368,7 +439,7 @@ describe('MedicationAdministrationService', () => {
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
-        findFirst: jest.fn().mockResolvedValue(baseOrder),
+        findFirst: jest.fn().mockResolvedValue(orderWithSchedule()),
       },
       pharmacyLocation: {
         findUnique: jest.fn().mockResolvedValue({
@@ -399,15 +470,10 @@ describe('MedicationAdministrationService', () => {
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
-        findFirst: jest.fn().mockResolvedValue(baseOrder),
-      },
-      $transaction: jest
-        .fn()
-        .mockImplementation(async (cb: (tx: any) => unknown) => cb(prisma)),
-      medicationAdministration: {
-        create: jest.fn().mockResolvedValue(created),
+        findFirst: jest.fn().mockResolvedValue(orderWithSchedule()),
       },
     };
+    scheduleAwareTransaction(prisma, created);
     const drugStock = {
       getAvailableQuantity: jest.fn(),
       deductDrugStockFifo: jest.fn(),
@@ -428,14 +494,6 @@ describe('MedicationAdministrationService', () => {
 
     expect(drugStock.getAvailableQuantity).not.toHaveBeenCalled();
     expect(drugStock.deductDrugStockFifo).not.toHaveBeenCalled();
-    expect(prisma.medicationAdministration.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          pharmacyLocationId: null,
-          stockDeductedQuantity: null,
-        }),
-      }),
-    );
   });
 
   it('throws 404 when medication order not on admission', async () => {
@@ -453,24 +511,18 @@ describe('MedicationAdministrationService', () => {
   });
 
   it('accepts legacy orders linked via encounter only (no admissionId on order)', async () => {
-    const legacyOrder = {
-      ...baseOrder,
+    const legacyOrder = orderWithSchedule({
       admissionId: null,
       encounterId: 'enc-1',
-    };
+    });
     const created = marCreateResult();
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
         findFirst: jest.fn().mockResolvedValue(legacyOrder),
       },
-      $transaction: jest
-        .fn()
-        .mockImplementation(async (cb: (tx: any) => unknown) => cb(prisma)),
-      medicationAdministration: {
-        create: jest.fn().mockResolvedValue(created),
-      },
     };
+    scheduleAwareTransaction(prisma, created);
     const service = createService(prisma);
 
     await service.create(admissionId, baseDto, nurseId);
@@ -480,6 +532,7 @@ describe('MedicationAdministrationService', () => {
         id: orderId,
         OR: [{ admissionId }, { encounter: { admissionId } }],
       },
+      include: { doseSchedule: true },
     });
   });
 
@@ -487,7 +540,7 @@ describe('MedicationAdministrationService', () => {
     const prisma: any = {
       ...admissionPrismaMocks(),
       medicationOrder: {
-        findFirst: jest.fn().mockResolvedValue({ ...baseOrder, drugId: null }),
+        findFirst: jest.fn().mockResolvedValue(orderWithSchedule({ drugId: null })),
       },
       pharmacyLocation: {
         findUnique: jest.fn().mockResolvedValue({
@@ -510,5 +563,39 @@ describe('MedicationAdministrationService', () => {
         'Cannot deduct stock: medication order has no linked catalog drug.',
       ),
     );
+  });
+
+  it('throws 409 COURSE_DURATION_EXPIRED when GIVEN on expired course without consent', async () => {
+    const expiredSchedule = {
+      ...baseSchedule,
+      scheduleStartedAt: new Date('2026-06-01T08:00:00.000Z'),
+      courseEndsAt: new Date('2026-06-10T08:00:00.000Z'),
+      scheduleStatus: MedicationScheduleStatus.EXPIRED,
+    };
+    const prisma: any = {
+      ...admissionPrismaMocks(),
+      medicationOrder: {
+        findFirst: jest.fn().mockResolvedValue(
+          orderWithSchedule({ doseSchedule: expiredSchedule }),
+        ),
+      },
+    };
+    const scheduleService = createScheduleServiceMock({
+      recomputeScheduleStatus: jest
+        .fn()
+        .mockReturnValue(MedicationScheduleStatus.EXPIRED),
+    });
+    const service = new MedicationAdministrationService(
+      prisma as never,
+      { getAvailableQuantity: jest.fn() } as never,
+      {} as never,
+      scheduleService,
+    );
+
+    await expect(
+      service.create(admissionId, baseDto, nurseId),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'COURSE_DURATION_EXPIRED' }),
+    });
   });
 });

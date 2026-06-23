@@ -3,8 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { MedicationAdministrationLifecycleStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MedicationScheduleService } from '../medication-schedule/medication-schedule.service';
 import {
   assertAdmissionExists,
   assertAdmissionWritable,
@@ -20,11 +21,20 @@ import {
 
 @Injectable()
 export class AdmissionMedicationOrderService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly medicationScheduleService: MedicationScheduleService,
+  ) {}
 
   private withPrescriber(order: any) {
-    const { doctor, ...rest } = order;
-    return { ...rest, prescribedBy: doctor ?? null };
+    const { doctor, doseSchedule, ...rest } = order;
+    return {
+      ...rest,
+      prescribedBy: doctor ?? null,
+      doseSchedule: doseSchedule
+        ? this.medicationScheduleService.mapScheduleToApi(doseSchedule)
+        : null,
+    };
   }
 
   async list(admissionId: string) {
@@ -36,6 +46,7 @@ export class AdmissionMedicationOrderService {
         doctor: {
           select: { id: true, firstName: true, lastName: true },
         },
+        doseSchedule: true,
       },
     });
     return rows.map((row) => this.withPrescriber(row));
@@ -74,27 +85,41 @@ export class AdmissionMedicationOrderService {
       );
     }
 
-    const row = await this.prisma.medicationOrder.create({
-      data: {
-        encounterId: admission.encounter.id,
-        admissionId,
-        patientId: admission.patientId,
-        doctorId: prescribedByDoctorId,
-        administrationStatus: 'ACTIVE',
-        drugName: dto.drugName.trim(),
-        dose: dto.dose.trim(),
-        quantity: new Prisma.Decimal(dto.quantity ?? 1),
-        route: dto.route,
-        frequency: dto.frequency.trim(),
-        startDateTime: new Date(dto.startDateTime),
-        endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : null,
-        notes: dto.notes?.trim() || null,
-      },
-      include: {
-        doctor: {
-          select: { id: true, firstName: true, lastName: true },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.medicationOrder.create({
+        data: {
+          encounterId: admission.encounter!.id,
+          admissionId,
+          patientId: admission.patientId,
+          doctorId: prescribedByDoctorId,
+          administrationStatus: 'ACTIVE',
+          drugName: dto.drugName.trim(),
+          dose: dto.dose.trim(),
+          quantity: new Prisma.Decimal(dto.quantity ?? 1),
+          route: dto.route,
+          frequency: dto.frequency.trim(),
+          duration: dto.duration?.trim() || null,
+          startDateTime: new Date(dto.startDateTime),
+          endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : null,
+          notes: dto.notes?.trim() || null,
         },
-      },
+      });
+
+      await this.medicationScheduleService.ensureScheduleForOrder(
+        created.id,
+        tx,
+        { frequency: dto.frequency, duration: dto.duration },
+      );
+
+      return tx.medicationOrder.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          doctor: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          doseSchedule: true,
+        },
+      });
     });
     return this.withPrescriber(row);
   }
@@ -112,27 +137,52 @@ export class AdmissionMedicationOrderService {
         `Medication order "${orderId}" not found for this admission.`,
       );
     }
-    const row = await this.prisma.medicationOrder.update({
-      where: { id: orderId },
-      data: {
-        ...(dto.administrationStatus !== undefined && {
-          administrationStatus: dto.administrationStatus,
-        }),
-        ...(dto.dose !== undefined && { dose: dto.dose }),
-        ...(dto.quantity !== undefined && {
-          quantity: new Prisma.Decimal(dto.quantity),
-        }),
-        ...(dto.frequency !== undefined && { frequency: dto.frequency }),
-        ...(dto.endDateTime !== undefined && {
-          endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : null,
-        }),
-        ...(dto.notes !== undefined && { notes: dto.notes }),
-      },
-      include: {
-        doctor: {
-          select: { id: true, firstName: true, lastName: true },
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.medicationOrder.update({
+        where: { id: orderId },
+        data: {
+          ...(dto.administrationStatus !== undefined && {
+            administrationStatus: dto.administrationStatus,
+          }),
+          ...(dto.dose !== undefined && { dose: dto.dose }),
+          ...(dto.quantity !== undefined && {
+            quantity: new Prisma.Decimal(dto.quantity),
+          }),
+          ...(dto.frequency !== undefined && { frequency: dto.frequency }),
+          ...(dto.duration !== undefined && {
+            duration: dto.duration?.trim() || null,
+          }),
+          ...(dto.endDateTime !== undefined && {
+            endDateTime: dto.endDateTime ? new Date(dto.endDateTime) : null,
+          }),
+          ...(dto.notes !== undefined && { notes: dto.notes }),
         },
-      },
+      });
+
+      if (dto.duration !== undefined) {
+        await this.medicationScheduleService.updateScheduleFromDurationChange(
+          orderId,
+          dto.duration ?? null,
+          tx,
+        );
+      }
+
+      if (
+        dto.administrationStatus ===
+        MedicationAdministrationLifecycleStatus.STOPPED
+      ) {
+        await this.medicationScheduleService.stopSchedule(orderId, tx);
+      }
+
+      return tx.medicationOrder.findUniqueOrThrow({
+        where: { id: orderId },
+        include: {
+          doctor: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          doseSchedule: true,
+        },
+      });
     });
     return this.withPrescriber(row);
   }

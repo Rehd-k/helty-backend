@@ -9,25 +9,59 @@ import {
   UpdateDoctorReportDto,
 } from './dto/create-doctor-report.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
+import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
+import { AdmissionStatus } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
 
 @Injectable()
 export class DoctorReportService {
   constructor(private prisma: PrismaService) {}
 
-  async create(createDoctorReportDto: CreateDoctorReportDto) {
+  async create(
+    createDoctorReportDto: CreateDoctorReportDto,
+    actingStaffId: string,
+  ) {
+    let encounter:
+      | {
+          admissionId: string | null;
+          admission?: { status: AdmissionStatus } | null;
+        }
+      | undefined;
     if (createDoctorReportDto.encounterId) {
-      await this.validateEncounterForPatient(
-        createDoctorReportDto.encounterId,
-        createDoctorReportDto.patientId,
-      );
+      const loaded = await this.prisma.encounter.findUnique({
+        where: { id: createDoctorReportDto.encounterId },
+        select: {
+          patientId: true,
+          admissionId: true,
+          admission: { select: { status: true } },
+        },
+      });
+      if (!loaded) {
+        throw new BadRequestException(
+          `Encounter "${createDoctorReportDto.encounterId}" not found.`,
+        );
+      }
+      if (loaded.patientId !== createDoctorReportDto.patientId) {
+        throw new BadRequestException(
+          'Encounter does not belong to the given patient.',
+        );
+      }
+      encounter = loaded;
     }
-    const { encounterId, ...rest } = createDoctorReportDto;
+    const { encounterId, doctorId, ...rest } = createDoctorReportDto;
+    const resolvedDoctorId = encounter
+      ? resolveOrderingDoctorId(
+          encounter,
+          actingStaffId,
+          doctorId ?? actingStaffId,
+        )
+      : doctorId;
     return this.prisma.doctorReport.create({
       data: {
         ...rest,
         ...(encounterId && { encounterId }),
-        createdById: '',
+        ...(resolvedDoctorId && { doctorId: resolvedDoctorId }),
+        createdById: actingStaffId,
       },
     });
   }

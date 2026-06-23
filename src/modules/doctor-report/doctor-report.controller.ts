@@ -27,8 +27,14 @@ export class DoctorReportController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new doctor report' })
-  create(@Body() createDoctorReportDto: CreateDoctorReportDto) {
-    return this.doctorReportService.create(createDoctorReportDto);
+  create(
+    @Body() createDoctorReportDto: CreateDoctorReportDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.doctorReportService.create(
+      createDoctorReportDto,
+      req.user.sub,
+    );
   }
 
   @Get()

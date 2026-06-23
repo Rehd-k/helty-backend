@@ -3,14 +3,17 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EncounterStatus, Prisma } from '@prisma/client';
+import { EncounterStatus, MedicationAdministrationLifecycleStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
+import { MedicationScheduleService } from '../medication-schedule/medication-schedule.service';
 import {
   CreateMedicationOrderDto,
   UpdateMedicationOrderDto,
 } from './dto/create-medication-order.dto';
+import { BeyondDurationConsentDto } from './dto/beyond-duration-consent.dto';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
+import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
 
 const drugWithPricingBatchInclude = {
   batches: {
@@ -29,14 +32,24 @@ export class MedicationOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
+    private readonly medicationScheduleService: MedicationScheduleService,
   ) {}
 
-  async create(dto: CreateMedicationOrderDto) {
+  async create(dto: CreateMedicationOrderDto, actingStaffId: string) {
+    const encounter = await this.loadEncounterForPatient(
+      dto.encounterId,
+      dto.patientId,
+    );
+    const doctorId = resolveOrderingDoctorId(
+      encounter,
+      actingStaffId,
+      dto.doctorId,
+    );
     const [, drug, patient, doctor] = await Promise.all([
-      this.loadEncounterForPatient(dto.encounterId, dto.patientId),
+      Promise.resolve(encounter),
       this.loadDrugWithPricingBatch(dto.drugId),
       this.validatePatient(dto.patientId),
-      this.validateDoctor(dto.doctorId),
+      this.validateDoctor(doctorId),
     ]);
     if (dto.admissionId) {
       await this.validateAdmission(
@@ -108,10 +121,19 @@ export class MedicationOrderService {
         });
       }
 
-      return tx.medicationOrder.findUniqueOrThrow({
+      if (dto.admissionId) {
+        await this.medicationScheduleService.ensureScheduleForOrder(
+          order.id,
+          tx,
+          { frequency: dto.frequency, duration: dto.duration },
+        );
+      }
+
+      const created = await tx.medicationOrder.findUniqueOrThrow({
         where: { id: order.id },
         select: this.defaultSelect(),
       });
+      return this.mapOrderResponse(created);
     });
   }
 
@@ -142,7 +164,12 @@ export class MedicationOrderService {
       this.prisma.medicationOrder.count({ where }),
     ]);
 
-    return { data, total, skip, take };
+    return {
+      data: data.map((row) => this.mapOrderResponse(row)),
+      total,
+      skip,
+      take,
+    };
   }
 
   async findOne(id: string) {
@@ -155,7 +182,7 @@ export class MedicationOrderService {
         `Medication order with id "${id}" not found.`,
       );
     }
-    return order;
+    return this.mapOrderResponse(order);
   }
 
   async findByEncounterId(encounterId: string) {
@@ -168,11 +195,12 @@ export class MedicationOrderService {
       );
     }
 
-    return this.prisma.medicationOrder.findMany({
+    const rows = await this.prisma.medicationOrder.findMany({
       where: { encounterId },
       orderBy: this.defaultOrderBy(),
       select: this.defaultSelect(),
     });
+    return rows.map((row) => this.mapOrderResponse(row));
   }
 
   async update(id: string, dto: UpdateMedicationOrderDto) {
@@ -223,7 +251,7 @@ export class MedicationOrderService {
       existing.invoiceItem &&
       dto.drugId !== existing.invoiceItem.drugId;
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       if (dto.status === 'Cancelled' && existing.invoiceItemId) {
         await this.invoiceService.removeBillableLineForEncounterRequest(
           existing.invoiceItemId,
@@ -244,7 +272,7 @@ export class MedicationOrderService {
         );
       }
 
-      return tx.medicationOrder.update({
+      const updated = await tx.medicationOrder.update({
         where: { id },
         data: {
           ...(dto.drugId !== undefined &&
@@ -273,7 +301,80 @@ export class MedicationOrderService {
         },
         select: this.defaultSelect(),
       });
+
+      if (dto.duration !== undefined && existing.admissionId) {
+        await this.medicationScheduleService.updateScheduleFromDurationChange(
+          id,
+          dto.duration ?? null,
+          tx,
+        );
+      }
+
+      if (
+        dto.administrationStatus ===
+          MedicationAdministrationLifecycleStatus.STOPPED &&
+        existing.admissionId
+      ) {
+        await this.medicationScheduleService.stopSchedule(id, tx);
+      }
+
+      return updated;
     });
+
+    return this.mapOrderResponse(result);
+  }
+
+  async getDoseSchedule(orderId: string) {
+    const order = await this.prisma.medicationOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true, admissionId: true, doseSchedule: true },
+    });
+    if (!order) {
+      throw new NotFoundException(
+        `Medication order with id "${orderId}" not found.`,
+      );
+    }
+    if (!order.doseSchedule) {
+      if (order.admissionId) {
+        const schedule =
+          await this.medicationScheduleService.ensureScheduleForOrder(orderId);
+        return this.medicationScheduleService.mapScheduleToApi(schedule);
+      }
+      throw new NotFoundException('Dose schedule not found for this order.');
+    }
+    return this.medicationScheduleService.mapScheduleToApi(order.doseSchedule);
+  }
+
+  async recordBeyondDurationConsent(
+    orderId: string,
+    doctorId: string,
+    dto: BeyondDurationConsentDto,
+  ) {
+    const order = await this.prisma.medicationOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true },
+    });
+    if (!order) {
+      throw new NotFoundException(
+        `Medication order with id "${orderId}" not found.`,
+      );
+    }
+
+    if (!dto.consentNote?.trim() && dto.extendDurationValue == null) {
+      throw new BadRequestException(
+        'Provide consentNote and/or extendDurationValue with extendDurationUnit.',
+      );
+    }
+
+    await this.medicationScheduleService.recordBeyondDurationConsent({
+      orderId,
+      doctorId,
+      consentNote: dto.consentNote,
+      extendDurationValue: dto.extendDurationValue,
+      extendDurationUnit: dto.extendDurationUnit,
+    });
+
+    return this.findOne(orderId);
   }
 
   async remove(id: string) {
@@ -328,6 +429,13 @@ export class MedicationOrderService {
   ) {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: encounterId },
+      select: {
+        id: true,
+        patientId: true,
+        status: true,
+        admissionId: true,
+        admission: { select: { status: true } },
+      },
     });
     if (!encounter) {
       throw new NotFoundException(
@@ -505,6 +613,25 @@ export class MedicationOrderService {
         },
         orderBy: { createdAt: 'desc' as const },
       },
+      doseSchedule: true,
+    };
+  }
+
+  private mapOrderResponse<T extends { doseSchedule?: unknown }>(order: T) {
+    const { doseSchedule, ...rest } = order as T & {
+      doseSchedule?: Parameters<
+        MedicationScheduleService['mapScheduleToApi']
+      >[0] | null;
+    };
+    return {
+      ...rest,
+      doseSchedule: doseSchedule
+        ? this.medicationScheduleService.mapScheduleToApi(
+            doseSchedule as Parameters<
+              MedicationScheduleService['mapScheduleToApi']
+            >[0],
+          )
+        : null,
     };
   }
 }

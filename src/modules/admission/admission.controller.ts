@@ -47,6 +47,33 @@ export class AdmissionController {
     });
   }
 
+  @Get('pending-billing-clearance')
+  @ApiOperation({
+    summary:
+      'List admissions clinically discharged by doctors awaiting billing clearance',
+  })
+  findPendingBillingClearance(@Query() query: ListAdmissionsQueryDto) {
+    const skip = Math.max(0, parseInt(query.skip ?? '0', 10) || 0);
+    const take = Math.min(
+      100,
+      Math.max(1, parseInt(query.take ?? '20', 10) || 20),
+    );
+    return this.admissionService.findPendingBillingClearance(skip, take);
+  }
+
+  @Post(':id/billing-clearance')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Finalize admission after billing clearance (move patient to OPD when paid)',
+  })
+  clearBillingClearance(
+    @Param('id') id: string,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.admissionService.clearBillingClearance(id, req.user.sub);
+  }
+
   @Get('active')
   @ApiOperation({ summary: 'Get all active (not discharged) admissions' })
   getActiveAdmissions() {

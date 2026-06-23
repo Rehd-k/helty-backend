@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EncounterStatus, Prisma } from '@prisma/client';
+import { AdmissionStatus, EncounterStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ClinicalSnapshot,
@@ -12,11 +12,14 @@ import {
   EncounterClinicalField,
   EncounterEditMeta,
 } from './encounter-clinical-snapshot.types';
+import { isSharedInpatientEncounter } from './encounter-inpatient-edit.util';
 
 type EncounterAccess = {
   id: string;
   status: EncounterStatus;
   doctorId: string;
+  admissionId: string | null;
+  admission: { status: AdmissionStatus } | null;
 };
 
 @Injectable()
@@ -26,12 +29,49 @@ export class EncounterEditPolicyService {
   async loadEncounterAccess(encounterId: string): Promise<EncounterAccess> {
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: encounterId },
-      select: { id: true, status: true, doctorId: true },
+      select: {
+        id: true,
+        status: true,
+        doctorId: true,
+        admissionId: true,
+        admission: { select: { status: true } },
+      },
     });
     if (!encounter) {
       throw new NotFoundException(`Encounter "${encounterId}" not found.`);
     }
     return encounter;
+  }
+
+  private async isEligibleCoveringPhysician(staffId: string): Promise<boolean> {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: { accountType: true, staffRole: true },
+    });
+    if (!staff) return false;
+    if (staff.accountType === 'SUPER_ADMIN') return true;
+    return (
+      staff.accountType === 'PHYSICIAN' && staff.staffRole !== 'MEDICAL_STUDENT'
+    );
+  }
+
+  private async canStaffEditEncounter(
+    encounter: EncounterAccess,
+    staffId: string,
+  ): Promise<{ canEdit: boolean; canEditAsCoveringPhysician: boolean }> {
+    if (encounter.status === EncounterStatus.CANCELLED) {
+      return { canEdit: false, canEditAsCoveringPhysician: false };
+    }
+    if (encounter.doctorId === staffId) {
+      return { canEdit: true, canEditAsCoveringPhysician: false };
+    }
+    if (
+      isSharedInpatientEncounter(encounter) &&
+      (await this.isEligibleCoveringPhysician(staffId))
+    ) {
+      return { canEdit: true, canEditAsCoveringPhysician: true };
+    }
+    return { canEdit: false, canEditAsCoveringPhysician: false };
   }
 
   async assertCanEdit(encounterId: string, staffId: string): Promise<EncounterAccess> {
@@ -41,7 +81,13 @@ export class EncounterEditPolicyService {
         'Cannot edit a cancelled encounter.',
       );
     }
-    if (encounter.doctorId !== staffId) {
+    const { canEdit } = await this.canStaffEditEncounter(encounter, staffId);
+    if (!canEdit) {
+      if (isSharedInpatientEncounter(encounter)) {
+        throw new ForbiddenException(
+          'Only a physician may edit this inpatient encounter while the admission is active.',
+        );
+      }
       throw new ForbiddenException(
         'Only the treating doctor for this encounter may edit it.',
       );
@@ -246,10 +292,16 @@ export class EncounterEditPolicyService {
       }),
     ]);
 
-    const canEdit =
-      encounter.status !== EncounterStatus.CANCELLED &&
-      !!staffId &&
-      encounter.doctorId === staffId;
+    const shared = isSharedInpatientEncounter(encounter);
+    const admissionStatus = encounter.admission?.status ?? null;
+
+    let canEdit = false;
+    let canEditAsCoveringPhysician = false;
+    if (staffId) {
+      const access = await this.canStaffEditEncounter(encounter, staffId);
+      canEdit = access.canEdit;
+      canEditAsCoveringPhysician = access.canEditAsCoveringPhysician;
+    }
 
     return {
       hasEdits: editCount > 0,
@@ -257,6 +309,9 @@ export class EncounterEditPolicyService {
       lastEditedAt: latest?.editedAt?.toISOString() ?? null,
       canEdit,
       requiresVersionedEdits: encounter.status === EncounterStatus.COMPLETED,
+      isSharedInpatientEncounter: shared,
+      admissionStatus,
+      canEditAsCoveringPhysician,
     };
   }
 }

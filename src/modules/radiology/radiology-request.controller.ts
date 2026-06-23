@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
@@ -38,8 +39,11 @@ export class RadiologyRequestController {
   @ApiOperation({
     summary: 'Create a radiology order with one or more items',
   })
-  create(@Body() dto: CreateRadiologyRequestDto) {
-    return this.radiologyRequestService.create(dto);
+  create(
+    @Body() dto: CreateRadiologyRequestDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.radiologyRequestService.create(dto, req.user.sub);
   }
 
   @Get()

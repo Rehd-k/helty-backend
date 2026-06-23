@@ -1,4 +1,4 @@
-import { MedicalSpecialty } from '@prisma/client';
+import { AdmissionStatus, MedicalSpecialty } from '@prisma/client';
 
 export const ENCOUNTER_CLINICAL_SNAPSHOT_FIELDS = [
   'chiefComplaint',
@@ -58,4 +58,7 @@ export type EncounterEditMeta = {
   lastEditedAt: string | null;
   canEdit: boolean;
   requiresVersionedEdits: boolean;
+  isSharedInpatientEncounter: boolean;
+  admissionStatus: AdmissionStatus | null;
+  canEditAsCoveringPhysician: boolean;
 };

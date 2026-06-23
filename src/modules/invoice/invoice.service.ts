@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -53,6 +54,20 @@ function generateInvoiceHumanId(): string {
   return generateHumanReadableId(10);
 }
 
+export type ConsolidatePendingInvoicesForPatientResult = {
+  targetInvoiceId: string | null;
+  mergedCount: number;
+  deletedCount: number;
+  skippedSourceIds: string[];
+};
+
+export type ConsolidatePendingInvoicesResult = {
+  patientsProcessed: number;
+  invoicesMerged: number;
+  invoicesDeleted: number;
+  sourcesSkipped: number;
+};
+
 const drugWithPricingBatchInclude = {
   batches: {
     where: { quantityRemaining: { gt: 0 } },
@@ -67,6 +82,8 @@ type DrugWithPricingBatch = Prisma.DrugGetPayload<{
 
 @Injectable()
 export class InvoiceService {
+  private readonly logger = new Logger(InvoiceService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly consumableStock: ConsumableStockService,
@@ -1723,6 +1740,158 @@ export class InvoiceService {
     });
   }
 
+  private async getMovableItemIdsForInvoice(
+    invoiceId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<{ movableIds: string[]; unmovableIds: string[] }> {
+    const items = await tx.invoiceItem.findMany({
+      where: { invoiceId },
+      include: { _count: { select: { allocations: true } } },
+    });
+    const movableIds: string[] = [];
+    const unmovableIds: string[] = [];
+    for (const item of items) {
+      if (
+        item.settled ||
+        this.asDecimal(item.amountPaid).gt(0) ||
+        item._count.allocations > 0
+      ) {
+        unmovableIds.push(item.id);
+      } else {
+        movableIds.push(item.id);
+      }
+    }
+    return { movableIds, unmovableIds };
+  }
+
+  private async repointInvoiceItemLinks(
+    itemIds: string[],
+    targetInvoiceId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    if (itemIds.length === 0) return;
+    await tx.invoiceItem.updateMany({
+      where: { id: { in: itemIds } },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.labRequest.updateMany({
+      where: { invoiceItemId: { in: itemIds } },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.dialysisSession.updateMany({
+      where: { invoiceItemId: { in: itemIds } },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.dialysisSessionConsumable.updateMany({
+      where: { invoiceItemId: { in: itemIds } },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.surgeryRequest.updateMany({
+      where: { invoiceItemId: { in: itemIds } },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.theatreCaseConsumable.updateMany({
+      where: { invoiceItemId: { in: itemIds } },
+      data: { invoiceId: targetInvoiceId },
+    });
+  }
+
+  private async repointInvoiceLevelLinks(
+    sourceInvoiceId: string,
+    targetInvoiceId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    await tx.labRequest.updateMany({
+      where: { invoiceId: sourceInvoiceId },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.dialysisSession.updateMany({
+      where: { invoiceId: sourceInvoiceId },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.dialysisSessionConsumable.updateMany({
+      where: { invoiceId: sourceInvoiceId },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.surgeryRequest.updateMany({
+      where: { invoiceId: sourceInvoiceId },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.theatreCaseConsumable.updateMany({
+      where: { invoiceId: sourceInvoiceId },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.invoiceDrugReturn.updateMany({
+      where: { invoiceId: sourceInvoiceId },
+      data: { invoiceId: targetInvoiceId },
+    });
+    await tx.invoicePurchaseItemReturn.updateMany({
+      where: { invoiceId: sourceInvoiceId },
+      data: { invoiceId: targetInvoiceId },
+    });
+  }
+
+  private async transferInvoiceMetadata(
+    source: {
+      id: string;
+      vitalsId: string | null;
+      encounterId: string | null;
+      consultingRoomId: string | null;
+    },
+    targetInvoiceId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    const target = await tx.invoice.findUniqueOrThrow({
+      where: { id: targetInvoiceId },
+      select: {
+        id: true,
+        vitalsId: true,
+        encounterId: true,
+        consultingRoomId: true,
+      },
+    });
+
+    const targetUpdates: Prisma.InvoiceUncheckedUpdateInput = {};
+    if (!target.vitalsId && source.vitalsId) {
+      await tx.invoice.update({
+        where: { id: source.id },
+        data: { vitalsId: null },
+      });
+      targetUpdates.vitalsId = source.vitalsId;
+    }
+    if (!target.encounterId && source.encounterId) {
+      targetUpdates.encounterId = source.encounterId;
+    }
+    if (!target.consultingRoomId && source.consultingRoomId) {
+      targetUpdates.consultingRoomId = source.consultingRoomId;
+    }
+    if (Object.keys(targetUpdates).length > 0) {
+      await tx.invoice.update({
+        where: { id: targetInvoiceId },
+        data: targetUpdates,
+      });
+    }
+
+    const [targetAssignment, sourceAssignment] = await Promise.all([
+      tx.outpatientNurseAssignment.findUnique({
+        where: { invoiceId: targetInvoiceId },
+      }),
+      tx.outpatientNurseAssignment.findUnique({
+        where: { invoiceId: source.id },
+      }),
+    ]);
+    if (!targetAssignment && sourceAssignment) {
+      await tx.outpatientNurseAssignment.update({
+        where: { id: sourceAssignment.id },
+        data: { invoiceId: targetInvoiceId },
+      });
+    } else if (targetAssignment && sourceAssignment) {
+      await tx.outpatientNurseAssignment.delete({
+        where: { id: sourceAssignment.id },
+      });
+    }
+  }
+
   /**
    * Moves the given line items onto a new invoice for the same patient.
    * Copies encounter and consulting room from the source; `vitalsId` stays on the
@@ -1799,15 +1968,7 @@ export class InvoiceService {
         },
       });
 
-      await tx.invoiceItem.updateMany({
-        where: { id: { in: uniqueItemIds } },
-        data: { invoiceId: newInvoice.id },
-      });
-
-      await tx.labRequest.updateMany({
-        where: { invoiceItemId: { in: uniqueItemIds } },
-        data: { invoiceId: newInvoice.id },
-      });
+      await this.repointInvoiceItemLinks(uniqueItemIds, newInvoice.id, tx);
 
       await tx.invoice.update({
         where: { id: sourceInvoiceId },
@@ -1823,6 +1984,133 @@ export class InvoiceService {
     return {
       original: await this.findOne(sourceInvoiceId),
       splitOff: await this.findOne(newInvoiceId),
+    };
+  }
+
+  /**
+   * Merge duplicate PENDING invoices for one patient into the oldest bill.
+   * Newer invoices have their line items moved into the target; emptied sources are deleted.
+   */
+  async consolidatePendingInvoicesForPatient(
+    patientId: string,
+    tx: Prisma.TransactionClient = this.prisma,
+  ): Promise<ConsolidatePendingInvoicesForPatientResult> {
+    const pendingInvoices = await tx.invoice.findMany({
+      where: { patientId, status: InvoiceStatus.PENDING },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (pendingInvoices.length <= 1) {
+      return {
+        targetInvoiceId: pendingInvoices[0]?.id ?? null,
+        mergedCount: 0,
+        deletedCount: 0,
+        skippedSourceIds: [],
+      };
+    }
+
+    const target = pendingInvoices[0];
+    const sources = pendingInvoices.slice(1);
+    let mergedCount = 0;
+    let deletedCount = 0;
+    const skippedSourceIds: string[] = [];
+
+    for (const source of sources) {
+      const { movableIds, unmovableIds } =
+        await this.getMovableItemIdsForInvoice(source.id, tx);
+      if (unmovableIds.length > 0) {
+        this.logger.warn(
+          `Skipping PENDING invoice ${source.invoiceID} (${source.id}) for patient ${patientId}: ${unmovableIds.length} unmovable line(s).`,
+        );
+        skippedSourceIds.push(source.id);
+        continue;
+      }
+
+      if (movableIds.length > 0) {
+        await this.repointInvoiceItemLinks(movableIds, target.id, tx);
+      }
+      await this.repointInvoiceLevelLinks(source.id, target.id, tx);
+      await this.transferInvoiceMetadata(source, target.id, tx);
+      await this.recalculateInvoiceTotals(target.id, tx);
+
+      const remainingItems = await tx.invoiceItem.count({
+        where: { invoiceId: source.id },
+      });
+      if (remainingItems > 0) {
+        skippedSourceIds.push(source.id);
+        continue;
+      }
+
+      await tx.invoice.delete({ where: { id: source.id } });
+      deletedCount += 1;
+      mergedCount += 1;
+      await this.logInvoiceAudit(tx, {
+        invoiceId: target.id,
+        action: InvoiceAuditAction.ITEM_UPDATED,
+        description: `Nightly consolidation merged invoice ${source.invoiceID} (${movableIds.length} line(s)) into this bill.`,
+        metadata: {
+          sourceInvoiceId: source.id,
+          sourceInvoiceID: source.invoiceID,
+          movedLineCount: movableIds.length,
+        },
+      });
+    }
+
+    return {
+      targetInvoiceId: target.id,
+      mergedCount,
+      deletedCount,
+      skippedSourceIds,
+    };
+  }
+
+  /**
+   * Batch entry point for nightly consolidation: one PENDING invoice per patient.
+   */
+  async consolidatePendingInvoices(): Promise<ConsolidatePendingInvoicesResult> {
+    const pending = await this.prisma.invoice.findMany({
+      where: { status: InvoiceStatus.PENDING },
+      select: { patientId: true },
+    });
+    const countByPatient = new Map<string, number>();
+    for (const row of pending) {
+      countByPatient.set(
+        row.patientId,
+        (countByPatient.get(row.patientId) ?? 0) + 1,
+      );
+    }
+    const patientIds = [...countByPatient.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([patientId]) => patientId);
+
+    let patientsProcessed = 0;
+    let invoicesMerged = 0;
+    let invoicesDeleted = 0;
+    let sourcesSkipped = 0;
+
+    for (const patientId of patientIds) {
+      try {
+        const result = await this.prisma.$transaction((tx) =>
+          this.consolidatePendingInvoicesForPatient(patientId, tx),
+        );
+        patientsProcessed += 1;
+        invoicesMerged += result.mergedCount;
+        invoicesDeleted += result.deletedCount;
+        sourcesSkipped += result.skippedSourceIds.length;
+      } catch (err) {
+        this.logger.error(
+          `Pending invoice consolidation failed for patient ${patientId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    return {
+      patientsProcessed,
+      invoicesMerged,
+      invoicesDeleted,
+      sourcesSkipped,
     };
   }
 

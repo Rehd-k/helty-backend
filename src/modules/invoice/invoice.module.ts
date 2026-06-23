@@ -15,6 +15,7 @@ import { InvoiceCoverageController } from './coverage/coverage.controller';
 import { InvoiceCoverageService } from './coverage/coverage.service';
 import { InvoiceItemRefundController } from './invoice-item-refund.controller';
 import { InvoiceItemRefundService } from './invoice-item-refund.service';
+import { InvoiceConsolidationScheduler } from './invoice-consolidation.scheduler';
 
 @Module({
   imports: [PrismaModule, StoreModule, PurchasesModule, DrugStockModule],
@@ -33,6 +34,7 @@ import { InvoiceItemRefundService } from './invoice-item-refund.service';
     InvoicePurchaseService,
     InvoiceCoverageService,
     InvoiceItemRefundService,
+    InvoiceConsolidationScheduler,
   ],
   exports: [
     InvoiceService,

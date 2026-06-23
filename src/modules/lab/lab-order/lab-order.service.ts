@@ -18,7 +18,7 @@ export class LabOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
-  ) {}
+  ) { }
 
   async create(dto: CreateLabOrderDto) {
     const patient = await this.prisma.patient.findUnique({
@@ -188,7 +188,7 @@ export class LabOrderService {
           select: patientNameFieldsSelect,
         },
         doctor: {
-          select: { id: true, firstName: true, lastName: true, staffId: true },
+          select: { id: true, firstName: true, lastName: true, staffId: true, accountType: true },
         },
         invoiceItem: {
           select: { id: true, invoiceId: true, serviceId: true },

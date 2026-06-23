@@ -2,6 +2,10 @@ import { EncounterStatus, Prisma } from '@prisma/client';
 import { MedicationOrderService } from './medication-order.service';
 import { CreateMedicationOrderDto } from './dto/create-medication-order.dto';
 
+jest.mock('../../common/utils/human-readable-id.util', () => ({
+  generateHumanReadableId: jest.fn().mockReturnValue('ID001'),
+}));
+
 jest.mock('../../common/utils/patient-outpatient.util', () => ({
   isOutpatientPatient: jest.fn().mockResolvedValue(false),
 }));
@@ -41,6 +45,8 @@ describe('MedicationOrderService create', () => {
   let ensureInvoiceForEncounter: jest.Mock;
   let addDrugItem: jest.Mock;
   let service: MedicationOrderService;
+  let prisma: any;
+  let invoiceService: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -69,7 +75,7 @@ describe('MedicationOrderService create', () => {
       },
     };
 
-    const prisma = {
+    prisma = {
       medicationOrder: { create: medicationOrderCreate },
       $transaction: jest.fn(async (cb: (client: typeof tx) => unknown) =>
         cb(tx),
@@ -79,6 +85,8 @@ describe('MedicationOrderService create', () => {
           id: encounterId,
           patientId,
           status: EncounterStatus.ONGOING,
+          admissionId: null,
+          admission: null,
         }),
       },
       drug: {
@@ -92,7 +100,7 @@ describe('MedicationOrderService create', () => {
       },
     };
 
-    const invoiceService = {
+    invoiceService = {
       ensureInvoiceForEncounter,
       addDrugItem,
     };
@@ -100,11 +108,17 @@ describe('MedicationOrderService create', () => {
     service = new MedicationOrderService(
       prisma as any,
       invoiceService as any,
+      {
+        ensureScheduleForOrder: jest.fn().mockResolvedValue({ id: 'sched-1' }),
+        mapScheduleToApi: jest.fn().mockReturnValue(null),
+        updateScheduleFromDurationChange: jest.fn(),
+        stopSchedule: jest.fn(),
+      } as any,
     );
   });
 
   it('creates a prescribed order without billing', async () => {
-    await service.create({ ...baseDto, quantity: 14 });
+    await service.create({ ...baseDto, quantity: 14 }, doctorId);
 
     expect(ensureInvoiceForEncounter).not.toHaveBeenCalled();
     expect(addDrugItem).not.toHaveBeenCalled();
@@ -121,7 +135,7 @@ describe('MedicationOrderService create', () => {
   });
 
   it('defaults status to Prescribed when quantity is omitted', async () => {
-    await service.create(baseDto);
+    await service.create(baseDto, doctorId);
 
     expect(medicationOrderCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -147,10 +161,13 @@ describe('MedicationOrderService create', () => {
       ],
     });
 
-    const result = await service.create({
-      ...baseDto,
-      requestedQuantity: 20,
-    });
+    const result = await service.create(
+      {
+        ...baseDto,
+        requestedQuantity: 20,
+      },
+      doctorId,
+    );
 
     expect(medicationRequestCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -160,5 +177,41 @@ describe('MedicationOrderService create', () => {
       }),
     });
     expect(result.medicationRequests).toHaveLength(1);
+  });
+
+  it('creates dose schedule for inpatient orders with admissionId', async () => {
+    const ensureScheduleForOrder = jest.fn().mockResolvedValue({ id: 'sched-1' });
+    service = new MedicationOrderService(
+      prisma as any,
+      invoiceService as any,
+      { ensureScheduleForOrder, mapScheduleToApi: jest.fn() } as any,
+    );
+
+    prisma.encounter.findUnique.mockResolvedValue({
+      id: encounterId,
+      patientId,
+      status: EncounterStatus.ONGOING,
+      admissionId: 'adm-1',
+      admission: { id: 'adm-1' },
+    });
+    prisma.admission = {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'adm-1',
+        encounterId,
+        patientId,
+        encounter: { id: encounterId },
+      }),
+    };
+
+    await service.create(
+      { ...baseDto, admissionId: 'adm-1', quantity: 1 },
+      doctorId,
+    );
+
+    expect(ensureScheduleForOrder).toHaveBeenCalledWith(
+      'order-1',
+      expect.anything(),
+      expect.objectContaining({ frequency: baseDto.frequency }),
+    );
   });
 });

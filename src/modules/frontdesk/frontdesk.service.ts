@@ -173,7 +173,13 @@ export class FrontdeskService {
       }),
       this.prisma.admission.count({
         where: {
-          status: AdmissionStatus.DISCHARGED,
+          status: {
+            in: [
+              AdmissionStatus.PENDING_BILLING_CLEARANCE,
+              AdmissionStatus.DISCHARGED,
+              AdmissionStatus.DECEASED,
+            ],
+          },
           OR: [
             {
               dischargeDateTime: { gte: todayWin.from, lte: todayWin.to },

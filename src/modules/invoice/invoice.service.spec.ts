@@ -14,6 +14,10 @@ import {
   RADIOLOGY_BILLING_CATEGORY,
 } from './invoice-link.constants';
 
+jest.mock('nanoid', () => ({
+  customAlphabet: () => () => 'TESTID0001',
+}));
+
 function createConsumableStockMock() {
   return {
     assertStoreLocation: jest.fn().mockResolvedValue(undefined),
@@ -25,7 +29,12 @@ function createConsumableStockMock() {
 }
 
 function createInvoiceService(prisma: any) {
-  return new InvoiceService(prisma, createConsumableStockMock());
+  return new InvoiceService(
+    prisma,
+    createConsumableStockMock(),
+    {} as any,
+    {} as any,
+  );
 }
 
 describe('InvoiceService', () => {
@@ -1649,6 +1658,217 @@ describe('InvoiceService', () => {
       const unitPrice = await addDrugWithPricing(prisma);
       expect(unitPrice.toString()).toBe('1800');
       expect(prisma.ward.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('consolidatePendingInvoicesForPatient', () => {
+    const patientId = 'pat-1';
+
+    function movableItem(id: string) {
+      return {
+        id,
+        settled: false,
+        amountPaid: new Prisma.Decimal(0),
+        _count: { allocations: 0 },
+      };
+    }
+
+    function createConsolidationTx(options: {
+      invoices: Array<{
+        id: string;
+        invoiceID: string;
+        createdAt: Date;
+        vitalsId?: string | null;
+        encounterId?: string | null;
+        consultingRoomId?: string | null;
+      }>;
+      itemsByInvoice: Record<string, ReturnType<typeof movableItem>[]>;
+      remainingItemsByInvoice?: Record<string, number>;
+    }) {
+      const auditCreate = jest.fn().mockResolvedValue({});
+      const tx: any = {
+        invoice: {
+          findMany: jest.fn().mockResolvedValue(
+            options.invoices.map((inv) => ({
+              ...inv,
+              patientId,
+              status: InvoiceStatus.PENDING,
+              vitalsId: inv.vitalsId ?? null,
+              encounterId: inv.encounterId ?? null,
+              consultingRoomId: inv.consultingRoomId ?? null,
+            })),
+          ),
+          findUniqueOrThrow: jest.fn().mockImplementation(({ where }) => {
+            const inv = options.invoices.find((row) => row.id === where.id);
+            return Promise.resolve({
+              id: inv?.id,
+              vitalsId: inv?.vitalsId ?? null,
+              encounterId: inv?.encounterId ?? null,
+              consultingRoomId: inv?.consultingRoomId ?? null,
+            });
+          }),
+          update: jest.fn().mockResolvedValue({}),
+          delete: jest.fn().mockResolvedValue({}),
+        },
+        invoiceItem: {
+          findMany: jest.fn().mockImplementation(({ where }) =>
+            Promise.resolve(options.itemsByInvoice[where.invoiceId] ?? []),
+          ),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          count: jest.fn().mockImplementation(({ where }) =>
+            Promise.resolve(options.remainingItemsByInvoice?.[where.invoiceId] ?? 0),
+          ),
+        },
+        labRequest: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        dialysisSession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        dialysisSessionConsumable: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        surgeryRequest: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        theatreCaseConsumable: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        invoiceDrugReturn: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        invoicePurchaseItemReturn: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        outpatientNurseAssignment: {
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+        invoiceAuditLog: { create: auditCreate },
+      };
+      return { tx, auditCreate };
+    }
+
+    it('merges three PENDING invoices into the oldest', async () => {
+      const { tx, auditCreate } = createConsolidationTx({
+        invoices: [
+          { id: 'inv-old', invoiceID: 'OLD0000001', createdAt: new Date('2026-01-01') },
+          { id: 'inv-mid', invoiceID: 'MID0000002', createdAt: new Date('2026-01-02') },
+          { id: 'inv-new', invoiceID: 'NEW0000003', createdAt: new Date('2026-01-03') },
+        ],
+        itemsByInvoice: {
+          'inv-mid': [movableItem('item-mid')],
+          'inv-new': [movableItem('item-new')],
+        },
+      });
+      const service = createInvoiceService({} as any);
+      jest.spyOn(service, 'recalculateInvoiceTotals').mockResolvedValue({} as any);
+
+      const result = await service.consolidatePendingInvoicesForPatient(patientId, tx);
+
+      expect(result).toEqual({
+        targetInvoiceId: 'inv-old',
+        mergedCount: 2,
+        deletedCount: 2,
+        skippedSourceIds: [],
+      });
+      expect(tx.invoice.delete).toHaveBeenCalledTimes(2);
+      expect(tx.invoiceItem.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: ['item-mid'] } },
+          data: { invoiceId: 'inv-old' },
+        }),
+      );
+      expect(auditCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('is a no-op when the patient has only one PENDING invoice', async () => {
+      const { tx } = createConsolidationTx({
+        invoices: [
+          { id: 'inv-only', invoiceID: 'ONLY000001', createdAt: new Date('2026-01-01') },
+        ],
+        itemsByInvoice: {
+          'inv-only': [movableItem('item-only')],
+        },
+      });
+      const service = createInvoiceService({} as any);
+
+      const result = await service.consolidatePendingInvoicesForPatient(patientId, tx);
+
+      expect(result).toEqual({
+        targetInvoiceId: 'inv-only',
+        mergedCount: 0,
+        deletedCount: 0,
+        skippedSourceIds: [],
+      });
+      expect(tx.invoice.delete).not.toHaveBeenCalled();
+    });
+
+    it('ignores PARTIALLY_PAID invoices because only PENDING rows are loaded', async () => {
+      const { tx } = createConsolidationTx({
+        invoices: [
+          { id: 'inv-pending', invoiceID: 'PEND000001', createdAt: new Date('2026-01-01') },
+        ],
+        itemsByInvoice: {
+          'inv-pending': [movableItem('item-pending')],
+        },
+      });
+      const service = createInvoiceService({} as any);
+
+      const result = await service.consolidatePendingInvoicesForPatient(patientId, tx);
+
+      expect(result.mergedCount).toBe(0);
+      expect(tx.invoice.findMany).toHaveBeenCalledWith({
+        where: { patientId, status: InvoiceStatus.PENDING },
+        orderBy: { createdAt: 'asc' },
+      });
+    });
+
+    it('skips a source with unmovable lines but still merges other sources', async () => {
+      const { tx } = createConsolidationTx({
+        invoices: [
+          { id: 'inv-old', invoiceID: 'OLD0000001', createdAt: new Date('2026-01-01') },
+          { id: 'inv-bad', invoiceID: 'BAD0000002', createdAt: new Date('2026-01-02') },
+          { id: 'inv-new', invoiceID: 'NEW0000003', createdAt: new Date('2026-01-03') },
+        ],
+        itemsByInvoice: {
+          'inv-bad': [
+            {
+              id: 'item-bad',
+              settled: true,
+              amountPaid: new Prisma.Decimal(0),
+              _count: { allocations: 0 },
+            },
+          ],
+          'inv-new': [movableItem('item-new')],
+        },
+      });
+      const service = createInvoiceService({} as any);
+      jest.spyOn(service, 'recalculateInvoiceTotals').mockResolvedValue({} as any);
+
+      const result = await service.consolidatePendingInvoicesForPatient(patientId, tx);
+
+      expect(result.mergedCount).toBe(1);
+      expect(result.deletedCount).toBe(1);
+      expect(result.skippedSourceIds).toEqual(['inv-bad']);
+      expect(tx.invoice.delete).toHaveBeenCalledTimes(1);
+      expect(tx.invoice.delete).toHaveBeenCalledWith({ where: { id: 'inv-new' } });
+    });
+
+    it('repoints lab requests when line items are moved', async () => {
+      const { tx } = createConsolidationTx({
+        invoices: [
+          { id: 'inv-old', invoiceID: 'OLD0000001', createdAt: new Date('2026-01-01') },
+          { id: 'inv-new', invoiceID: 'NEW0000002', createdAt: new Date('2026-01-02') },
+        ],
+        itemsByInvoice: {
+          'inv-new': [movableItem('item-lab')],
+        },
+      });
+      const service = createInvoiceService({} as any);
+      jest.spyOn(service, 'recalculateInvoiceTotals').mockResolvedValue({} as any);
+
+      await service.consolidatePendingInvoicesForPatient(patientId, tx);
+
+      expect(tx.labRequest.updateMany).toHaveBeenCalledWith({
+        where: { invoiceItemId: { in: ['item-lab'] } },
+        data: { invoiceId: 'inv-old' },
+      });
+      expect(tx.labRequest.updateMany).toHaveBeenCalledWith({
+        where: { invoiceId: 'inv-new' },
+        data: { invoiceId: 'inv-old' },
+      });
     });
   });
 });

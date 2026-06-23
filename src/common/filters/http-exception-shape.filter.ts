@@ -28,6 +28,8 @@ export class HttpExceptionShapeFilter implements ExceptionFilter {
           : Array.isArray(msg)
             ? msg.join(', ')
             : String(msg ?? exception.message);
+      const { statusCode: _sc, error: _err, code: _code, message: _msg, ...extra } =
+        p;
       return res.status(status).json({
         statusCode: status,
         error:
@@ -36,6 +38,7 @@ export class HttpExceptionShapeFilter implements ExceptionFilter {
             : (HttpStatus[status] ?? 'Error'),
         code: p.code,
         message,
+        ...extra,
       });
     }
 

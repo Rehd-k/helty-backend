@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { EncounterStatus } from '@prisma/client';
+import { AdmissionStatus, EncounterStatus } from '@prisma/client';
 import { EncounterEditPolicyService } from './encounter-edit-policy.service';
 import { ClinicalSnapshot } from './encounter-clinical-snapshot.types';
 
@@ -11,6 +11,8 @@ describe('EncounterEditPolicyService', () => {
   const encounterId = 'enc-1';
   const doctorId = 'doc-1';
   const otherStaffId = 'staff-2';
+  const coveringPhysicianId = 'phys-3';
+  const admissionId = 'adm-1';
 
   const emptySnapshot = (): ClinicalSnapshot => ({
     encounter: {
@@ -35,8 +37,17 @@ describe('EncounterEditPolicyService', () => {
     clinicalSections: [],
   });
 
+  const baseEncounter = {
+    id: encounterId,
+    status: EncounterStatus.ONGOING,
+    doctorId,
+    admissionId: null as string | null,
+    admission: null as { status: AdmissionStatus } | null,
+  };
+
   let prisma: {
     encounter: { findUnique: jest.Mock };
+    staff: { findUnique: jest.Mock };
     encounterDiagnosis: { findMany: jest.Mock };
     encounterSpecialtyModule: { findMany: jest.Mock };
     encounterClinicalSection: { findMany: jest.Mock };
@@ -51,6 +62,7 @@ describe('EncounterEditPolicyService', () => {
   beforeEach(() => {
     prisma = {
       encounter: { findUnique: jest.fn() },
+      staff: { findUnique: jest.fn() },
       encounterDiagnosis: { findMany: jest.fn().mockResolvedValue([]) },
       encounterSpecialtyModule: { findMany: jest.fn().mockResolvedValue([]) },
       encounterClinicalSection: { findMany: jest.fn().mockResolvedValue([]) },
@@ -66,12 +78,8 @@ describe('EncounterEditPolicyService', () => {
   afterEach(() => jest.clearAllMocks());
 
   describe('assertCanEdit', () => {
-    it('rejects non-treating doctor', async () => {
-      prisma.encounter.findUnique.mockResolvedValue({
-        id: encounterId,
-        status: EncounterStatus.ONGOING,
-        doctorId,
-      });
+    it('rejects non-treating doctor on outpatient encounter', async () => {
+      prisma.encounter.findUnique.mockResolvedValue(baseEncounter);
       await expect(
         service.assertCanEdit(encounterId, otherStaffId),
       ).rejects.toThrow(ForbiddenException);
@@ -79,9 +87,8 @@ describe('EncounterEditPolicyService', () => {
 
     it('rejects cancelled encounters', async () => {
       prisma.encounter.findUnique.mockResolvedValue({
-        id: encounterId,
+        ...baseEncounter,
         status: EncounterStatus.CANCELLED,
-        doctorId,
       });
       await expect(service.assertCanEdit(encounterId, doctorId)).rejects.toThrow(
         BadRequestException,
@@ -89,13 +96,72 @@ describe('EncounterEditPolicyService', () => {
     });
 
     it('allows treating doctor on ongoing encounter', async () => {
-      prisma.encounter.findUnique.mockResolvedValue({
-        id: encounterId,
-        status: EncounterStatus.ONGOING,
-        doctorId,
-      });
+      prisma.encounter.findUnique.mockResolvedValue(baseEncounter);
       const access = await service.assertCanEdit(encounterId, doctorId);
       expect(access.status).toBe(EncounterStatus.ONGOING);
+    });
+
+    it('allows covering physician on active-admission encounter', async () => {
+      prisma.encounter.findUnique.mockResolvedValue({
+        ...baseEncounter,
+        status: EncounterStatus.COMPLETED,
+        admissionId,
+        admission: { status: AdmissionStatus.ACTIVE },
+      });
+      prisma.staff.findUnique.mockResolvedValue({
+        accountType: 'PHYSICIAN',
+        staffRole: 'CONSULTANT',
+      });
+      const access = await service.assertCanEdit(
+        encounterId,
+        coveringPhysicianId,
+      );
+      expect(access.admissionId).toBe(admissionId);
+    });
+
+    it('rejects non-physician staff on active-admission encounter', async () => {
+      prisma.encounter.findUnique.mockResolvedValue({
+        ...baseEncounter,
+        admissionId,
+        admission: { status: AdmissionStatus.ACTIVE },
+      });
+      prisma.staff.findUnique.mockResolvedValue({
+        accountType: 'NURSE',
+        staffRole: 'INPATIENT_NURSE',
+      });
+      await expect(
+        service.assertCanEdit(encounterId, otherStaffId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects covering physician when admission is discharged', async () => {
+      prisma.encounter.findUnique.mockResolvedValue({
+        ...baseEncounter,
+        admissionId,
+        admission: { status: AdmissionStatus.DISCHARGED },
+      });
+      prisma.staff.findUnique.mockResolvedValue({
+        accountType: 'PHYSICIAN',
+        staffRole: 'CONSULTANT',
+      });
+      await expect(
+        service.assertCanEdit(encounterId, coveringPhysicianId),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects medical student on active-admission encounter', async () => {
+      prisma.encounter.findUnique.mockResolvedValue({
+        ...baseEncounter,
+        admissionId,
+        admission: { status: AdmissionStatus.ACTIVE },
+      });
+      prisma.staff.findUnique.mockResolvedValue({
+        accountType: 'PHYSICIAN',
+        staffRole: 'MEDICAL_STUDENT',
+      });
+      await expect(
+        service.assertCanEdit(encounterId, coveringPhysicianId),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -106,6 +172,8 @@ describe('EncounterEditPolicyService', () => {
           id: encounterId,
           status: EncounterStatus.ONGOING,
           doctorId,
+          admissionId: null,
+          admission: null,
         },
         doctorId,
         emptySnapshot(),
@@ -121,8 +189,10 @@ describe('EncounterEditPolicyService', () => {
           id: encounterId,
           status: EncounterStatus.COMPLETED,
           doctorId,
+          admissionId,
+          admission: { status: AdmissionStatus.ACTIVE },
         },
-        doctorId,
+        coveringPhysicianId,
         snapshot,
         ['hpi'],
         'Corrected typo',
@@ -131,7 +201,7 @@ describe('EncounterEditPolicyService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             encounterId,
-            editedById: doctorId,
+            editedById: coveringPhysicianId,
             reason: 'Corrected typo',
             changedKeys: ['hpi'],
           }),
@@ -145,6 +215,8 @@ describe('EncounterEditPolicyService', () => {
           id: encounterId,
           status: EncounterStatus.COMPLETED,
           doctorId,
+          admissionId: null,
+          admission: null,
         },
         doctorId,
         emptySnapshot(),
@@ -176,9 +248,8 @@ describe('EncounterEditPolicyService', () => {
   describe('getEditMeta', () => {
     it('reports canEdit for treating doctor', async () => {
       prisma.encounter.findUnique.mockResolvedValue({
-        id: encounterId,
+        ...baseEncounter,
         status: EncounterStatus.COMPLETED,
-        doctorId,
       });
       prisma.encounterEditHistory.count.mockResolvedValue(2);
       prisma.encounterEditHistory.findFirst.mockResolvedValue({
@@ -192,18 +263,37 @@ describe('EncounterEditPolicyService', () => {
         lastEditedAt: '2026-05-28T12:00:00.000Z',
         canEdit: true,
         requiresVersionedEdits: true,
+        isSharedInpatientEncounter: false,
+        admissionStatus: null,
+        canEditAsCoveringPhysician: false,
       });
     });
 
-    it('reports canEdit false for other staff', async () => {
-      prisma.encounter.findUnique.mockResolvedValue({
-        id: encounterId,
-        status: EncounterStatus.ONGOING,
-        doctorId,
-      });
+    it('reports canEdit false for other staff on outpatient encounter', async () => {
+      prisma.encounter.findUnique.mockResolvedValue(baseEncounter);
       const meta = await service.getEditMeta(encounterId, otherStaffId);
       expect(meta.canEdit).toBe(false);
+      expect(meta.canEditAsCoveringPhysician).toBe(false);
       expect(meta.requiresVersionedEdits).toBe(false);
+    });
+
+    it('reports canEdit for covering physician on active admission', async () => {
+      prisma.encounter.findUnique.mockResolvedValue({
+        ...baseEncounter,
+        status: EncounterStatus.COMPLETED,
+        admissionId,
+        admission: { status: AdmissionStatus.ACTIVE },
+      });
+      prisma.staff.findUnique.mockResolvedValue({
+        accountType: 'PHYSICIAN',
+        staffRole: 'RESIDENT',
+      });
+
+      const meta = await service.getEditMeta(encounterId, coveringPhysicianId);
+      expect(meta.canEdit).toBe(true);
+      expect(meta.canEditAsCoveringPhysician).toBe(true);
+      expect(meta.isSharedInpatientEncounter).toBe(true);
+      expect(meta.admissionStatus).toBe(AdmissionStatus.ACTIVE);
     });
   });
 

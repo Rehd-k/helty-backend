@@ -9,7 +9,14 @@ export class ListAdmissionsQueryDto {
   take?: string;
 
   @IsOptional()
-  @IsIn(['admitted', 'ACTIVE', 'DISCHARGED', 'TRANSFERRED', 'DECEASED'])
+  @IsIn([
+    'admitted',
+    'ACTIVE',
+    'PENDING_BILLING_CLEARANCE',
+    'DISCHARGED',
+    'TRANSFERRED',
+    'DECEASED',
+  ])
   status?: string;
 
   @IsOptional()

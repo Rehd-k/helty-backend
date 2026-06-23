@@ -46,6 +46,11 @@ export class CreateAdmissionMedicationOrderDto {
   @IsNotEmpty()
   frequency: string;
 
+  @ApiPropertyOptional({ description: 'Duration (e.g. 7 days, 2 weeks)' })
+  @IsOptional()
+  @IsString()
+  duration?: string;
+
   @ApiProperty()
   @IsDateString()
   startDateTime: string;
@@ -85,6 +90,11 @@ export class UpdateAdmissionMedicationOrderDto {
   @IsOptional()
   @IsString()
   frequency?: string;
+
+  @ApiPropertyOptional({ description: 'Duration (e.g. 7 days, 2 weeks)' })
+  @IsOptional()
+  @IsString()
+  duration?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

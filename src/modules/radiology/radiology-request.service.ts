@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RadiologyRequestStatus } from '@prisma/client';
+import { Prisma, RadiologyRequestStatus, AdmissionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { invoiceLinkException } from '../../common/exceptions/invoice-link.exception';
@@ -13,6 +13,9 @@ import { UpdateRadiologyOrderItemDto } from './dto/update-radiology-order-item.d
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import {
+  resolveOrderingDoctorId,
+} from '../encounter/encounter-inpatient-edit.util';
 
 @Injectable()
 export class RadiologyRequestService {
@@ -21,16 +24,25 @@ export class RadiologyRequestService {
     private readonly invoiceService: InvoiceService,
   ) {}
 
-  async create(dto: CreateRadiologyRequestDto) {
+  async create(dto: CreateRadiologyRequestDto, actingStaffId: string) {
     const patient = await this.prisma.patient.findUnique({
       where: { id: dto.patientId },
     });
     if (!patient) {
       throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
     }
+    let encounterForDoctor: {
+      admissionId: string | null;
+      admission?: { status: AdmissionStatus } | null;
+    } | null = null;
     if (dto.encounterId) {
       const encounter = await this.prisma.encounter.findUnique({
         where: { id: dto.encounterId },
+        select: {
+          patientId: true,
+          admissionId: true,
+          admission: { select: { status: true } },
+        },
       });
       if (!encounter) {
         throw new NotFoundException(
@@ -42,12 +54,20 @@ export class RadiologyRequestService {
           'Encounter does not belong to the given patient.',
         );
       }
+      encounterForDoctor = encounter;
     }
+    const requestedById = encounterForDoctor
+      ? resolveOrderingDoctorId(
+          encounterForDoctor,
+          actingStaffId,
+          dto.requestedById,
+        )
+      : dto.requestedById;
     const doctor = await this.prisma.staff.findUnique({
-      where: { id: dto.requestedById },
+      where: { id: requestedById },
     });
     if (!doctor) {
-      throw new NotFoundException(`Staff "${dto.requestedById}" not found.`);
+      throw new NotFoundException(`Staff "${requestedById}" not found.`);
     }
     if (dto.departmentId) {
       const dept = await this.prisma.department.findUnique({
@@ -113,7 +133,7 @@ export class RadiologyRequestService {
           await this.invoiceService.createWithServiceItem({
             patientId: dto.patientId,
             encounterId: dto.encounterId,
-            staffId: dto.requestedById,
+            staffId: requestedById,
             serviceId: item.serviceId,
           });
         resolved = {
@@ -164,7 +184,7 @@ export class RadiologyRequestService {
         data: {
           patientId: dto.patientId,
           encounterId: dto.encounterId ?? undefined,
-          requestedById: dto.requestedById,
+          requestedById,
           departmentId: dto.departmentId ?? undefined,
           items: {
             create: prepared.map(({ item }) => ({

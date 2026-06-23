@@ -12,13 +12,26 @@ import {
   ParseUUIDPipe,
   ParseIntPipe,
   DefaultValuePipe,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { JwtAuthGuard, AccessGuard } from '../../common/guards';
+import { AccountTypes } from '../../common/decorators';
+import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
 import { MedicationOrderService } from './medication-order.service';
 import {
   CreateMedicationOrderDto,
   UpdateMedicationOrderDto,
 } from './dto/create-medication-order.dto';
+import { BeyondDurationConsentDto } from './dto/beyond-duration-consent.dto';
+
+const DOCTOR_CONSENT_ACCESS = [
+  'INPATIENT_DOCTOR',
+  'CONSULTANT',
+  'CMD',
+  'SUPER_ADMIN',
+] as const;
 
 @ApiTags('Medication Order')
 @Controller('medication-orders')
@@ -40,8 +53,11 @@ export class MedicationOrderController {
     description: 'Invalid input or validation failed.',
   })
   @ApiResponse({ status: 404, description: 'Encounter or drug not found.' })
-  create(@Body() dto: CreateMedicationOrderDto) {
-    return this.medicationOrderService.create(dto);
+  create(
+    @Body() dto: CreateMedicationOrderDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.medicationOrderService.create(dto, req.user.sub);
   }
 
   @Get()
@@ -72,6 +88,35 @@ export class MedicationOrderController {
   @ApiResponse({ status: 404, description: 'Encounter not found.' })
   findByEncounterId(@Param('encounterId', ParseUUIDPipe) encounterId: string) {
     return this.medicationOrderService.findByEncounterId(encounterId);
+  }
+
+  @Get(':id/dose-schedule')
+  @UseGuards(JwtAuthGuard, AccessGuard)
+  @ApiBearerAuth()
+  @AccountTypes(...CLINICAL_READ_ACCESS)
+  @ApiOperation({ summary: 'Get dose schedule for a medication order' })
+  getDoseSchedule(@Param('id', ParseUUIDPipe) id: string) {
+    return this.medicationOrderService.getDoseSchedule(id);
+  }
+
+  @Post(':id/beyond-duration-consent')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, AccessGuard)
+  @ApiBearerAuth()
+  @AccountTypes(...DOCTOR_CONSENT_ACCESS)
+  @ApiOperation({
+    summary: 'Authorize administration beyond prescribed course duration',
+  })
+  beyondDurationConsent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BeyondDurationConsentDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.medicationOrderService.recordBeyondDurationConsent(
+      id,
+      req.user.sub,
+      dto,
+    );
   }
 
   @Get(':id')

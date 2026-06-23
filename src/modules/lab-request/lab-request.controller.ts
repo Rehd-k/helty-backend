@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { LabRequestService } from './lab-request.service';
 import {
@@ -26,8 +27,11 @@ export class LabRequestController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a lab request (order) for an encounter' })
-  create(@Body() dto: CreateLabRequestDto) {
-    return this.labRequestService.create(dto);
+  create(
+    @Body() dto: CreateLabRequestDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.labRequestService.create(dto, req.user.sub);
   }
 
   @Get()

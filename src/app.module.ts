@@ -45,6 +45,7 @@ import { DialysisModule } from './modules/dialysis/dialysis.module';
 import { BillingAnalyticsModule } from './modules/billing-analytics/billing-analytics.module';
 import { FrontdeskModule } from './modules/frontdesk/frontdesk.module';
 import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module';
+import { MedicationScheduleModule } from './modules/medication-schedule/medication-schedule.module';
 import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboard.module';
 import { HmoModule } from './modules/hmo/hmo.module';
 import { InpatientNursingModule } from './modules/inpatient-nursing/inpatient-nursing.module';
@@ -120,6 +121,7 @@ import { TheatreModule } from './modules/theatre/theatre.module';
     FrontdeskModule,
     HeltyDesktopModule,
     NursesDashboardModule,
+    MedicationScheduleModule,
     HmoModule,
     InpatientNursingModule,
     NursingModule,

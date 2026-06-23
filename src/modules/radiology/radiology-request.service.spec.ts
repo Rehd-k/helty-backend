@@ -17,6 +17,8 @@ describe('RadiologyRequestService', () => {
       findUnique: jest.fn().mockResolvedValue({
         id: 'enc-1',
         patientId: 'pat-1',
+        admissionId: null,
+        admission: null,
       }),
     },
     staff: { findUnique: jest.fn().mockResolvedValue({ id: 'doc-1' }) },
@@ -41,17 +43,20 @@ describe('RadiologyRequestService', () => {
   });
 
   it('encounter-billed imaging skips admission and consumable payment checks', async () => {
-    await service.create({
-      patientId: 'pat-1',
-      encounterId: 'enc-1',
-      requestedById: 'doc-1',
-      items: [
-        {
-          scanType: 'XRAY' as any,
-          serviceId: 'svc-1',
-        },
-      ],
-    });
+    await service.create(
+      {
+        patientId: 'pat-1',
+        encounterId: 'enc-1',
+        requestedById: 'doc-1',
+        items: [
+          {
+            scanType: 'XRAY' as any,
+            serviceId: 'svc-1',
+          },
+        ],
+      },
+      'doc-1',
+    );
 
     expect(invoiceService.assertInpatientCreditAllowed).not.toHaveBeenCalled();
     expect(invoiceService.assertPaidInvoiceItemConsumable).not.toHaveBeenCalled();

@@ -209,6 +209,12 @@ model Admission {
   dischargeSummary   String?
   outcome            String?
 
+  clinicallyDischargedBy   Staff?    @relation("AdmissionClinicallyDischargedBy", fields: [clinicallyDischargedById], references: [id])
+  clinicallyDischargedById String?
+  billingClearedAt         DateTime?
+  billingClearedBy         Staff?    @relation("AdmissionBillingClearedBy", fields: [billingClearedById], references: [id])
+  billingClearedById       String?
+
   nurseAssignments          NurseAssignment[]
   medicationOrders          MedicationOrder[]
   medicationAdministrations MedicationAdministration[]
@@ -1924,6 +1930,7 @@ enum AdmissionType {
 
 enum AdmissionStatus {
   ACTIVE
+  PENDING_BILLING_CLEARANCE
   DISCHARGED
   TRANSFERRED
   DECEASED
@@ -2012,6 +2019,30 @@ enum MedicationAdminStatus {
 enum MedicationAdministrationLifecycleStatus {
   ACTIVE
   STOPPED
+}
+
+enum MedicationScheduleStatus {
+  NOT_STARTED
+  ACTIVE
+  DUE_SOON
+  OVERDUE
+  EXPIRED
+  STOPPED
+}
+
+enum RxDurationUnit {
+  DAYS
+  WEEKS
+  MONTHS
+  YEARS
+  HOURS
+}
+
+enum AdmissionAlertType {
+  GENERIC
+  MEDICATION_DOSE_DUE
+  MEDICATION_DOSE_OVERDUE
+  MEDICATION_COURSE_EXPIRED
 }
 
 enum IVOrderStatus {
@@ -2176,6 +2207,7 @@ model Staff {
   outpatientNurseAssignments          OutpatientNurseAssignment[] @relation("OutpatientNurseAssignmentNurse")
   outpatientNurseAssignmentsCreated   OutpatientNurseAssignment[] @relation("OutpatientNurseAssignmentAssignedBy")
   medicationAdministrations           MedicationAdministration[]  @relation("MedicationAdministrationNurse")
+  medicationBeyondDurationConsents    MedicationOrderSchedule[]   @relation("MedicationBeyondDurationConsent")
   ivMonitorings                       IVMonitoring[]              @relation("IVMonitoringNurse")
   intakeOutputRecords                 IntakeOutputRecord[]        @relation("IntakeOutputRecordNurse")
   nursingNotes                        NursingNote[]               @relation("NursingNoteNurse")
@@ -2210,6 +2242,8 @@ model Staff {
   pharmacyLocationsUpdated            PharmacyLocation[]          @relation("PharmacyLocationUpdatedBy")
   pharmacyLocationAssigned            PharmacyLocation?           @relation("PharmacyLocationStaff")
   admissionsAsAttendingDoctor         Admission[]                 @relation("AdmissionAttendingDoctor")
+  admissionsClinicallyDischarged        Admission[]                 @relation("AdmissionClinicallyDischargedBy")
+  admissionsBillingCleared            Admission[]                 @relation("AdmissionBillingClearedBy")
   wardRoundNotes                      WardRoundNote[]
   pregnanciesCreated                  Pregnancy[]                 @relation("PregnancyCreatedBy")
   pregnanciesUpdated                  Pregnancy[]                 @relation("PregnancyUpdatedBy")
@@ -2943,6 +2977,8 @@ model MedicationOrder {
   invoiceItemId     String?                    @unique
   administrations   MedicationAdministration[]
   medicationRequests MedicationRequest[]
+  doseSchedule      MedicationOrderSchedule?
+  alertLogs         AlertLog[]
 
   @@index([encounterId])
   @@index([admissionId])
@@ -2950,6 +2986,38 @@ model MedicationOrder {
   @@index([invoiceItemId])
   @@index([prescribedDrugId])
   @@index([substitutedByPharmacistId])
+}
+
+model MedicationOrderSchedule {
+  id                        String                   @id @default(uuid())
+  medicationOrderId         String                   @unique
+  medicationOrder           MedicationOrder          @relation(fields: [medicationOrderId], references: [id], onDelete: Cascade)
+
+  scheduleStartedAt         DateTime?
+  courseEndsAt              DateTime?
+  nextDueAt                 DateTime?
+  lastAdministeredAt        DateTime?
+  doseSequenceNumber        Int                      @default(0)
+
+  scheduleStatus            MedicationScheduleStatus @default(NOT_STARTED)
+
+  dosesPerDay               Decimal?                 @db.Decimal(12, 6)
+  frequencyIntervalHours    Decimal?                 @db.Decimal(12, 6)
+
+  durationValue             Int?
+  durationUnit              RxDurationUnit?
+
+  beyondDurationConsentAt   DateTime?
+  beyondDurationConsentById String?
+  beyondDurationConsentBy   Staff?                   @relation("MedicationBeyondDurationConsent", fields: [beyondDurationConsentById], references: [id])
+  beyondDurationConsentNote String?
+
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+
+  @@index([scheduleStatus])
+  @@index([nextDueAt])
+  @@index([courseEndsAt])
 }
 
 model MedicationRequest {
@@ -3540,6 +3608,8 @@ model MedicationAdministration {
   isOverMedication Boolean               @default(false)
   reasonIfNotGiven String?
   remarks          String?
+  doseNumber       Int?
+  isFirstDose      Boolean               @default(false)
   /// Dispensary stock was deducted from (when nurse selected one at administration).
   pharmacyLocationId    String?
   /// Whole units removed from inventory; null when no dispensary was used.
@@ -3721,14 +3791,22 @@ model AlertLog {
   admission   Admission @relation(fields: [admissionId], references: [id])
   admissionId String
 
-  alertType    String
-  severity     AlertSeverity
-  message      String
-  resolved     Boolean       @default(false)
-  resolvedBy   Staff?        @relation(fields: [resolvedById], references: [id])
-  resolvedById String?
-  resolvedAt   DateTime?
-  createdAt    DateTime      @default(now())
+  alertType         String
+  type              AdmissionAlertType @default(GENERIC)
+  severity          AlertSeverity
+  message           String
+  medicationOrderId String?
+  medicationOrder   MedicationOrder?   @relation(fields: [medicationOrderId], references: [id], onDelete: SetNull)
+  dueAt             DateTime?
+  metadata          Json?
+  resolved          Boolean            @default(false)
+  resolvedBy        Staff?             @relation(fields: [resolvedById], references: [id])
+  resolvedById      String?
+  resolvedAt        DateTime?
+  createdAt         DateTime           @default(now())
+
+  @@index([medicationOrderId])
+  @@index([type])
 }
 
 model AuditTrail {

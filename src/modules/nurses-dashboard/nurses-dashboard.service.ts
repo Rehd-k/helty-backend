@@ -7,6 +7,7 @@ import {
   StaffRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MedicationScheduleService } from '../medication-schedule/medication-schedule.service';
 import {
   capabilitiesForStaffRole,
   defaultDashboardRoute,
@@ -144,7 +145,10 @@ function relativeLabel(occurredAt: Date, asOf: Date): string {
 
 @Injectable()
 export class NursesDashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly medicationScheduleService: MedicationScheduleService,
+  ) {}
 
   async me(staffId: string) {
     const staff = await this.prisma.staff.findUnique({
@@ -303,6 +307,7 @@ export class NursesDashboardService {
       departmentLoad,
       staffOnDuty,
       criticalAlerts,
+      dueMedications: await this.medicationScheduleService.queryDueMedications(),
       dashboardType: 'legacy',
     };
   }
@@ -358,6 +363,7 @@ export class NursesDashboardService {
       where: { id: staffId },
       select: {
         staffRole: true,
+        wardId: true,
         ward: { select: { name: true } },
         department: { select: { name: true } },
       },
@@ -368,7 +374,8 @@ export class NursesDashboardService {
     const shiftDay = new Date(asOf);
     shiftDay.setUTCHours(0, 0, 0, 0);
 
-    const [rosterToday, rosterSummary, alerts, bedCurrent] = await Promise.all([
+    const [rosterToday, rosterSummary, alerts, bedCurrent, dueMedications] =
+      await Promise.all([
       this.prisma.nurseShiftRoster.count({
         where: { nursingUnit: unit ?? undefined, shiftDate: shiftDay },
       }),
@@ -379,6 +386,7 @@ export class NursesDashboardService {
       }),
       this.buildCriticalAlerts(asOf, unit ?? undefined),
       this.bedOccupancyAt(asOf, unit ?? undefined),
+      this.medicationScheduleService.queryDueMedications(staff?.wardId),
     ]);
 
     const queueDepth =
@@ -416,6 +424,7 @@ export class NursesDashboardService {
       })),
       staffOnDuty: await this.buildStaffOnDuty(unit ?? undefined),
       criticalAlerts: alerts,
+      dueMedications,
     };
   }
 
@@ -433,7 +442,7 @@ export class NursesDashboardService {
       select: { firstName: true, lastName: true, staffRole: true },
     });
 
-    const [inpatientAssignments, outpatientAssignments, rosterShifts, alerts] =
+    const [inpatientAssignments, outpatientAssignments, rosterShifts, alerts, dueMedicationsAll] =
       await Promise.all([
         this.prisma.nurseAssignment.findMany({
           where: { nurseId: staffId, shiftDate: shiftDay },
@@ -470,7 +479,15 @@ export class NursesDashboardService {
           orderBy: { shiftType: 'asc' },
         }),
         this.buildCriticalAlerts(asOf),
+        this.medicationScheduleService.queryDueMedications(),
       ]);
+
+    const assignedAdmissionIds = new Set(
+      inpatientAssignments.map((a) => a.admissionId),
+    );
+    const dueMedications = dueMedicationsAll.filter((item) =>
+      assignedAdmissionIds.has(item.admissionId),
+    );
 
     return {
       dashboardType: 'line',
@@ -499,6 +516,7 @@ export class NursesDashboardService {
         assignedAt: a.assignedAt.toISOString(),
       })),
       criticalAlerts: alerts,
+      dueMedications,
     };
   }
 
@@ -598,7 +616,13 @@ export class NursesDashboardService {
   private async dischargesInRange(from: Date, to: Date) {
     return this.prisma.admission.count({
       where: {
-        status: AdmissionStatus.DISCHARGED,
+        status: {
+          in: [
+            AdmissionStatus.PENDING_BILLING_CLEARANCE,
+            AdmissionStatus.DISCHARGED,
+            AdmissionStatus.DECEASED,
+          ],
+        },
         OR: [
           { dischargeDateTime: { gte: from, lte: to } },
           {

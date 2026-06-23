@@ -15,6 +15,8 @@ describe('LabRequestService', () => {
       findUnique: jest.fn().mockResolvedValue({
         id: 'enc-1',
         patientId: 'pat-1',
+        admissionId: null,
+        admission: null,
       }),
     },
     labRequest: {
@@ -36,12 +38,15 @@ describe('LabRequestService', () => {
   });
 
   it('creates billed lab request without checking active admission', async () => {
-    await service.create({
-      encounterId: 'enc-1',
-      patientId: 'pat-1',
-      requestedByDoctorId: 'doc-1',
-      serviceId: 'svc-1',
-    });
+    await service.create(
+      {
+        encounterId: 'enc-1',
+        patientId: 'pat-1',
+        requestedByDoctorId: 'doc-1',
+        serviceId: 'svc-1',
+      },
+      'doc-1',
+    );
 
     expect(invoiceService.assertInpatientCreditAllowed).not.toHaveBeenCalled();
     expect(invoiceService.createWithServiceItem).toHaveBeenCalledWith({

@@ -421,6 +421,14 @@ export class EncounterService {
             accountType: true,
           },
         },
+        updatedBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            staffId: true,
+          },
+        },
         admission: true,
         appointment: expandSet.has('appointment') || expandSet.has('*'),
         doctorReports: { where: { encounterId: encounterBase.id } },

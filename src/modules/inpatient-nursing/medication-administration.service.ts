@@ -13,9 +13,16 @@ import {
 } from './inpatient-nursing.utils';
 import {
   MedicationAdminStatus,
+  MedicationAdministrationLifecycleStatus,
+  MedicationScheduleStatus,
   PharmacyLocationType,
   Prisma,
 } from '@prisma/client';
+import {
+  courseDurationExpiredException,
+  medicationScheduleException,
+} from '../../common/exceptions/medication-schedule.exception';
+import { MedicationScheduleService } from '../medication-schedule/medication-schedule.service';
 import {
   CreateMedicationAdministrationDto,
   UpdateMedicationAdministrationDto,
@@ -44,8 +51,11 @@ const medicationOrderSelect = {
   quantity: true,
   route: true,
   frequency: true,
+  duration: true,
+  administrationStatus: true,
   encounterId: true,
   patientId: true,
+  doseSchedule: true,
 } as const;
 
 const invoiceItemSelect = {
@@ -88,6 +98,7 @@ export class MedicationAdministrationService {
     private readonly prisma: PrismaService,
     private readonly drugStockService: DrugStockService,
     private readonly invoiceService: InvoiceService,
+    private readonly medicationScheduleService: MedicationScheduleService,
   ) {}
 
   async list(admissionId: string) {
@@ -115,10 +126,57 @@ export class MedicationAdministrationService {
         dto.medicationOrderId,
         admissionId,
       ),
+      include: { doseSchedule: true },
     });
     if (!order) {
       throw new NotFoundException('Medication order not found');
     }
+
+    if (
+      order.administrationStatus ===
+      MedicationAdministrationLifecycleStatus.STOPPED
+    ) {
+      throw medicationScheduleException(
+        'INVALID_SCHEDULE_STATE',
+        'Cannot record administration: medication order is stopped.',
+      );
+    }
+
+    const schedule =
+      order.doseSchedule ??
+      (await this.medicationScheduleService.ensureScheduleForOrder(order.id, undefined, {
+        frequency: order.frequency,
+        duration: order.duration,
+      }));
+
+    const actualTime = dto.actualTime ? new Date(dto.actualTime) : new Date();
+    const now = new Date();
+    const currentStatus = this.medicationScheduleService.recomputeScheduleStatus(
+      now,
+      schedule,
+      order.administrationStatus,
+    );
+
+    if (
+      dto.status === MedicationAdminStatus.GIVEN &&
+      currentStatus === MedicationScheduleStatus.EXPIRED &&
+      !schedule.beyondDurationConsentAt
+    ) {
+      throw courseDurationExpiredException(
+        schedule.courseEndsAt ?? now,
+        order.id,
+      );
+    }
+
+    const scheduleUpdate = this.medicationScheduleService.buildScheduleUpdateFromAdministration(
+      {
+        schedule,
+        order,
+        status: dto.status,
+        actualTime,
+        now,
+      },
+    );
 
     const { quantity, isOverMedication } = this.buildAdministrationQuantityFields(
       order,
@@ -188,7 +246,7 @@ export class MedicationAdministrationService {
         );
       }
 
-      return tx.medicationAdministration.create({
+      const administration = await tx.medicationAdministration.create({
         data: {
           admissionId,
           medicationOrderId: dto.medicationOrderId,
@@ -198,13 +256,52 @@ export class MedicationAdministrationService {
           status: dto.status,
           quantity,
           isOverMedication,
+          doseNumber: scheduleUpdate.doseNumber,
+          isFirstDose: scheduleUpdate.isFirstDose,
           reasonIfNotGiven: dto.reasonIfNotGiven?.trim() || null,
           remarks: dto.remarks?.trim() || null,
           pharmacyLocationId,
           stockDeductedQuantity,
           invoiceItemId,
         },
-        include: marInclude,
+      });
+
+      let scheduleData = scheduleUpdate.scheduleData;
+      if (
+        dto.status === MedicationAdminStatus.MISSED ||
+        dto.status === MedicationAdminStatus.REFUSED
+      ) {
+        scheduleData = {
+          scheduleStatus: this.medicationScheduleService.recomputeScheduleStatus(
+            now,
+            schedule,
+            order.administrationStatus,
+          ),
+        };
+      }
+
+      await tx.medicationOrderSchedule.update({
+        where: { medicationOrderId: order.id },
+        data: scheduleData,
+      });
+
+      const updatedSchedule = await tx.medicationOrderSchedule.findUniqueOrThrow({
+        where: { medicationOrderId: order.id },
+      });
+
+      await this.medicationScheduleService.syncAlertsForSchedule(
+        admissionId,
+        order,
+        updatedSchedule,
+        tx,
+      );
+
+      return tx.medicationAdministration.findUniqueOrThrow({
+        where: { id: administration.id },
+        include: {
+          ...marInclude,
+          medicationOrder: { select: medicationOrderSelect },
+        },
       });
     });
 
@@ -271,8 +368,20 @@ export class MedicationAdministrationService {
   }
 
   private mapMarResponse(row: MarRow) {
+    const order = row.medicationOrder as typeof row.medicationOrder & {
+      doseSchedule?: Parameters<MedicationScheduleService['mapScheduleToApi']>[0] | null;
+    };
+
     return {
       ...row,
+      medicationOrder: order
+        ? {
+            ...order,
+            doseSchedule: order.doseSchedule
+              ? this.medicationScheduleService.mapScheduleToApi(order.doseSchedule)
+              : null,
+          }
+        : order,
       pharmacyLocation: row.pharmacyLocation
         ? { ...row.pharmacyLocation, isActive: true }
         : null,
