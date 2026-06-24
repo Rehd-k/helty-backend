@@ -132,9 +132,15 @@ export class StaffService {
     const pageSize = Math.min(Math.max(1, query.limit ?? 20), 500);
     const skip = (page - 1) * pageSize;
 
+    const filters: Prisma.StaffWhereInput = {};
+    if (query.accountType) filters.accountType = query.accountType;
+    if (query.isActive !== undefined) filters.isActive = query.isActive;
+
     const where: Prisma.StaffWhereInput = query.q?.trim()
-      ? this.buildStaffSearchWhere(query.q)
-      : {};
+      ? { AND: [this.buildStaffSearchWhere(query.q), filters] }
+      : Object.keys(filters).length
+        ? filters
+        : {};
 
     const [data, total] = await Promise.all([
       this.prisma.staff.findMany({
@@ -285,4 +291,4 @@ export class StaffService {
     return this.prisma.staff.delete({ where: { id } });
   }
 }
-
+

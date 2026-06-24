@@ -16,6 +16,7 @@ import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { AccountType } from '@prisma/client';
 import { Public } from '../../common/decorators';
 import { ListStaffQueryDto } from './dto/list-staff-query.dto';
 
@@ -49,6 +50,8 @@ export class StaffController {
   @Get()
   @ApiOperation({ summary: 'List all staff' })
   @ApiQuery({ name: 'q', required: false, description: 'Search staff by name, ID, email, department, account type, or role' })
+  @ApiQuery({ name: 'accountType', required: false, enum: AccountType, description: 'Filter by account type (e.g. PHYSICIAN, NURSE)' })
+  @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active/inactive staff' })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default 1)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (default 20, max 500)' })
   @ApiResponse({ status: 200, description: 'Staff list returned' })

@@ -15,18 +15,6 @@ import { BeyondDurationConsentDto } from './dto/beyond-duration-consent.dto';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
 import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
 
-const drugWithPricingBatchInclude = {
-  batches: {
-    where: { quantityRemaining: { gt: 0 } },
-    orderBy: { expiryDate: 'asc' as const },
-    take: 1,
-  },
-} satisfies Prisma.DrugInclude;
-
-type DrugWithPricingBatch = Prisma.DrugGetPayload<{
-  include: typeof drugWithPricingBatchInclude;
-}>;
-
 @Injectable()
 export class MedicationOrderService {
   constructor(
@@ -47,7 +35,7 @@ export class MedicationOrderService {
     );
     const [, drug, patient, doctor] = await Promise.all([
       Promise.resolve(encounter),
-      this.loadDrugWithPricingBatch(dto.drugId),
+      this.validateDrug(dto.drugId),
       this.validatePatient(dto.patientId),
       this.validateDoctor(doctorId),
     ]);
@@ -453,19 +441,6 @@ export class MedicationOrderService {
       );
     }
     return encounter;
-  }
-
-  private async loadDrugWithPricingBatch(
-    drugId: string,
-  ): Promise<DrugWithPricingBatch> {
-    const drug = await this.prisma.drug.findUnique({
-      where: { id: drugId },
-      include: drugWithPricingBatchInclude,
-    });
-    if (!drug) {
-      throw new NotFoundException(`Drug with id "${drugId}" not found.`);
-    }
-    return drug;
   }
 
   private async validateDrug(drugId: string) {

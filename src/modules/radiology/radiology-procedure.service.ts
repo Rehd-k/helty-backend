@@ -7,6 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRadiologyProcedureDto } from './dto/radiology-procedure.dto';
 import { UpdateRadiologyProcedureDto } from './dto/radiology-procedure.dto';
 import { RadiologyRequestStatus } from '@prisma/client';
+import { syncRadiologyOrderStatusAfterItemChange } from './radiology-order-status.util';
 
 @Injectable()
 export class RadiologyProcedureService {
@@ -52,8 +53,12 @@ export class RadiologyProcedureService {
       }
     }
 
-    const [procedure] = await this.prisma.$transaction([
-      this.prisma.radiologyProcedure.create({
+    const itemStatus = dto.endTime
+      ? RadiologyRequestStatus.COMPLETED
+      : RadiologyRequestStatus.IN_PROGRESS;
+
+    return this.prisma.$transaction(async (tx) => {
+      const procedure = await tx.radiologyProcedure.create({
         data: {
           radiologyOrderItemId: orderItemId,
           performedById: dto.performedById,
@@ -68,13 +73,14 @@ export class RadiologyProcedureService {
           },
           machine: true,
         },
-      }),
-      this.prisma.radiologyOrderItem.update({
+      });
+      await tx.radiologyOrderItem.update({
         where: { id: orderItemId },
-        data: { status: RadiologyRequestStatus.IN_PROGRESS },
-      }),
-    ]);
-    return procedure;
+        data: { status: itemStatus },
+      });
+      await syncRadiologyOrderStatusAfterItemChange(tx, orderItem.orderId);
+      return procedure;
+    });
   }
 
   async update(orderItemId: string, dto: UpdateRadiologyProcedureDto) {
@@ -97,23 +103,28 @@ export class RadiologyProcedureService {
     if (dto.endTime !== undefined) updateData.endTime = new Date(dto.endTime);
     if (dto.notes !== undefined) updateData.notes = dto.notes;
 
-    const procedure = await this.prisma.radiologyProcedure.update({
-      where: { radiologyOrderItemId: orderItemId },
-      data: updateData,
-      include: {
-        performedBy: { select: { id: true, firstName: true, lastName: true } },
-        machine: true,
-      },
-    });
-
-    if (dto.endTime) {
-      await this.prisma.radiologyOrderItem.update({
-        where: { id: orderItemId },
-        data: { status: RadiologyRequestStatus.COMPLETED },
+    return this.prisma.$transaction(async (tx) => {
+      const procedure = await tx.radiologyProcedure.update({
+        where: { radiologyOrderItemId: orderItemId },
+        data: updateData,
+        include: {
+          performedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          machine: true,
+        },
       });
-    }
 
-    return procedure;
+      if (dto.endTime || procedure.endTime) {
+        await tx.radiologyOrderItem.update({
+          where: { id: orderItemId },
+          data: { status: RadiologyRequestStatus.COMPLETED },
+        });
+        await syncRadiologyOrderStatusAfterItemChange(tx, orderItem.orderId);
+      }
+
+      return procedure;
+    });
   }
 
   async getByOrderItemId(orderItemId: string) {

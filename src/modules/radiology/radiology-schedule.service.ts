@@ -7,6 +7,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRadiologyScheduleDto } from './dto/radiology-schedule.dto';
 import { UpdateRadiologyScheduleDto } from './dto/radiology-schedule.dto';
 import { RadiologyRequestStatus } from '@prisma/client';
+import { syncRadiologyOrderStatusAfterItemChange } from './radiology-order-status.util';
 
 @Injectable()
 export class RadiologyScheduleService {
@@ -51,8 +52,8 @@ export class RadiologyScheduleService {
       }
     }
 
-    const [schedule] = await this.prisma.$transaction([
-      this.prisma.radiologySchedule.create({
+    return this.prisma.$transaction(async (tx) => {
+      const schedule = await tx.radiologySchedule.create({
         data: {
           radiologyOrderItemId: orderItemId,
           scheduledAt: new Date(dto.scheduledAt),
@@ -65,13 +66,14 @@ export class RadiologyScheduleService {
           },
           machine: true,
         },
-      }),
-      this.prisma.radiologyOrderItem.update({
+      });
+      await tx.radiologyOrderItem.update({
         where: { id: orderItemId },
         data: { status: RadiologyRequestStatus.SCHEDULED },
-      }),
-    ]);
-    return schedule;
+      });
+      await syncRadiologyOrderStatusAfterItemChange(tx, orderItem.orderId);
+      return schedule;
+    });
   }
 
   async update(orderItemId: string, dto: UpdateRadiologyScheduleDto) {

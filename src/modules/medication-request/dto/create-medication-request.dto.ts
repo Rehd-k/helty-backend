@@ -81,8 +81,10 @@ export class ListMedicationRequestsQueryDto extends DateRangeSkipTakeDto {
   @IsOptional()
   encounterId?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by patient UUID' })
-  @IsUUID()
+  @ApiPropertyOptional({
+    description: 'Filter by hospital patient ID (e.g. BVNLI0T7)',
+  })
+  @IsString()
   @IsOptional()
   patientId?: string;
 

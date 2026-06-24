@@ -6,6 +6,10 @@ import {
 import { InvoiceStatus, MedicationRequestStatus, Prisma } from '@prisma/client';
 import { MedicationRequestService } from './medication-request.service';
 
+jest.mock('../../common/utils/human-readable-id.util', () => ({
+  generateHumanReadableId: jest.fn().mockReturnValue('ID001'),
+}));
+
 jest.mock('../../common/utils/patient-outpatient.util', () => ({
   isOutpatientPatient: jest.fn().mockResolvedValue(false),
 }));
@@ -138,9 +142,13 @@ describe('MedicationRequestService', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: drugId,
           genericName: 'Paracetamol',
-          batches: [{ id: 'b1', quantityRemaining: 50, expiryDate: new Date() }],
         }),
         findFirst: drugFindFirst,
+      },
+      drugBatch: {
+        findFirst: jest.fn().mockResolvedValue({
+          costPrice: new Prisma.Decimal(100),
+        }),
       },
       invoice: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({

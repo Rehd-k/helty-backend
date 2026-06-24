@@ -47,8 +47,12 @@ import {
 import { ConsumableStockService } from '../store/consumable-stock.service';
 import { PurchaseItemStockService } from '../purchases/purchase-item-stock.service';
 import { InvoiceItemRefundService } from './invoice-item-refund.service';
-import { isOpdWardName } from '../../common/utils/ward-name.util';
 import { generateHumanReadableId } from '../../common/utils/human-readable-id.util';
+import {
+  computeDrugUnitPrice,
+  DrugWithLatestCost,
+  loadDrugWithLatestCost,
+} from '../pharmacy/drug-pricing-batch.util';
 
 function generateInvoiceHumanId(): string {
   return generateHumanReadableId(10);
@@ -67,18 +71,6 @@ export type ConsolidatePendingInvoicesResult = {
   invoicesDeleted: number;
   sourcesSkipped: number;
 };
-
-const drugWithPricingBatchInclude = {
-  batches: {
-    where: { quantityRemaining: { gt: 0 } },
-    orderBy: { expiryDate: 'asc' as const },
-    take: 1,
-  },
-} satisfies Prisma.DrugInclude;
-
-type DrugWithPricingBatch = Prisma.DrugGetPayload<{
-  include: typeof drugWithPricingBatchInclude;
-}>;
 
 @Injectable()
 export class InvoiceService {
@@ -4043,8 +4035,8 @@ export class InvoiceService {
 
   /**
    * Resolve drug cost multiplier from the patient's ward (drugPricePercentage is a
-   * multiplier, not a percentage — e.g. 2 × cost 1200 → 2400). HMO patients on OPD
-   * use the Inpatient Ward multiplier instead.
+   * multiplier, not a percentage — e.g. 2 × cost 1200 → 2400). HMO outpatients
+   * (no active admission) use the Inpatient Ward multiplier instead.
    */
   private async resolveDrugPriceMultiplierForInvoice(
     invoiceId: string,
@@ -4053,6 +4045,7 @@ export class InvoiceService {
     const invoiceWithPatient = await tx.invoice.findUnique({
       where: { id: invoiceId },
       select: {
+        patientId: true,
         patient: {
           select: {
             hmoId: true,
@@ -4069,7 +4062,7 @@ export class InvoiceService {
     const ward = patient.wardId
       ? await tx.ward.findUnique({
           where: { id: patient.wardId },
-          select: { name: true, drugPricePercentage: true },
+          select: { drugPricePercentage: true },
         })
       : null;
 
@@ -4077,12 +4070,23 @@ export class InvoiceService {
       ? this.asDecimal(ward.drugPricePercentage)
       : defaultMultiplier;
 
-    if (patient.hmoId && isOpdWardName(ward?.name)) {
-      const inpatientWard = await tx.ward.findFirst({
-        where: { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
-        select: { drugPricePercentage: true },
+    if (patient.hmoId && invoiceWithPatient?.patientId) {
+      const activeAdmissions = await tx.admission.count({
+        where: {
+          patientId: invoiceWithPatient.patientId,
+          status: AdmissionStatus.ACTIVE,
+        },
       });
-      if (inpatientWard?.drugPricePercentage) {
+      if (activeAdmissions === 0) {
+        const inpatientWard = await tx.ward.findFirst({
+          where: { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
+          select: { drugPricePercentage: true },
+        });
+        if (!inpatientWard?.drugPricePercentage) {
+          throw new BadRequestException(
+            'Inpatient Ward is not configured with a drug price multiplier; cannot price HMO outpatient drugs.',
+          );
+        }
         multiplier = this.asDecimal(inpatientWard.drugPricePercentage);
       }
     }
@@ -4132,13 +4136,10 @@ export class InvoiceService {
   }
 
   private resolveDrugUnitPrice(
-    drug: DrugWithPricingBatch,
+    drug: DrugWithLatestCost,
     multiplier: Prisma.Decimal,
   ): Prisma.Decimal {
-    const batch = drug.batches?.[0];
-    return batch
-      ? this.asDecimal(batch.costPrice).mul(multiplier)
-      : new Prisma.Decimal(0);
+    return computeDrugUnitPrice(drug, multiplier);
   }
 
   private assertDrugInvoiceLineMutable(item: {
@@ -4199,13 +4200,7 @@ export class InvoiceService {
 
     let unitPrice = existing.unitPrice;
     if (changes.drugId !== undefined && changes.drugId !== existing.drugId) {
-      const drug = await tx.drug.findUnique({
-        where: { id: changes.drugId },
-        include: drugWithPricingBatchInclude,
-      });
-      if (!drug) {
-        throw new NotFoundException(`Drug ${changes.drugId} not found`);
-      }
+      const drug = await loadDrugWithLatestCost(tx, changes.drugId);
       const multiplier = await this.resolveDrugPriceMultiplierForInvoice(
         existing.invoice.id,
         tx,
@@ -4239,7 +4234,7 @@ export class InvoiceService {
       drugId: string;
       quantity?: number;
       createdByStaffId?: string;
-      preloadedDrug?: DrugWithPricingBatch;
+      preloadedDrug?: DrugWithLatestCost;
     },
     tx: Prisma.TransactionClient = this.prisma,
   ) {
@@ -4253,11 +4248,7 @@ export class InvoiceService {
 
     const drug =
       params.preloadedDrug ??
-      (await tx.drug.findUnique({
-        where: { id: params.drugId },
-        include: drugWithPricingBatchInclude,
-      }));
-    if (!drug) throw new NotFoundException(`Drug ${params.drugId} not found`);
+      (await loadDrugWithLatestCost(tx, params.drugId));
     if (params.preloadedDrug && params.preloadedDrug.id !== params.drugId) {
       throw new BadRequestException(
         'preloadedDrug id does not match params.drugId.',

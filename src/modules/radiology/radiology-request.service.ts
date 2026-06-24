@@ -16,6 +16,7 @@ import { patientNameFieldsSelect } from '../../common/utils/patient-display-name
 import {
   resolveOrderingDoctorId,
 } from '../encounter/encounter-inpatient-edit.util';
+import { syncRadiologyOrderStatusAfterItemChange } from './radiology-order-status.util';
 
 @Injectable()
 export class RadiologyRequestService {
@@ -216,7 +217,9 @@ export class RadiologyRequestService {
     const { from, to } = parseDateRange(fromDate, toDate);
 
     const where: Prisma.RadiologyOrderWhereInput = {};
-    if (status) where.status = status;
+    if (status) {
+      where.items = { some: { status } };
+    }
     if (patientId) where.patientId = patientId;
     if (encounterId) where.encounterId = encounterId;
     if (fromDate && toDate) where.createdAt = { gte: from, lte: to };
@@ -400,19 +403,23 @@ export class RadiologyRequestService {
           where: { id: itemId },
           data: { status: RadiologyRequestStatus.CANCELLED },
         });
-        await this.syncOrderStatusAfterItemChange(tx, orderId);
+        await syncRadiologyOrderStatusAfterItemChange(tx, orderId);
         return this.findOne(orderId);
       });
     }
 
-    return this.prisma.radiologyOrderItem
-      .update({
+    if (dto.status === undefined) {
+      return this.findOne(orderId);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.radiologyOrderItem.update({
         where: { id: itemId },
-        data: {
-          ...(dto.status !== undefined && { status: dto.status }),
-        },
-      })
-      .then(() => this.findOne(orderId));
+        data: { status: dto.status },
+      });
+      await syncRadiologyOrderStatusAfterItemChange(tx, orderId);
+      return this.findOne(orderId);
+    });
   }
 
   async remove(id: string) {
@@ -473,7 +480,7 @@ export class RadiologyRequestService {
       if (remaining === 0) {
         await tx.radiologyOrder.delete({ where: { id: orderId } });
       } else {
-        await this.syncOrderStatusAfterItemChange(tx, orderId);
+        await syncRadiologyOrderStatusAfterItemChange(tx, orderId);
       }
     });
 
@@ -511,27 +518,6 @@ export class RadiologyRequestService {
       throw new BadRequestException(
         `Cannot remove an imaging request with status ${item.status}.`,
       );
-    }
-  }
-
-  private async syncOrderStatusAfterItemChange(
-    tx: Prisma.TransactionClient,
-    orderId: string,
-  ) {
-    const items = await tx.radiologyOrderItem.findMany({
-      where: { orderId },
-      select: { status: true },
-    });
-    if (items.length === 0) return;
-
-    const allCancelled = items.every(
-      (i) => i.status === RadiologyRequestStatus.CANCELLED,
-    );
-    if (allCancelled) {
-      await tx.radiologyOrder.update({
-        where: { id: orderId },
-        data: { status: RadiologyRequestStatus.CANCELLED },
-      });
     }
   }
 }

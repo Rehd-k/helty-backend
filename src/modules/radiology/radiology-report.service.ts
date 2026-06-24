@@ -10,6 +10,7 @@ import {
   UpdateRadiologyStudyReportDto,
 } from './dto/radiology-report.dto';
 import { RadiologyRequestStatus } from '@prisma/client';
+import { syncRadiologyOrderStatusAfterItemChange } from './radiology-order-status.util';
 
 @Injectable()
 export class RadiologyReportService {
@@ -77,6 +78,7 @@ export class RadiologyReportService {
         where: { id: orderItemId },
         data: { status: RadiologyRequestStatus.REPORTED },
       });
+      await syncRadiologyOrderStatusAfterItemChange(tx, orderItem.orderId);
       await this.invoiceService.settleInvoiceItemIfPresent(
         tx,
         orderItem.invoiceItemId,

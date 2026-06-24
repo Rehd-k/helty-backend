@@ -2,6 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RadiologyRequestStatus } from '@prisma/client';
 
+const ACTIVE_STATUSES: RadiologyRequestStatus[] = [
+  RadiologyRequestStatus.PENDING,
+  RadiologyRequestStatus.SCHEDULED,
+  RadiologyRequestStatus.IN_PROGRESS,
+];
+
+const COMPLETED_STATUSES: RadiologyRequestStatus[] = [
+  RadiologyRequestStatus.COMPLETED,
+  RadiologyRequestStatus.REPORTED,
+];
+
 @Injectable()
 export class RadiologyDashboardService {
   constructor(private readonly prisma: PrismaService) {}
@@ -24,40 +35,30 @@ export class RadiologyDashboardService {
           where: { createdAt: { gte: startOfToday } },
         }),
         this.prisma.radiologyOrderItem.count({
-          where: { status: RadiologyRequestStatus.PENDING },
+          where: { status: { in: ACTIVE_STATUSES } },
         }),
         this.prisma.radiologyOrderItem.count({
-          where: { status: RadiologyRequestStatus.COMPLETED },
+          where: { status: { in: COMPLETED_STATUSES } },
         }),
         this.prisma.radiologyOrderItem.count({
-          where: { status: RadiologyRequestStatus.COMPLETED },
+          where: {
+            status: RadiologyRequestStatus.COMPLETED,
+            report: null,
+          },
         }),
         this.prisma.radiologyOrderItem.count({
           where: {
             priority: 'EMERGENCY',
-            status: {
-              in: [
-                RadiologyRequestStatus.PENDING,
-                RadiologyRequestStatus.SCHEDULED,
-                RadiologyRequestStatus.IN_PROGRESS,
-              ],
-            },
+            status: { in: ACTIVE_STATUSES },
           },
         }),
       ]);
-
-    const completedWithoutReport = await this.prisma.radiologyOrderItem.count({
-      where: {
-        status: RadiologyRequestStatus.COMPLETED,
-        report: null,
-      },
-    });
 
     return {
       totalScansToday: totalToday,
       pending,
       completed,
-      waitingReports: completedWithoutReport,
+      waitingReports,
       urgentCases: urgentCount,
     };
   }

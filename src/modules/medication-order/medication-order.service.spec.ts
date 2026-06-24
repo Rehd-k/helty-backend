@@ -90,7 +90,10 @@ describe('MedicationOrderService create', () => {
         }),
       },
       drug: {
-        findUnique: jest.fn().mockResolvedValue(drug),
+        findUnique: jest.fn().mockResolvedValue({
+          id: drugId,
+          genericName: 'Paracetamol',
+        }),
       },
       patient: {
         findUnique: jest.fn().mockResolvedValue({ id: patientId }),

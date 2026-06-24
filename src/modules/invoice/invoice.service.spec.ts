@@ -1535,7 +1535,8 @@ describe('InvoiceService', () => {
 
     const preloadedDrug = {
       id: drugId,
-      batches: [{ costPrice }],
+      genericName: 'Test Drug',
+      latestCost: costPrice,
     };
 
     function createAddDrugItemPrisma(options: {
@@ -1543,10 +1544,13 @@ describe('InvoiceService', () => {
       hmoId?: string | null;
       ward?: { name: string; drugPricePercentage: Prisma.Decimal } | null;
       inpatientWard?: { drugPricePercentage: Prisma.Decimal } | null;
+      activeAdmissions?: number;
     }) {
+      const patientId = 'pat-1';
       const invoiceFindUnique = jest.fn().mockResolvedValue({
         id: invoiceId,
         status: InvoiceStatus.PENDING,
+        patientId,
         patient: {
           hmoId: options.hmoId ?? null,
           wardId: options.wardId ?? null,
@@ -1579,6 +1583,9 @@ describe('InvoiceService', () => {
           findUnique: wardFindUnique,
           findFirst: wardFindFirst,
         },
+        admission: {
+          count: jest.fn().mockResolvedValue(options.activeAdmissions ?? 0),
+        },
         invoiceItem: {
           create: invoiceItemCreate,
         },
@@ -1602,7 +1609,7 @@ describe('InvoiceService', () => {
       return prisma.invoiceItem.create.mock.calls[0][0].data.unitPrice;
     }
 
-    it('applies ward drugPricePercentage multiplier to batch costPrice', async () => {
+    it('applies ward drugPricePercentage multiplier to latest batch costPrice', async () => {
       const { prisma } = createAddDrugItemPrisma({
         wardId: 'ward-inpatient',
         ward: {
@@ -1658,6 +1665,74 @@ describe('InvoiceService', () => {
       const unitPrice = await addDrugWithPricing(prisma);
       expect(unitPrice.toString()).toBe('1800');
       expect(prisma.ward.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('uses Inpatient Ward multiplier for HMO outpatient without wardId', async () => {
+      const { prisma } = createAddDrugItemPrisma({
+        wardId: null,
+        hmoId: 'hmo-1',
+        inpatientWard: { drugPricePercentage: new Prisma.Decimal(2) },
+      });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('2400');
+      expect(prisma.admission.count).toHaveBeenCalled();
+    });
+
+    it('uses patient ward multiplier for admitted HMO patient', async () => {
+      const { prisma } = createAddDrugItemPrisma({
+        wardId: 'ward-icu',
+        hmoId: 'hmo-1',
+        ward: { name: 'ICU', drugPricePercentage: new Prisma.Decimal(3) },
+        inpatientWard: { drugPricePercentage: new Prisma.Decimal(2) },
+        activeAdmissions: 1,
+      });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('3600');
+      expect(prisma.ward.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('bills at 0 when drug has no cost history', async () => {
+      const { prisma } = createAddDrugItemPrisma({});
+      const service = createInvoiceService(prisma);
+      (service as any).recalculateInvoiceTotals = jest.fn().mockResolvedValue({});
+      await service.addDrugItem(
+        {
+          invoiceId,
+          drugId,
+          quantity: 1,
+          preloadedDrug: {
+            id: drugId,
+            genericName: 'Test Drug',
+            latestCost: null,
+          } as any,
+        },
+        prisma,
+      );
+      const unitPrice =
+        prisma.invoiceItem.create.mock.calls[0][0].data.unitPrice;
+      expect(unitPrice.toString()).toBe('0');
+    });
+
+    it('bills at 0 when latest batch cost price is zero', async () => {
+      const { prisma } = createAddDrugItemPrisma({});
+      const service = createInvoiceService(prisma);
+      (service as any).recalculateInvoiceTotals = jest.fn().mockResolvedValue({});
+      await service.addDrugItem(
+        {
+          invoiceId,
+          drugId,
+          quantity: 1,
+          preloadedDrug: {
+            id: drugId,
+            genericName: 'Test Drug',
+            latestCost: new Prisma.Decimal(0),
+          } as any,
+        },
+        prisma,
+      );
+      const unitPrice =
+        prisma.invoiceItem.create.mock.calls[0][0].data.unitPrice;
+      expect(unitPrice.toString()).toBe('0');
     });
   });
 

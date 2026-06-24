@@ -20,14 +20,7 @@ import {
 import { parseDateRange } from '../../common/utils/date-range';
 import { medicationRequestWithDetailsInclude } from './medication-request-includes';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
-
-const drugWithPricingBatchInclude = {
-  batches: {
-    where: { quantityRemaining: { gt: 0 } },
-    orderBy: { expiryDate: 'asc' as const },
-    take: 1,
-  },
-} satisfies Prisma.DrugInclude;
+import { loadDrugWithLatestCost } from '../pharmacy/drug-pricing-batch.util';
 
 const REQUESTABLE_ORDER_STATUSES = ['Prescribed', 'Pending Dispense'] as const;
 
@@ -276,7 +269,16 @@ export class MedicationRequestService {
 
     const where: Prisma.MedicationRequestWhereInput = {};
     if (encounterId) where.encounterId = encounterId;
-    if (patientId) where.patientId = patientId;
+    if (patientId) {
+      const patient = await this.prisma.patient.findUnique({
+        where: { patientId: patientId.trim().toUpperCase() },
+        select: { id: true },
+      });
+      if (!patient) {
+        return { data: [], total: 0, skip, take };
+      }
+      where.patientId = patient.id;
+    }
     if (status) where.status = status;
     if (fromDate && toDate) {
       const { from, to } = parseDateRange(fromDate, toDate);
@@ -552,13 +554,7 @@ export class MedicationRequestService {
 
       for (const request of requests) {
         const drugId = request.medicationOrder.drugId!;
-        const drug = await tx.drug.findUnique({
-          where: { id: drugId },
-          include: drugWithPricingBatchInclude,
-        });
-        if (!drug) {
-          throw new NotFoundException(`Drug "${drugId}" not found.`);
-        }
+        const drug = await loadDrugWithLatestCost(tx, drugId);
 
         const invoiceItem = await this.invoiceService.addDrugItem(
           {
