@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   assertAdmissionExists,
   assertAdmissionWritable,
-  assertStaffIsNurseOrThrow,
+  assertStaffIsNurseOrPhysicianOrThrow,
 } from './inpatient-nursing.utils';
 import { CreateProcedureRecordDto } from './dto/nursing-docs.dto';
 
@@ -34,7 +34,7 @@ export class ProcedureRecordService {
   ) {
     const admission = await assertAdmissionExists(this.prisma, admissionId);
     assertAdmissionWritable(admission);
-    await assertStaffIsNurseOrThrow(this.prisma, staffId);
+    await assertStaffIsNurseOrPhysicianOrThrow(this.prisma, staffId);
 
     return this.prisma.procedureRecord.create({
       data: {

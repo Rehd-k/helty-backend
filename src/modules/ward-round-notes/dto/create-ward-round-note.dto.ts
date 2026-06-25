@@ -41,7 +41,12 @@ export class CreateWardRoundNoteDto {
  * At least one of subjective, objective, assessment, plan must be non-empty.
  * Applied in controller/service via custom validator or pipe.
  */
-export function hasAtLeastOneSoapField(dto: CreateWardRoundNoteDto): boolean {
+export function hasAtLeastOneSoapField(dto: {
+  subjective?: string | null;
+  objective?: string | null;
+  assessment?: string | null;
+  plan?: string | null;
+}): boolean {
   const s = (dto.subjective ?? '').trim();
   const o = (dto.objective ?? '').trim();
   const a = (dto.assessment ?? '').trim();

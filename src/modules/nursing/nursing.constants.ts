@@ -62,6 +62,13 @@ export const INPATIENT_NURSING_READ_ACCESS = [...CLINICAL_READ_ACCESS] as const;
 /** Inpatient clinical nursing write access. */
 export const INPATIENT_NURSING_WRITE_ACCESS = [...NURSING_ACCESS] as const;
 
+/** Nursing writes plus ward physicians (e.g. procedure records). */
+export const INPATIENT_PROCEDURE_RECORD_WRITE_ACCESS = [
+  ...INPATIENT_NURSING_WRITE_ACCESS,
+  'INPATIENT_DOCTOR',
+  'CONSULTANT',
+] as const;
+
 /** Assignment admin including physicians. */
 export const NURSING_ASSIGNMENT_WITH_DOCTORS = [
   ...NURSING_ASSIGNMENT_ADMIN,

@@ -778,16 +778,16 @@ export class InvoiceService {
     if (!svc) {
       throw new NotFoundException(`Service "${serviceId}" not found.`);
     }
-    const name = svc.category?.name ?? null;
-    const okCat = PROCEDURE_BILLING_CATEGORIES.some(
-      (c) => !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
-    );
-    if (!okCat) {
-      throw invoiceLinkException(
-        'INVOICE_ITEM_CATEGORY_MISMATCH',
-        'Encounter procedure billing must use a Therapy, Physiotherapy, or Procedures service category.',
-      );
-    }
+    // const name = svc.category?.name ?? null;
+    // const okCat = PROCEDURE_BILLING_CATEGORIES.some(
+    //   (c) => !!name && name.trim().toLowerCase() === c.trim().toLowerCase(),
+    // );
+    // if (!okCat) {
+    //   throw invoiceLinkException(
+    //     'INVOICE_ITEM_CATEGORY_MISMATCH',
+    //     'Encounter procedure billing must use a Therapy, Physiotherapy, or Procedures service category.',
+    //   );
+    // }
   }
 
   private patientAgeYears(dob: Date | null | undefined): number | null {

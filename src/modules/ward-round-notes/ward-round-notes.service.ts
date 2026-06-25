@@ -9,6 +9,7 @@ import {
   CreateWardRoundNoteDto,
   hasAtLeastOneSoapField,
 } from './dto/create-ward-round-note.dto';
+import { UpdateWardRoundNoteDto } from './dto/update-ward-round-note.dto';
 import { ListWardRoundNotesQueryDto } from './dto/list-ward-round-notes-query.dto';
 
 function formatRoundDate(d: Date): string {
@@ -66,6 +67,58 @@ export class WardRoundNotesService {
         assessment: dto.assessment?.trim() || null,
         plan: dto.plan?.trim() || null,
       },
+    });
+    return toWardRoundNoteResponse(note);
+  }
+
+  async update(id: string, dto: UpdateWardRoundNoteDto) {
+    const existing = await this.prisma.wardRoundNote.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Ward round note "${id}" not found.`);
+    }
+
+    const merged = {
+      subjective:
+        dto.subjective !== undefined
+          ? dto.subjective.trim() || null
+          : existing.subjective,
+      objective:
+        dto.objective !== undefined
+          ? dto.objective.trim() || null
+          : existing.objective,
+      assessment:
+        dto.assessment !== undefined
+          ? dto.assessment.trim() || null
+          : existing.assessment,
+      plan:
+        dto.plan !== undefined ? dto.plan.trim() || null : existing.plan,
+    };
+
+    if (!hasAtLeastOneSoapField(merged)) {
+      throw new BadRequestException(
+        'At least one of subjective, objective, assessment, or plan must be non-empty.',
+      );
+    }
+
+    const data: {
+      roundDate?: Date;
+      subjective: string | null;
+      objective: string | null;
+      assessment: string | null;
+      plan: string | null;
+    } = { ...merged };
+
+    if (dto.roundDate !== undefined) {
+      const roundDate = new Date(dto.roundDate);
+      roundDate.setUTCHours(0, 0, 0, 0);
+      data.roundDate = roundDate;
+    }
+
+    const note = await this.prisma.wardRoundNote.update({
+      where: { id },
+      data,
     });
     return toWardRoundNoteResponse(note);
   }

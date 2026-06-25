@@ -73,6 +73,43 @@ export async function assertStaffIsNurseOrThrow(
 }
 
 /**
+ * Ensure the given Staff exists, is active, and is a nurse or physician.
+ * Used when both nursing and doctor roles may record clinical documentation.
+ */
+export async function assertStaffIsNurseOrPhysicianOrThrow(
+  prisma: PrismaService,
+  staffId: string,
+) {
+  const staff = await prisma.staff.findUnique({
+    where: { id: staffId },
+    select: {
+      id: true,
+      accountType: true,
+      staffRole: true,
+      isActive: true,
+    },
+  });
+  if (!staff) {
+    throw new ForbiddenException('Signed-in staff profile not found.');
+  }
+  if (!staff.isActive) {
+    throw new ForbiddenException('Staff account is inactive.');
+  }
+  if (isSuperAdminStaff(staff)) {
+    return staff;
+  }
+  if (
+    staff.accountType !== AccountType.NURSE &&
+    staff.accountType !== AccountType.PHYSICIAN
+  ) {
+    throw new ForbiddenException(
+      'Only nurses or physicians can perform this action.',
+    );
+  }
+  return staff;
+}
+
+/**
  * Ensure the target staff (e.g. for a NurseAssignment payload) is a nurse.
  * Allows assigning any NURSE regardless of sub-role (matron, charge, inpatient, outpatient).
  */

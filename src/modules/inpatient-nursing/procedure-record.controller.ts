@@ -12,7 +12,10 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
-import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
+import {
+  INPATIENT_NURSING_READ_ACCESS,
+  INPATIENT_PROCEDURE_RECORD_WRITE_ACCESS,
+} from '../nursing/nursing.constants';
 import { ProcedureRecordService } from './procedure-record.service';
 import { CreateProcedureRecordDto } from './dto/nursing-docs.dto';
 
@@ -32,7 +35,7 @@ export class ProcedureRecordController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
+  @AccountTypes(...INPATIENT_PROCEDURE_RECORD_WRITE_ACCESS)
   @ApiOperation({ summary: 'Create procedure record' })
   create(
     @Param('admissionId') admissionId: string,

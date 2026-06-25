@@ -2,17 +2,20 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
+  Param,
   Post,
   Query,
   HttpCode,
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { WardRoundNotesService } from './ward-round-notes.service';
 import { CreateWardRoundNoteDto } from './dto/create-ward-round-note.dto';
+import { UpdateWardRoundNoteDto } from './dto/update-ward-round-note.dto';
 import { ListWardRoundNotesQueryDto } from './dto/list-ward-round-notes-query.dto';
 
 @ApiTags('Ward round notes')
@@ -33,5 +36,13 @@ export class WardRoundNotesController {
   @ApiOperation({ summary: 'List ward round notes for an admission' })
   findAll(@Query() query: ListWardRoundNotesQueryDto) {
     return this.wardRoundNotesService.findAll(query);
+  }
+
+  @Patch(':id')
+  @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT')
+  @ApiOperation({ summary: 'Update a ward round (progress) note' })
+  @ApiParam({ name: 'id', description: 'Ward round note ID' })
+  update(@Param('id') id: string, @Body() dto: UpdateWardRoundNoteDto) {
+    return this.wardRoundNotesService.update(id, dto);
   }
 }
