@@ -55,6 +55,13 @@ export class HmoReceivablesQueryDto extends ReceivablesQueryDto {
   @IsUUID()
   @IsOptional()
   hmoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by HMO name (case-insensitive partial match)',
+  })
+  @IsOptional()
+  @IsString()
+  hmoName?: string;
 }
 
 export class DiscountReceivablesQueryDto extends ReceivablesQueryDto {

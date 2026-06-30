@@ -10,6 +10,7 @@ import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { PatientStatus, Prisma } from '@prisma/client';
 import { endOfDay, startOfDay } from '../../common/utils/date-range';
 import { generateHumanReadableId } from '../../common/utils/human-readable-id.util';
+import { patientNameOnlySelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class PatientService {
@@ -152,17 +153,31 @@ export class PatientService {
   /** Fields accepted on PATCH; only keys present in the body (not undefined) are written. */
   private static readonly PATIENT_PATCH_KEYS = [
     'patientId',
+    'title',
+    'cardNo',
     'surname',
     'firstName',
     'otherName',
+    'dob',
+    'gender',
+    'maritalStatus',
+    'nationality',
+    'stateOfOrigin',
+    'lga',
+    'town',
+    'permanentAddress',
+    'religion',
     'email',
+    'preferredLanguage',
     'phoneNumber',
     'addressOfResidence',
+    'profession',
     'hmo',
     'nextOfKinName',
     'nextOfKinPhone',
     'nextOfKinAddress',
     'nextOfKinRelationship',
+    'fingerprintData',
     'status',
   ] as const;
 
@@ -319,6 +334,12 @@ export class PatientService {
               },
             },
             {
+              otherName: {
+                contains: trimmedSearch,
+                mode: 'insensitive',
+              },
+            },
+            {
               surname: {
                 contains: trimmedSearch,
                 mode: 'insensitive',
@@ -343,6 +364,12 @@ export class PatientService {
             },
             {
               firstName: {
+                contains: trimmedSearch,
+                mode: 'insensitive',
+              },
+            },
+            {
+              otherName: {
                 contains: trimmedSearch,
                 mode: 'insensitive',
               },
@@ -532,6 +559,12 @@ export class PatientService {
     for (const key of PatientService.PATIENT_PATCH_KEYS) {
       const value = updatePatientDto[key];
       if (value !== undefined) {
+        if (key === 'dob') {
+          (data as Record<string, unknown>).dob = value
+            ? new Date(value as string)
+            : null;
+          continue;
+        }
         (data as Record<string, unknown>)[key] = value;
       }
     }
@@ -550,7 +583,7 @@ export class PatientService {
           );
         }
         data.hmoProvider = { connect: { id: updatePatientDto.hmoId } };
-        data.hmo = null;
+        data.hmo = hmo.name;
       }
     }
 
@@ -638,8 +671,7 @@ export class PatientService {
       where: { id: patientId },
       select: {
         patientId: true,
-        firstName: true,
-        surname: true,
+        ...patientNameOnlySelect,
         appointments: true,
         admissions: true,
         medicalHistories: true,

@@ -7,6 +7,7 @@ import {
   StaffRole,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { MedicationScheduleService } from '../medication-schedule/medication-schedule.service';
 import {
   capabilitiesForStaffRole,
@@ -452,7 +453,7 @@ export class NursesDashboardService {
                 id: true,
                 wardEntity: { select: { name: true } },
                 patient: {
-                  select: { firstName: true, surname: true, patientId: true },
+                  select: patientNameFieldsSelect,
                 },
               },
             },
@@ -466,7 +467,7 @@ export class NursesDashboardService {
                 id: true,
                 invoiceID: true,
                 patient: {
-                  select: { firstName: true, surname: true, patientId: true },
+                  select: patientNameFieldsSelect,
                 },
               },
             },

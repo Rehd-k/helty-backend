@@ -8,7 +8,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { compareMetrics } from '../billing-analytics/billing-analytics-math';
 import { startOfDay, endOfDay } from '../../common/utils/date-range';
-import { formatPatientDisplayName } from '../../common/utils/patient-display-name.util';
+import {
+  patientNameFieldsSelect,
+  toPatientNameWithLegacyKey,
+} from '../../common/utils/patient-display-name.util';
 
 /** Matches seed / REF_Categories: Consultations & Reviews */
 export const CONSULTATIONS_REVIEWS_CATEGORY = 'Consultations & Reviews';
@@ -19,7 +22,12 @@ export interface FrontdeskQueueRow {
   /** Stable key for lists: `wp:<uuid>` or `en:<uuid>` */
   id: string;
   patientId: string;
-  patientName: string;
+  title: string | null;
+  firstName: string | null;
+  otherName: string | null;
+  surname: string | null;
+  displayName: string;
+  patientName: string | null;
   time: string;
   doctor: {
     id: string;
@@ -227,7 +235,7 @@ export class FrontdeskService {
         orderBy: { createdAt: 'asc' },
         include: {
           patient: {
-            select: { id: true, firstName: true, surname: true },
+            select: patientNameFieldsSelect,
           },
           consultingRoom: {
             include: {
@@ -247,7 +255,7 @@ export class FrontdeskService {
         orderBy: { startTime: 'asc' },
         include: {
           patient: {
-            select: { id: true, firstName: true, surname: true },
+            select: patientNameFieldsSelect,
           },
           doctor: {
             select: { id: true, firstName: true, lastName: true },
@@ -275,7 +283,7 @@ export class FrontdeskService {
       out.push({
         id: `en:${e.id}`,
         patientId: e.patientId,
-        patientName: formatPatientDisplayName(e.patient),
+        ...toPatientNameWithLegacyKey(e.patient, 'patientName'),
         time: e.startTime.toISOString(),
         doctor: e.doctor
           ? {
@@ -303,7 +311,7 @@ export class FrontdeskService {
       out.push({
         id: `wp:${w.id}`,
         patientId: w.patientId,
-        patientName: formatPatientDisplayName(w.patient),
+        ...toPatientNameWithLegacyKey(w.patient, 'patientName'),
         time: w.createdAt.toISOString(),
         doctor: roomDoc
           ? {

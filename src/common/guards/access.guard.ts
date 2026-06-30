@@ -97,6 +97,8 @@ export function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
       return user.accountType === 'HMO' || user.staffRole === 'HMO_STAFF';
     case 'PURCHASES':
       return user.accountType === 'PURCHASES';
+    case 'PATIENT':
+      return user.accountType === 'PATIENT';
     default:
       return false;
   }
@@ -128,6 +130,18 @@ export class AccessGuard implements CanActivate {
       ACCOUNT_TYPES_KEY,
       [context.getHandler(), context.getClass()],
     );
+
+    if (user.accountType === 'PATIENT') {
+      if (
+        allowedAccountTypes?.some((t) =>
+          accountTypeTokenMatches(t, user),
+        )
+      ) {
+        return true;
+      }
+      throw new ForbiddenException('Access denied');
+    }
+
     if (allowedAccountTypes?.length) {
       const ok = allowedAccountTypes.some((t) =>
         accountTypeTokenMatches(t, user),

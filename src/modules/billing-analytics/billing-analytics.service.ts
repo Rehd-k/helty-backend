@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
+import {
+  patientNameFieldsSelect,
+  toPatientNameWithLegacyKey,
+} from '../../common/utils/patient-display-name.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { compareMetrics } from './billing-analytics-math';
 import {
@@ -513,7 +517,7 @@ export class BillingAnalyticsService {
       orderBy: { createdAt: 'desc' },
       include: {
         patient: {
-          select: { firstName: true, surname: true },
+          select: patientNameFieldsSelect,
         },
       },
     });
@@ -525,10 +529,7 @@ export class BillingAnalyticsService {
       items: rows.map((r) => ({
         invoiceId: r.id,
         status: r.status,
-        patientName: [r.patient.firstName, r.patient.surname]
-          .filter(Boolean)
-          .join(' ')
-          .trim(),
+        ...toPatientNameWithLegacyKey(r.patient, 'patientName'),
         date: r.createdAt.toISOString(),
         amount: toNumber(r.totalAmount),
       })),

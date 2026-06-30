@@ -6,6 +6,10 @@ import {
   PurchasesUsageHistoryQueryDto,
 } from './dto/dashboard.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import {
+  patientNameFieldsSelect,
+  toPatientNameWithLegacyKey,
+} from '../../common/utils/patient-display-name.util';
 
 function toNumber(v: Prisma.Decimal | number | null | undefined): number {
   if (v == null) return 0;
@@ -310,12 +314,7 @@ export class PurchasesDashboardService {
               invoiceID: true,
               encounterId: true,
               patient: {
-                select: {
-                  id: true,
-                  patientId: true,
-                  firstName: true,
-                  surname: true,
-                },
+                select: patientNameFieldsSelect,
               },
             },
           },
@@ -342,7 +341,7 @@ export class PurchasesDashboardService {
         patient: {
           id: row.invoice.patient.id,
           patientId: row.invoice.patient.patientId,
-          name: `${row.invoice.patient.firstName ?? ''} ${row.invoice.patient.surname ?? ''}`.trim(),
+          ...toPatientNameWithLegacyKey(row.invoice.patient, 'name'),
         },
         purchasesLocation: row.purchasesLocation
           ? {

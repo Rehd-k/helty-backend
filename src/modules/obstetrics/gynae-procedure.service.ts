@@ -5,6 +5,7 @@ import {
   UpdateGynaeProcedureDto,
 } from './dto/create-gynae-procedure.dto';
 import { ListGynaeProceduresQueryDto } from './dto/list-gynae-procedures-query.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class GynaeProcedureService {
@@ -63,7 +64,7 @@ export class GynaeProcedureService {
         notes: dto.notes ?? null,
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true } },
+        patient: { select: patientNameFieldsSelect },
         surgeon: { select: { id: true, firstName: true, lastName: true } },
         assistant: { select: { id: true, firstName: true, lastName: true } },
       },
@@ -98,7 +99,7 @@ export class GynaeProcedureService {
         take,
         orderBy: { procedureDate: 'desc' },
         include: {
-          patient: { select: { id: true, firstName: true, surname: true } },
+          patient: { select: patientNameFieldsSelect },
           surgeon: { select: { id: true, firstName: true, lastName: true } },
           assistant: { select: { id: true, firstName: true, lastName: true } },
         },
@@ -165,7 +166,7 @@ export class GynaeProcedureService {
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true } },
+        patient: { select: patientNameFieldsSelect },
         surgeon: { select: { id: true, firstName: true, lastName: true } },
         assistant: { select: { id: true, firstName: true, lastName: true } },
       },

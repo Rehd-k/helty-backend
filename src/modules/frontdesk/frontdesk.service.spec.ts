@@ -76,7 +76,13 @@ describe('FrontdeskService', () => {
             patientId: 'p1',
             createdAt: new Date('2026-03-29T09:00:00.000Z'),
             consultingRoomId: null,
-            patient: { id: 'p1', firstName: 'Ann', surname: 'Lee' },
+            patient: {
+              id: 'p1',
+              firstName: 'Ann',
+              otherName: null,
+              surname: 'Lee',
+              title: null,
+            },
             consultingRoom: null,
           },
         ]),
@@ -87,7 +93,13 @@ describe('FrontdeskService', () => {
             id: 'enc-1',
             patientId: 'p1',
             startTime: new Date('2026-03-29T09:30:00.000Z'),
-            patient: { id: 'p1', firstName: 'Ann', surname: 'Lee' },
+            patient: {
+              id: 'p1',
+              firstName: 'Ann',
+              otherName: null,
+              surname: 'Lee',
+              title: null,
+            },
             doctor: {
               id: 'd1',
               firstName: 'Dr',
@@ -105,6 +117,10 @@ describe('FrontdeskService', () => {
     expect(q[0].status).toBe('InConsultation');
     expect(q[0].encounterId).toBe('enc-1');
     expect(q[0].waitingPatientId).toBe('wp-1');
+    expect(q[0].firstName).toBe('Ann');
+    expect(q[0].otherName).toBeNull();
+    expect(q[0].surname).toBe('Lee');
+    expect(q[0].patientName).toBe('Ann Lee');
   });
 
   it('liveQueue includes waiting-only row with Waiting status', async () => {
@@ -116,7 +132,13 @@ describe('FrontdeskService', () => {
             patientId: 'p2',
             createdAt: new Date('2026-03-29T08:00:00.000Z'),
             consultingRoomId: null,
-            patient: { id: 'p2', firstName: 'Bob', surname: 'Zed' },
+            patient: {
+              id: 'p2',
+              firstName: 'Bob',
+              otherName: null,
+              surname: 'Zed',
+              title: null,
+            },
             consultingRoom: null,
           },
         ]),

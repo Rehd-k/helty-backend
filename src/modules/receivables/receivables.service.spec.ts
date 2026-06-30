@@ -1,12 +1,40 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   CoverageRemittancePayerType,
+  InvoiceCoverageKind,
   InvoiceCoverageStatus,
   Prisma,
 } from '@prisma/client';
 import { ReceivablesService } from './receivables.service';
 
 describe('ReceivablesService', () => {
+  it('filters HMO receivables by hmoName', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const aggregate = jest.fn().mockResolvedValue({
+      _sum: { amount: new Prisma.Decimal(0) },
+    });
+    const prisma: any = {
+      invoiceCoverage: { findMany, count, aggregate },
+    };
+    const service = new ReceivablesService(prisma);
+
+    await service.listHmoReceivables({
+      hmoName: 'AxA',
+      fromDate: '2026-06-01',
+      toDate: '2026-06-30',
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          kind: InvoiceCoverageKind.HMO,
+          hmo: { name: { contains: 'AxA', mode: 'insensitive' } },
+        }),
+      }),
+    );
+  });
+
   it('creates a remittance and settles coverage lines', async () => {
     const tx: any = {
       invoiceCoverage: {

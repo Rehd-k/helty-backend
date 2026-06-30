@@ -13,6 +13,7 @@ import {
   UpdateWaitingPatientDto,
 } from './dto/waiting-patient.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import {
   CONSULTATION_BILLING_CATEGORY,
   CONSULTATION_CREDIT_MAX_VISITS,
@@ -93,11 +94,8 @@ export class WaitingPatientService {
     return {
       patient: {
         select: {
-          id: true,
-          firstName: true,
-          surname: true,
+          ...patientNameFieldsSelect,
           email: true,
-          patientId: true,
         },
       },
       consultingRoom: { select: { id: true, name: true } },

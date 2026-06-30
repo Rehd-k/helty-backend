@@ -57,6 +57,7 @@ export class PatientChartService {
       select: {
         id: true,
         patientId: true,
+        title: true,
         firstName: true,
         surname: true,
         otherName: true,

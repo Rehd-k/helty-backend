@@ -11,6 +11,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { parseDateRange } from '../../common/utils/date-range';
 import {
+  patientNameFieldsSelect,
+  toPatientNameWithLegacyKey,
+} from '../../common/utils/patient-display-name.util';
+import {
   PharmacyDashboardChartQueryDto,
   PharmacyDashboardQueryDto,
   PharmacyDrugUsageChartQueryDto,
@@ -639,7 +643,7 @@ export class PharmacyDashboardService {
             admission: {
               include: {
                 patient: {
-                  select: { id: true, firstName: true, surname: true },
+                  select: patientNameFieldsSelect,
                 },
               },
             },
@@ -659,8 +663,7 @@ export class PharmacyDashboardService {
         id: a.id,
         time: a.createdAt,
         patientId: a.admission.patient.id,
-        patientName:
-          `${a.admission.patient.firstName ?? ''} ${a.admission.patient.surname ?? ''}`.trim(),
+        ...toPatientNameWithLegacyKey(a.admission.patient, 'patientName'),
         alertType: a.alertType,
         severity: a.severity,
         message: a.message,
@@ -997,12 +1000,7 @@ export class PharmacyDashboardService {
               invoiceID: true,
               encounterId: true,
               patient: {
-                select: {
-                  id: true,
-                  patientId: true,
-                  firstName: true,
-                  surname: true,
-                },
+                select: patientNameFieldsSelect,
               },
             },
           },
@@ -1027,7 +1025,7 @@ export class PharmacyDashboardService {
         patient: {
           id: row.invoice.patient.id,
           patientId: row.invoice.patient.patientId,
-          name: `${row.invoice.patient.firstName ?? ''} ${row.invoice.patient.surname ?? ''}`.trim(),
+          ...toPatientNameWithLegacyKey(row.invoice.patient, 'name'),
         },
         dispensedBy: row.dispensedBy
           ? {

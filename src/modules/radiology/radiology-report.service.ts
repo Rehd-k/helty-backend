@@ -11,6 +11,7 @@ import {
 } from './dto/radiology-report.dto';
 import { RadiologyRequestStatus } from '@prisma/client';
 import { syncRadiologyOrderStatusAfterItemChange } from './radiology-order-status.util';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class RadiologyReportService {
@@ -135,7 +136,7 @@ export class RadiologyReportService {
             order: {
               select: {
                 patient: {
-                  select: { firstName: true, surname: true, patientId: true },
+                  select: patientNameFieldsSelect,
                 },
               },
             },

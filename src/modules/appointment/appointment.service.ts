@@ -13,6 +13,7 @@ import {
 import { AppointmentCalendarCountsQueryDto } from './dto/appointment-calendar-counts.query.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { AppointmentNotificationService } from './notification/appointment-notification.service';
 import { isCancelledStatus } from './notification/appointment-message.util';
 
@@ -89,12 +90,7 @@ export class AppointmentService {
         take,
         include: {
           patient: {
-            select: {
-              id: true,
-              patientId: true,
-              firstName: true,
-              surname: true,
-            },
+            select: patientNameFieldsSelect,
           },
           staff: {
             select: {

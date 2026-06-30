@@ -10,6 +10,7 @@ import {
   UpdatePostnatalVisitDto,
 } from './dto/create-postnatal-visit.dto';
 import { ListPostnatalVisitsQueryDto } from './dto/list-postnatal-visits-query.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class PostnatalVisitService {
@@ -115,7 +116,7 @@ export class PostnatalVisitService {
         orderBy: { visitDate: 'desc' },
         include: {
           labourDelivery: { select: { id: true } },
-          patient: { select: { id: true, firstName: true, surname: true } },
+          patient: { select: patientNameFieldsSelect },
           baby: true,
           staff: { select: { id: true, firstName: true, lastName: true } },
         },

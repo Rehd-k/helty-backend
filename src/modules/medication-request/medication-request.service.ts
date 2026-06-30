@@ -18,6 +18,7 @@ import {
   UpdateMedicationRequestDto,
 } from './dto/create-medication-request.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { medicationRequestWithDetailsInclude } from './medication-request-includes';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
 import { loadDrugWithLatestCost } from '../pharmacy/drug-pricing-batch.util';
@@ -607,7 +608,7 @@ export class MedicationRequestService {
             },
           },
           patient: {
-            select: { id: true, firstName: true, surname: true, patientId: true },
+            select: patientNameFieldsSelect,
           },
         },
       });

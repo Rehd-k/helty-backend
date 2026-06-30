@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import {
+  patientNameFieldsSelect,
+  toPatientNameWithLegacyKey,
+} from '../../common/utils/patient-display-name.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNumber } from './accounts.utils';
 
@@ -12,7 +16,7 @@ export class AccountsWalletsService {
       where: { balance: { gt: 0 } },
       include: {
         patient: {
-          select: { id: true, firstName: true, surname: true },
+          select: patientNameFieldsSelect,
         },
         transactions: {
           orderBy: { createdAt: 'desc' },
@@ -36,7 +40,7 @@ export class AccountsWalletsService {
       activeWallets,
       rows: wallets.map((w) => ({
         patientId: w.patientId,
-        patientName: `${w.patient.firstName ?? ''} ${w.patient.surname ?? ''}`.trim(),
+        ...toPatientNameWithLegacyKey(w.patient, 'patientName'),
         balance: toNumber(w.balance),
         lastTransactionAt:
           w.transactions[0]?.createdAt.toISOString() ?? null,

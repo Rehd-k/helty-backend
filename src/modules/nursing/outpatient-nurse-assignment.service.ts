@@ -22,6 +22,7 @@ import {
   CreateOutpatientNurseAssignmentDto,
   QueryOutpatientNurseAssignmentDto,
 } from './dto/outpatient-assignment.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 const assignmentInclude = {
   nurse: {
     select: { id: true, firstName: true, lastName: true, staffRole: true },
@@ -32,12 +33,7 @@ const assignmentInclude = {
       invoiceID: true,
       status: true,
       patient: {
-        select: {
-          id: true,
-          firstName: true,
-          surname: true,
-          patientId: true,
-        },
+        select: patientNameFieldsSelect,
       },
       consultingRoom: { select: { id: true, name: true } },
       vitals: true,

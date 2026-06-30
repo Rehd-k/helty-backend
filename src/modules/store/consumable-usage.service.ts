@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { ConsumableStockService } from './consumable-stock.service';
 import { RecordConsumableUsageDto } from './dto/consumable-usage.dto';
 import { parseDateRange } from '../../common/utils/date-range';
@@ -109,7 +110,7 @@ export class ConsumableUsageService {
         include: {
           consumable: { select: { id: true, name: true, isBillable: true } },
           patient: {
-            select: { id: true, firstName: true, surname: true, patientId: true },
+            select: patientNameFieldsSelect,
           },
           encounter: { select: { id: true } },
           admission: { select: { id: true } },
@@ -198,7 +199,7 @@ export class ConsumableUsageService {
         include: {
           consumable: { select: { id: true, name: true, category: true, isBillable: true } },
           patient: {
-            select: { id: true, firstName: true, surname: true, patientId: true },
+            select: patientNameFieldsSelect,
           },
           encounter: { select: { id: true, encounterType: true } },
           admission: { select: { id: true } },

@@ -155,12 +155,7 @@ export class LabOrderService {
         orderBy: { createdAt: 'desc' },
         include: {
           patient: {
-            select: {
-              id: true,
-              firstName: true,
-              surname: true,
-              patientId: true,
-            },
+            select: patientNameFieldsSelect,
           },
           doctor: { select: { id: true, firstName: true, lastName: true } },
           invoiceItem: {

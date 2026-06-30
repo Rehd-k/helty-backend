@@ -7,6 +7,7 @@ import {
 } from './nursing-scope.utils';
 import { QueryInpatientNurseAssignmentDto } from './dto/inpatient-assignment-query.dto';
 import { isMatronRole, staffRoleToNursingUnit } from './nursing.constants';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class InpatientNurseAssignmentListService {
@@ -67,12 +68,7 @@ export class InpatientNurseAssignmentListService {
               },
             },
             patient: {
-              select: {
-                id: true,
-                firstName: true,
-                surname: true,
-                patientId: true,
-              },
+              select: patientNameFieldsSelect,
             },
           },
         },

@@ -1639,9 +1639,29 @@ describe('InvoiceService', () => {
       expect(unitPrice.toString()).toBe('2400');
       expect(prisma.ward.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
+          where: {
+            OR: [
+              { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
+              { name: { equals: 'IP', mode: 'insensitive' } },
+            ],
+          },
         }),
       );
+    });
+
+    it('uses IP ward multiplier for HMO patient on OPD ward', async () => {
+      const { prisma, wardFindFirst } = createAddDrugItemPrisma({
+        wardId,
+        hmoId: 'hmo-1',
+        ward: { name: 'OPD', drugPricePercentage: new Prisma.Decimal(1) },
+        inpatientWard: { drugPricePercentage: new Prisma.Decimal(2.5) },
+      });
+      wardFindFirst.mockResolvedValueOnce({
+        name: 'IP',
+        drugPricePercentage: new Prisma.Decimal(2.5),
+      });
+      const unitPrice = await addDrugWithPricing(prisma);
+      expect(unitPrice.toString()).toBe('3000');
     });
 
     it('detects OPD ward with trim and case-insensitive name for HMO override', async () => {

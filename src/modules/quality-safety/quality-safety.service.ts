@@ -7,6 +7,7 @@ import { CreateReferralDto, UpdateReferralDto } from './dto/referral.dto';
 import { CreateComplaintDto, UpdateComplaintDto } from './dto/complaint.dto';
 import { CreateIncidentDto, UpdateIncidentDto } from './dto/incident.dto';
 import { CreateInfectionDto, UpdateInfectionDto } from './dto/infection.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class QualitySafetyService {
@@ -104,7 +105,7 @@ export class QualitySafetyService {
 
   private referralInclude() {
     return {
-      patient: { select: { id: true, patientId: true, firstName: true, surname: true } },
+      patient: { select: patientNameFieldsSelect },
       department: { select: { id: true, name: true } },
       createdBy: { select: { id: true, firstName: true, lastName: true } },
     };
@@ -188,7 +189,7 @@ export class QualitySafetyService {
 
   private complaintInclude() {
     return {
-      patient: { select: { id: true, patientId: true, firstName: true, surname: true } },
+      patient: { select: patientNameFieldsSelect },
       department: { select: { id: true, name: true } },
       assignedTo: { select: { id: true, firstName: true, lastName: true } },
       createdBy: { select: { id: true, firstName: true, lastName: true } },
@@ -276,7 +277,7 @@ export class QualitySafetyService {
 
   private incidentInclude() {
     return {
-      patient: { select: { id: true, patientId: true, firstName: true, surname: true } },
+      patient: { select: patientNameFieldsSelect },
       department: { select: { id: true, name: true } },
       reportedBy: { select: { id: true, firstName: true, lastName: true } },
     };
@@ -359,7 +360,7 @@ export class QualitySafetyService {
 
   private infectionInclude() {
     return {
-      patient: { select: { id: true, patientId: true, firstName: true, surname: true } },
+      patient: { select: patientNameFieldsSelect },
       admission: { select: { id: true, admissionDateTime: true } },
       department: { select: { id: true, name: true } },
       createdBy: { select: { id: true, firstName: true, lastName: true } },

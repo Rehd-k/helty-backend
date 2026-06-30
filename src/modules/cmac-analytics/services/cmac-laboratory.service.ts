@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { LabOrderStatus } from '@prisma/client';
+import {
+  formatPatientDisplayName,
+  patientNameFieldsSelect,
+} from '../../../common/utils/patient-display-name.util';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { AlertItem, CmacPeriodContext, NamedCount } from '../cmac-analytics.types';
 import { buildKpi, inRange } from '../cmac-analytics.helpers';
@@ -162,7 +166,7 @@ export class CmacLaboratoryService {
             order: {
               include: {
                 patient: {
-                  select: { id: true, patientId: true, firstName: true, surname: true },
+                  select: patientNameFieldsSelect,
                 },
               },
             },
@@ -173,7 +177,10 @@ export class CmacLaboratoryService {
     });
     return rows.map((r) => {
       const p = r.orderItem.order.patient;
-      const name = [p.firstName, p.surname].filter(Boolean).join(' ') || p.patientId || p.id;
+      const name =
+        formatPatientDisplayName(p) === 'Unknown'
+          ? p.patientId || p.id
+          : formatPatientDisplayName(p);
       return {
         severity: 'critical' as const,
         code: 'LAB_CRITICAL',

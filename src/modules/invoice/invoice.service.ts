@@ -18,7 +18,10 @@ import {
   WalletTransactionType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { formatPatientDisplayName } from '../../common/utils/patient-display-name.util';
+import {
+  patientNameFieldsSelect,
+  toPatientNameWithLegacyKey,
+} from '../../common/utils/patient-display-name.util';
 import {
   AddInvoiceItemDto,
   AllocateInvoiceItemPaymentDto,
@@ -53,6 +56,10 @@ import {
   DrugWithLatestCost,
   loadDrugWithLatestCost,
 } from '../pharmacy/drug-pricing-batch.util';
+import {
+  computeRecurringDays,
+  invoiceLineTotal,
+} from '../../common/utils/invoice-line-total.util';
 
 function generateInvoiceHumanId(): string {
   return generateHumanReadableId(10);
@@ -83,8 +90,6 @@ export class InvoiceService {
     @Inject(forwardRef(() => InvoiceItemRefundService))
     private readonly itemRefundService: InvoiceItemRefundService,
   ) { }
-
-  private readonly dayMs = 24 * 60 * 60 * 1000;
 
   /** At most one open bill per patient: PENDING or PARTIALLY_PAID (not PAID). */
   private async findOpenInvoiceForPatient(
@@ -855,48 +860,6 @@ export class InvoiceService {
     });
   }
 
-  /**
-   * Billable day count per usage segment.
-   * - Closed segments: ceil(partial 24h periods) so a same-day partial still counts as one day.
-   * - Open (active) segments: floor only — avoids charging a full day the instant a segment
-   *   starts (resume uses startAt ≈ now; ceil(milliseconds/24h) === 1). Full days accrue after
-   *   each completed 24h; pausing closes the segment and ceil applies to that final stretch.
-   */
-  private computeRecurringDays(
-    segments: Array<{ startAt: Date; endAt: Date | null }>,
-    now: Date,
-  ) {
-    let totalDays = 0;
-    for (const segment of segments) {
-      const endAt = segment.endAt ?? now;
-      const duration = endAt.getTime() - segment.startAt.getTime();
-      if (duration <= 0) continue;
-      const isOpen = segment.endAt === null;
-      const days = isOpen
-        ? Math.floor(duration / this.dayMs)
-        : Math.ceil(duration / this.dayMs);
-      totalDays += days;
-    }
-    return totalDays;
-  }
-
-  private invoiceLineTotal(
-    item: {
-      unitPrice: Prisma.Decimal;
-      quantity: number;
-      isRecurringDaily: boolean;
-      usageSegments: Array<{ startAt: Date; endAt: Date | null }>;
-    },
-    now: Date,
-  ) {
-    const unitPrice = this.asDecimal(item.unitPrice);
-    if (item.isRecurringDaily) {
-      const totalDays = this.computeRecurringDays(item.usageSegments, now);
-      return unitPrice.mul(totalDays);
-    }
-    return unitPrice.mul(item.quantity);
-  }
-
   private async invoiceCoveredAmount(
     invoiceId: string,
     tx: Prisma.TransactionClient = this.prisma,
@@ -933,7 +896,7 @@ export class InvoiceService {
     const lineTotals = new Map<string, Prisma.Decimal>();
     let invoiceGross = new Prisma.Decimal(0);
     for (const item of items) {
-      const total = this.invoiceLineTotal(item, now);
+      const total = invoiceLineTotal(item, now);
       lineTotals.set(item.id, total);
       invoiceGross = invoiceGross.add(total);
     }
@@ -999,7 +962,7 @@ export class InvoiceService {
     const totalAmount = invoice.invoiceItems.reduce((sum, item) => {
       const unitPrice = this.asDecimal(item.unitPrice);
       if (item.isRecurringDaily) {
-        const totalDays = this.computeRecurringDays(item.usageSegments, now);
+        const totalDays = computeRecurringDays(item.usageSegments, now);
         return sum.add(unitPrice.mul(totalDays));
       }
       return sum.add(unitPrice.mul(item.quantity));
@@ -1031,7 +994,7 @@ export class InvoiceService {
 
   private static readonly invoiceCreateInclude = {
     patient: {
-      select: { id: true, patientId: true, firstName: true, surname: true },
+      select: patientNameFieldsSelect,
     },
     createdBy: { select: { id: true, firstName: true, lastName: true } },
     invoiceItems: {
@@ -1284,10 +1247,7 @@ export class InvoiceService {
     },
     patient: {
       select: {
-        id: true,
-        patientId: true,
-        firstName: true,
-        surname: true,
+        ...patientNameFieldsSelect,
         hmo: true,
         hmoId: true,
       },
@@ -1518,10 +1478,7 @@ export class InvoiceService {
       include: {
         patient: {
           select: {
-            id: true,
-            patientId: true,
-            firstName: true,
-            surname: true,
+            ...patientNameFieldsSelect,
             phoneNumber: true,
             hmoProvider: true
           },
@@ -1638,7 +1595,7 @@ export class InvoiceService {
       now,
     );
     const invoiceItems = invoice.invoiceItems.map((item) => {
-      const lineTotal = this.invoiceLineTotal(item, now);
+      const lineTotal = invoiceLineTotal(item, now);
       const lineCovered = this.asDecimal(lineCoveredById.get(item.id) ?? 0);
       const lineEffectiveDue = lineTotal.sub(lineCovered);
       const paid = this.asDecimal(item.amountPaid);
@@ -1698,7 +1655,7 @@ export class InvoiceService {
       },
       include: {
         patient: {
-          select: { id: true, patientId: true, firstName: true, surname: true },
+          select: patientNameFieldsSelect,
         },
         updatedBy: { select: { id: true, firstName: true, lastName: true } },
         consultingRoom: { select: { id: true, name: true } },
@@ -2733,7 +2690,7 @@ export class InvoiceService {
 
     const lineTotalById = new Map<string, Prisma.Decimal>();
     for (const it of items) {
-      lineTotalById.set(it.id, this.invoiceLineTotal(it, now));
+      lineTotalById.set(it.id, invoiceLineTotal(it, now));
     }
 
     const lineCoveredById = this.computeLineCoverageFromRows(
@@ -3052,7 +3009,7 @@ export class InvoiceService {
             `Invoice item "${itemId}" is not on invoice ${invoiceId}`,
           );
         }
-        const lineTotal = this.invoiceLineTotal(item, now);
+        const lineTotal = invoiceLineTotal(item, now);
         const lineCovered = this.asDecimal(lineCoveredById.get(itemId) ?? 0);
         const lineEffectiveDue = lineTotal.sub(lineCovered);
         const itemPaid = this.asDecimal(item.amountPaid);
@@ -3339,12 +3296,7 @@ export class InvoiceService {
               patientId: true,
               status: true,
               patient: {
-                select: {
-                  id: true,
-                  patientId: true,
-                  firstName: true,
-                  surname: true,
-                },
+                select: patientNameFieldsSelect,
               },
               invoiceItems: {
                 select: {
@@ -3518,14 +3470,9 @@ export class InvoiceService {
         include: {
           patient: {
             select: {
-              id: true,
-              firstName: true,
-              surname: true,
+              ...patientNameFieldsSelect,
               phoneNumber: true,
-              dob: true,
-              patientId: true,
               ward: true,
-              gender: true
             },
           },
           invoiceItems: {
@@ -3553,12 +3500,9 @@ export class InvoiceService {
 
     const rows = invoices.map((inv) => {
       const p = inv.patient;
-      const patientDisplayName =
-        formatPatientDisplayName(p) === 'Unknown'
-          ? null
-          : formatPatientDisplayName(p);
+      const nameFields = toPatientNameWithLegacyKey(p, 'patientName');
       return {
-        patientName: patientDisplayName,
+        ...nameFields,
         phone: p.phoneNumber ?? null,
         age: this.patientAgeYears(p.dob),
         ward: p.ward?.name ?? null,
@@ -3570,7 +3514,14 @@ export class InvoiceService {
           invoiceId: inv.invoiceID,
           status: inv.status,
           patientId: inv.patientId,
-          patient: { id: p.id, patientId: p.patientId ?? null },
+          patient: {
+            id: p.id,
+            patientId: p.patientId ?? null,
+            title: nameFields.title,
+            firstName: nameFields.firstName,
+            otherName: nameFields.otherName,
+            surname: nameFields.surname,
+          },
           invoiceItems: inv.invoiceItems.map((it) => {
             const cb = it.createdBy;
             const requestingDoctor =
@@ -3652,11 +3603,8 @@ export class InvoiceService {
         include: {
           patient: {
             select: {
-              id: true,
-              firstName: true,
-              surname: true,
+              ...patientNameFieldsSelect,
               phoneNumber: true,
-              dob: true,
             },
           },
           invoiceItems: {
@@ -3681,13 +3629,10 @@ export class InvoiceService {
 
     const rows = invoices.map((inv) => {
       const p = inv.patient;
-      const patientName =
-        formatPatientDisplayName(p) === 'Unknown'
-          ? null
-          : formatPatientDisplayName(p);
+      const nameFields = toPatientNameWithLegacyKey(p, 'patientName');
       return {
         patientId: p.id,
-        patientName,
+        ...nameFields,
         invoiceId: inv.invoiceID,
         phone: p.phoneNumber ?? null,
         age: this.patientAgeYears(p.dob),
@@ -3863,7 +3808,7 @@ export class InvoiceService {
       orderBy: { updatedAt: 'desc' },
       include: {
         patient: {
-          select: { id: true, patientId: true, firstName: true, surname: true },
+          select: patientNameFieldsSelect,
         },
         invoiceItems: {
           include: {
@@ -3889,7 +3834,7 @@ export class InvoiceService {
   ) {
     const encounterInclude = {
       patient: {
-        select: { id: true, patientId: true, firstName: true, surname: true },
+        select: patientNameFieldsSelect,
       },
       invoiceItems: {
         include: {
@@ -3968,7 +3913,7 @@ export class InvoiceService {
 
     const include = {
       patient: {
-        select: { id: true, patientId: true, firstName: true, surname: true },
+        select: patientNameFieldsSelect,
       },
       invoiceItems: {
         include: {
@@ -4036,8 +3981,17 @@ export class InvoiceService {
   /**
    * Resolve drug cost multiplier from the patient's ward (drugPricePercentage is a
    * multiplier, not a percentage — e.g. 2 × cost 1200 → 2400). HMO outpatients
-   * (no active admission) use the Inpatient Ward multiplier instead.
+   * (no active admission) use the inpatient ward multiplier (ward named "Inpatient Ward" or "IP").
    */
+  private static inpatientDrugPricingWardWhere(): Prisma.WardWhereInput {
+    return {
+      OR: [
+        { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
+        { name: { equals: 'IP', mode: 'insensitive' } },
+      ],
+    };
+  }
+
   private async resolveDrugPriceMultiplierForInvoice(
     invoiceId: string,
     tx: Prisma.TransactionClient = this.prisma,
@@ -4079,12 +4033,12 @@ export class InvoiceService {
       });
       if (activeAdmissions === 0) {
         const inpatientWard = await tx.ward.findFirst({
-          where: { name: { equals: 'Inpatient Ward', mode: 'insensitive' } },
+          where: InvoiceService.inpatientDrugPricingWardWhere(),
           select: { drugPricePercentage: true },
         });
         if (!inpatientWard?.drugPricePercentage) {
           throw new BadRequestException(
-            'Inpatient Ward is not configured with a drug price multiplier; cannot price HMO outpatient drugs.',
+            'Inpatient ward (Inpatient Ward or IP) is not configured with a drug price multiplier; cannot price HMO outpatient drugs.',
           );
         }
         multiplier = this.asDecimal(inpatientWard.drugPricePercentage);

@@ -13,6 +13,7 @@ import {
 import { DrugStockService } from '../pharmacy/drug-stock.service';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import {
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
@@ -173,10 +174,7 @@ export class InvoiceDrugService {
     },
     patient: {
       select: {
-        id: true,
-        patientId: true,
-        firstName: true,
-        surname: true,
+        ...patientNameFieldsSelect,
       },
     },
     createdBy: { select: { id: true, firstName: true, lastName: true, accountType: true } },
@@ -344,10 +342,7 @@ export class InvoiceDrugService {
       include: {
         patient: {
           select: {
-            id: true,
-            patientId: true,
-            firstName: true,
-            surname: true,
+            ...patientNameFieldsSelect,
             phoneNumber: true,
           },
         },
@@ -445,7 +440,7 @@ export class InvoiceDrugService {
       },
       include: {
         patient: {
-          select: { id: true, patientId: true, firstName: true, surname: true },
+          select: patientNameFieldsSelect,
         },
         updatedBy: { select: { id: true, firstName: true, lastName: true } },
         invoiceItems: {

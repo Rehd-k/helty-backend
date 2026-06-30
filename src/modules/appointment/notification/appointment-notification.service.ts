@@ -7,6 +7,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { patientNameFieldsSelect } from '../../../common/utils/patient-display-name.util';
 import { MailService } from '../../mail/mail.service';
 import { SmsService } from '../../sms/sms.service';
 import {
@@ -73,9 +74,7 @@ export class AppointmentNotificationService {
       include: {
         patient: {
           select: {
-            id: true,
-            firstName: true,
-            surname: true,
+            ...patientNameFieldsSelect,
             email: true,
             phoneNumber: true,
           },
@@ -120,9 +119,7 @@ export class AppointmentNotificationService {
       include: {
         patient: {
           select: {
-            id: true,
-            firstName: true,
-            surname: true,
+            ...patientNameFieldsSelect,
             email: true,
             phoneNumber: true,
           },

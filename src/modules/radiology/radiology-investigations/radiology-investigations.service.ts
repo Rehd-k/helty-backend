@@ -5,6 +5,7 @@ import { parseDateRange } from '../../../common/utils/date-range';
 import {
   formatPatientDisplayName,
   patientNameFieldsSelect,
+  toPatientNameDto,
 } from '../../../common/utils/patient-display-name.util';
 import { SortOrder } from '../../../common/dto/sort-order.dto';
 import {
@@ -208,9 +209,7 @@ export class RadiologyInvestigationsService {
         patient: {
           id: patient.id,
           patientId: patient.patientId,
-          firstName: patient.firstName,
-          otherName: patient.otherName,
-          surname: patient.surname,
+          ...toPatientNameDto(patient),
         },
         patientName: formatPatientDisplayName(patient),
         createdAt: item.createdAt.toISOString(),

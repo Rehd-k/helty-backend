@@ -273,6 +273,7 @@ export class HmoService {
         select: {
           id: true,
           patientId: true,
+          title: true,
           surname: true,
           firstName: true,
           otherName: true,

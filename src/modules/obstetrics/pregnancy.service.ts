@@ -6,6 +6,7 @@ import {
   UpdatePregnancyDto,
 } from './dto/create-pregnancy.dto';
 import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class PregnancyService {
@@ -47,7 +48,7 @@ export class PregnancyService {
         updatedById: createdById,
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true } },
+        patient: { select: patientNameFieldsSelect },
       },
     });
   }
@@ -66,7 +67,7 @@ export class PregnancyService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          patient: { select: { id: true, firstName: true, surname: true } },
+          patient: { select: patientNameFieldsSelect },
         },
       }),
       this.prisma.pregnancy.count({ where }),
@@ -131,7 +132,7 @@ export class PregnancyService {
         updatedById: staffId,
       },
       include: {
-        patient: { select: { id: true, firstName: true, surname: true } },
+        patient: { select: patientNameFieldsSelect },
       },
     });
   }

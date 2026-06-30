@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import {
   CreateRemittanceDto,
   DiscountReceivablesQueryDto,
@@ -52,10 +53,14 @@ export class ReceivablesService {
     const take = Math.min(Number(q.take ?? 20), 100);
     const needle = q.q?.trim();
 
+    const hmoName = q.hmoName?.trim();
     const where: Prisma.InvoiceCoverageWhereInput = {
       kind: InvoiceCoverageKind.HMO,
       createdAt: { gte: from, lte: to },
       ...(q.hmoId ? { hmoId: q.hmoId } : {}),
+      ...(hmoName
+        ? { hmo: { name: { contains: hmoName, mode: 'insensitive' } } }
+        : {}),
       ...(q.status ? { status: q.status } : { status: { not: InvoiceCoverageStatus.REVERSED } }),
       ...(needle ? { OR: this.buildBroadSearchOr(needle) } : {}),
     };
@@ -70,12 +75,23 @@ export class ReceivablesService {
           hmo: { select: { id: true, name: true } },
           invoice: {
             select: {
-              id: true, 
+              id: true,
               invoiceID: true,
               status: true,
               createdAt: true,
+              invoiceItems: {
+                select: {
+                  id: true,
+                  createdAt: true,
+                  quantity: true,
+                  unitPrice: true,
+                  service: { select: { id: true, name: true } },
+                  drug: { select: { id: true, genericName: true, brandName: true } },
+                  purchaseItem: { select: { id: true, itemName: true } },
+                },
+              },
               patient: {
-                select: { id: true, patientId: true, firstName: true, surname: true, phoneNumber: true },
+                select: { ...patientNameFieldsSelect, phoneNumber: true },
               },
             },
           },
@@ -127,7 +143,7 @@ export class ReceivablesService {
               id: true,
               invoiceID: true,
               createdAt: true,
-              patient: { select: { id: true, patientId: true, firstName: true, surname: true } },
+              patient: { select: patientNameFieldsSelect },
             },
           },
           invoiceItem: {
@@ -186,7 +202,7 @@ export class ReceivablesService {
               status: true,
               createdAt: true,
               patient: {
-                select: { id: true, patientId: true, firstName: true, surname: true, phoneNumber: true },
+                select: { ...patientNameFieldsSelect, phoneNumber: true },
               },
             },
           },
@@ -239,7 +255,7 @@ export class ReceivablesService {
               id: true,
               invoiceID: true,
               createdAt: true,
-              patient: { select: { id: true, patientId: true, firstName: true, surname: true } },
+              patient: { select: patientNameFieldsSelect },
             },
           },
           invoiceItem: {
@@ -318,9 +334,9 @@ export class ReceivablesService {
     const hmoIds = rows.map((r) => r.hmoId).filter((id): id is string => Boolean(id));
     const hmos = hmoIds.length
       ? await this.prisma.hmo.findMany({
-          where: { id: { in: hmoIds } },
-          select: { id: true, name: true },
-        })
+        where: { id: { in: hmoIds } },
+        select: { id: true, name: true },
+      })
       : [];
     const hmoById = new Map(hmos.map((h) => [h.id, h]));
 
@@ -374,9 +390,9 @@ export class ReceivablesService {
       .filter((id): id is string => Boolean(id));
     const policies = policyIds.length
       ? await this.prisma.discountPolicy.findMany({
-          where: { id: { in: policyIds } },
-          select: { id: true, name: true, reason: true },
-        })
+        where: { id: { in: policyIds } },
+        select: { id: true, name: true, reason: true },
+      })
       : [];
     const policyById = new Map(policies.map((p) => [p.id, p]));
 
@@ -444,15 +460,15 @@ export class ReceivablesService {
 
     const hmos = hmoIds.length
       ? await this.prisma.hmo.findMany({
-          where: { id: { in: hmoIds } },
-          select: { id: true, name: true },
-        })
+        where: { id: { in: hmoIds } },
+        select: { id: true, name: true },
+      })
       : [];
     const staff = staffIds.length
       ? await this.prisma.staff.findMany({
-          where: { id: { in: staffIds } },
-          select: { id: true, firstName: true, lastName: true, staffId: true },
-        })
+        where: { id: { in: staffIds } },
+        select: { id: true, firstName: true, lastName: true, staffId: true },
+      })
       : [];
 
     const hmoById = new Map(hmos.map((h) => [h.id, h] as const));

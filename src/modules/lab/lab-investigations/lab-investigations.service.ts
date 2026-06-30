@@ -5,6 +5,7 @@ import { parseDateRange } from '../../../common/utils/date-range';
 import {
   formatPatientDisplayName,
   patientNameFieldsSelect,
+  toPatientNameDto,
 } from '../../../common/utils/patient-display-name.util';
 import {
   LabInvestigationsQueryDto,
@@ -327,9 +328,7 @@ export class LabInvestigationsService {
         patient: {
           id: patient.id,
           patientId: patient.patientId,
-          firstName: patient.firstName,
-          otherName: patient.otherName,
-          surname: patient.surname,
+          ...toPatientNameDto(patient),
         },
         patientName: formatPatientDisplayName(patient),
         createdAt: item.createdAt.toISOString(),
@@ -404,9 +403,7 @@ export class LabInvestigationsService {
         patient: {
           id: patient.id,
           patientId: patient.patientId,
-          firstName: patient.firstName,
-          otherName: patient.otherName,
-          surname: patient.surname,
+          ...toPatientNameDto(patient),
         },
         patientName: formatPatientDisplayName(patient),
         createdAt: req.createdAt.toISOString(),

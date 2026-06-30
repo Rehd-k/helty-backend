@@ -17,6 +17,7 @@ import {
 } from './dto/encounter-diagnosis.dto';
 import { EncounterType, EncounterStatus } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { labRequestWithBillingInclude } from '../lab-request/lab-request-includes';
 import { EncounterEditPolicyService } from './encounter-edit-policy.service';
 import { ENCOUNTER_CLINICAL_SNAPSHOT_FIELDS } from './encounter-clinical-snapshot.types';
@@ -64,12 +65,7 @@ export class EncounterService {
       orderBy: { startTime: 'desc' },
       include: {
         patient: {
-          select: {
-            id: true,
-            firstName: true,
-            surname: true,
-            patientId: true,
-          },
+          select: patientNameFieldsSelect,
         },
         doctor: {
           select: { id: true, firstName: true, lastName: true, staffId: true },
@@ -140,12 +136,7 @@ export class EncounterService {
           },
           include: {
             patient: {
-              select: {
-                id: true,
-                firstName: true,
-                surname: true,
-                patientId: true,
-              },
+              select: patientNameFieldsSelect,
             },
             doctor: {
               select: {
@@ -198,7 +189,7 @@ export class EncounterService {
       },
       include: {
         patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
+          select: { ...patientNameFieldsSelect },
         },
         doctor: {
           select: { id: true, firstName: true, lastName: true, staffId: true },
@@ -227,7 +218,7 @@ export class EncounterService {
       orderBy: { startTime: 'desc' },
       include: {
         patient: {
-          select: { id: true, firstName: true, surname: true, patientId: true },
+          select: { ...patientNameFieldsSelect },
         },
         doctor: {
           select: { id: true, firstName: true, lastName: true, staffId: true },
@@ -289,12 +280,7 @@ export class EncounterService {
         },
         include: {
           patient: {
-            select: {
-              id: true,
-              firstName: true,
-              surname: true,
-              patientId: true,
-            },
+            select: patientNameFieldsSelect,
           },
           doctor: {
             select: {
@@ -363,12 +349,7 @@ export class EncounterService {
         orderBy: { startTime: 'desc' },
         include: {
           patient: {
-            select: {
-              id: true,
-              firstName: true,
-              surname: true,
-              patientId: true,
-            },
+            select: patientNameFieldsSelect,
           },
           doctor: {
             select: {
@@ -403,10 +384,7 @@ export class EncounterService {
       include: {
         patient: {
           select: {
-            patientId: true,
-            surname: true,
-            firstName: true,
-            gender: true,
+            ...patientNameFieldsSelect,
             hmo: true,
             status: true,
           },
@@ -686,12 +664,7 @@ export class EncounterService {
         data,
         include: {
           patient: {
-            select: {
-              id: true,
-              firstName: true,
-              surname: true,
-              patientId: true,
-            },
+            select: patientNameFieldsSelect,
           },
           doctor: {
             select: {
@@ -907,12 +880,7 @@ export class EncounterService {
         },
         include: {
           patient: {
-            select: {
-              id: true,
-              firstName: true,
-              surname: true,
-              patientId: true,
-            },
+            select: patientNameFieldsSelect,
           },
           doctor: {
             select: {

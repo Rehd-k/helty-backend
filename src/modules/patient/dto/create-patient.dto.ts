@@ -170,6 +170,14 @@ export class UpdatePatientDto {
 
   @IsString()
   @IsOptional()
+  title?: string;
+
+  @IsString()
+  @IsOptional()
+  cardNo?: string;
+
+  @IsString()
+  @IsOptional()
   @MinLength(2)
   @MaxLength(50)
   surname?: string;
@@ -185,9 +193,53 @@ export class UpdatePatientDto {
   @MaxLength(50)
   otherName?: string;
 
+  @IsDateString()
+  @IsOptional()
+  dob?: string | null;
+
+  @IsEnum(Gender)
+  @IsOptional()
+  gender?: string;
+
+  @IsEnum(MaritalStatus)
+  @IsOptional()
+  maritalStatus?: string;
+
+  @IsString()
+  @IsOptional()
+  nationality?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  stateOfOrigin?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  lga?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  town?: string;
+
+  @IsString()
+  @IsOptional()
+  permanentAddress?: string;
+
+  @IsString()
+  @IsOptional()
+  religion?: string | null;
+
   @IsEmail()
   @IsOptional()
-  email?: string;
+  email?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(20)
+  preferredLanguage?: string | null;
 
   @IsString()
   @IsOptional()
@@ -195,7 +247,12 @@ export class UpdatePatientDto {
 
   @IsString()
   @IsOptional()
-  addressOfResidence?: string;
+  addressOfResidence?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  profession?: string | null;
 
   @IsString()
   @IsOptional()
@@ -206,6 +263,7 @@ export class UpdatePatientDto {
       'Link patient to an HMO (GET /hmos). When set, updates legacy `hmo` text to match HMO name; use null to clear.',
   })
   @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
   @IsUUID()
   hmoId?: string | null;
 
@@ -226,6 +284,10 @@ export class UpdatePatientDto {
   nextOfKinRelationship?: string;
 
   @IsString()
+  @IsOptional()
+  fingerprintData?: string;
+
+  @IsEnum(PatientStatus)
   @IsOptional()
   status?: PatientStatus;
 

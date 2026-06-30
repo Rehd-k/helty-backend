@@ -15,6 +15,7 @@ import {
   PatientStatus,
   Prisma,
 } from '@prisma/client';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 const ADMISSION_UPDATE_INCLUDE = {
   updatedBy: {
@@ -400,10 +401,7 @@ export class AdmissionService {
           },
           patient: {
             select: {
-              id: true,
-              patientId: true,
-              firstName: true,
-              surname: true,
+              ...patientNameFieldsSelect,
               phoneNumber: true,
             },
           },
@@ -482,13 +480,7 @@ export class AdmissionService {
       where: { id },
       include: {
         patient: {
-          select: {
-            id: true,
-            firstName: true,
-            surname: true,
-            patientId: true,
-            dob: true,
-          },
+          select: patientNameFieldsSelect,
         },
         wardEntity: {
           select: {

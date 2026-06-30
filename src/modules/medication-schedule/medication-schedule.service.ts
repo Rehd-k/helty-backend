@@ -10,6 +10,10 @@ import {
   RxDurationUnit,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  patientNameFieldsSelect,
+  toPatientNameWithLegacyKey,
+} from '../../common/utils/patient-display-name.util';
 import { medicationOrdersForAdmissionWhere } from '../inpatient-nursing/admission-medication-order.util';
 import {
   MedicationDoseScheduleApi,
@@ -804,7 +808,12 @@ export class MedicationScheduleService {
   async queryDueMedications(nursingUnitWardId?: string | null): Promise<
     Array<{
       admissionId: string;
-      patientName: string;
+      title: string | null;
+      firstName: string | null;
+      otherName: string | null;
+      surname: string | null;
+      displayName: string;
+      patientName: string | null;
       wardBed: string;
       medicationOrderId: string;
       drugName: string;
@@ -843,7 +852,7 @@ export class MedicationScheduleService {
                 ward: true,
                 wardEntity: { select: { name: true } },
                 bed: { select: { bedNumber: true } },
-                patient: { select: { firstName: true, surname: true } },
+                patient: { select: patientNameFieldsSelect },
               },
             },
           },
@@ -868,8 +877,7 @@ export class MedicationScheduleService {
         );
         return {
           admissionId: admission.id,
-          patientName:
-            `${admission.patient.firstName ?? ''} ${admission.patient.surname ?? ''}`.trim(),
+          ...toPatientNameWithLegacyKey(admission.patient, 'patientName'),
           wardBed: bedLabel ? `${wardName} / ${bedLabel}` : wardName,
           medicationOrderId: s.medicationOrder.id,
           drugName: s.medicationOrder.drugName,

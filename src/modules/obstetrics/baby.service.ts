@@ -10,6 +10,7 @@ import {
   RegisterBabyAsPatientDto,
 } from './dto/create-baby.dto';
 import { ListBabiesQueryDto } from './dto/list-babies-query.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class BabyService {
@@ -61,7 +62,7 @@ export class BabyService {
       },
       include: {
         labourDelivery: { select: { id: true, deliveryDateTime: true } },
-        mother: { select: { id: true, firstName: true, surname: true } },
+        mother: { select: patientNameFieldsSelect },
       },
     });
   }
@@ -80,7 +81,7 @@ export class BabyService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          mother: { select: { id: true, firstName: true, surname: true } },
+          mother: { select: patientNameFieldsSelect },
           labourDelivery: { select: { id: true, deliveryDateTime: true } },
         },
       }),
@@ -124,7 +125,7 @@ export class BabyService {
         updatedById: staffId,
       },
       include: {
-        mother: { select: { id: true, firstName: true, surname: true } },
+        mother: { select: patientNameFieldsSelect },
         labourDelivery: { select: { id: true, deliveryDateTime: true } },
       },
     });

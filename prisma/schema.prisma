@@ -93,6 +93,8 @@ model Patient {
   complaints                PatientComplaint[]
   safetyIncidents           SafetyIncident[]
   infectionCases            InfectionCase[]
+  medicationDoseLogs        PatientMedicationDoseLog[]
+  prescriptionRefillRequests PrescriptionRefillRequest[]
 
   @@index([hmoId])
 }
@@ -350,8 +352,11 @@ model Prescription {
   doctor   Staff?             @relation("PrescriptionDoctor", fields: [doctorId], references: [id])
   doctorId String?
 
+  refillsAllowed Int @default(0)
+
   items         PrescriptionItem[]
   dispensations Dispensation[]
+  refillRequests PrescriptionRefillRequest[]
 
   createdBy   Staff   @relation("PrescriptionCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -437,6 +442,27 @@ enum DispensationStatus {
 enum PrescriptionItemType {
   DRUG
   CONSUMABLE
+}
+
+enum PatientMedicationDoseStatus {
+  UPCOMING
+  TAKEN
+  MISSED
+  SKIPPED
+}
+
+enum MedicationTimeOfDay {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+enum PrescriptionRefillRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+  CANCELLED
 }
 
 model Manufacturer {
@@ -695,9 +721,44 @@ model PrescriptionItem {
   instructions       String?
 
   dispensationItems DispensationItem[]
+  doseLogs          PatientMedicationDoseLog[]
 
   @@index([prescriptionId])
   @@index([drugId])
+}
+
+model PatientMedicationDoseLog {
+  id                 String                      @id @default(uuid())
+  patient            Patient                     @relation(fields: [patientId], references: [id])
+  patientId          String
+  prescriptionItem   PrescriptionItem            @relation(fields: [prescriptionItemId], references: [id])
+  prescriptionItemId String
+  scheduledAt        DateTime
+  timeOfDay          MedicationTimeOfDay
+  status             PatientMedicationDoseStatus @default(UPCOMING)
+  takenAt            DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  @@unique([prescriptionItemId, scheduledAt])
+  @@index([patientId, scheduledAt])
+  @@index([prescriptionItemId])
+  @@index([status])
+}
+
+model PrescriptionRefillRequest {
+  id             String                          @id @default(uuid())
+  prescription   Prescription                    @relation(fields: [prescriptionId], references: [id])
+  prescriptionId String
+  patient        Patient                         @relation(fields: [patientId], references: [id])
+  patientId      String
+  status         PrescriptionRefillRequestStatus @default(PENDING)
+  notes          String?
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+
+  @@index([prescriptionId, status])
+  @@index([patientId])
 }
 
 model PharmacyLocation {

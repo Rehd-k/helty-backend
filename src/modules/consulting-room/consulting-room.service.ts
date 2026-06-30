@@ -9,6 +9,7 @@ import {
   QueryConsultingRoomDto,
   UpdateConsultingRoomDto,
 } from './dto/consulting-room.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class ConsultingRoomService {
@@ -88,11 +89,7 @@ export class ConsultingRoomService {
           waitingPatients: {
             include: {
               patient: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  surname: true,
-                },
+                select: patientNameFieldsSelect,
               },
             },
           },
@@ -118,11 +115,7 @@ export class ConsultingRoomService {
         waitingPatients: {
           include: {
             patient: {
-              select: {
-                id: true,
-                firstName: true,
-                surname: true,
-              },
+              select: patientNameFieldsSelect,
             },
           },
         },
@@ -180,11 +173,7 @@ export class ConsultingRoomService {
         waitingPatients: {
           include: {
             patient: {
-              select: {
-                id: true,
-                firstName: true,
-                surname: true,
-              },
+              select: patientNameFieldsSelect,
             },
           },
         },

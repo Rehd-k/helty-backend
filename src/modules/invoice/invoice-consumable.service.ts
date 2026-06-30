@@ -11,6 +11,7 @@ import { InvoiceService } from './invoice.service';
 import { ReturnConsumableInvoiceItemDto } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class InvoiceConsumableService {
@@ -88,7 +89,7 @@ export class InvoiceConsumableService {
         orderBy: { createdAt: 'desc' },
         include: {
           patient: {
-            select: { id: true, patientId: true, firstName: true, surname: true },
+            select: patientNameFieldsSelect,
           },
           invoiceItems: {
             where: { consumableId: { not: null } },
@@ -199,7 +200,7 @@ export class InvoiceConsumableService {
           where: { id: invoiceId },
           include: {
             patient: {
-              select: { id: true, patientId: true, firstName: true, surname: true },
+              select: patientNameFieldsSelect,
             },
             invoiceItems: {
               include: {

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { toPatientNameDto } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class WardRoundsService {
@@ -57,9 +58,8 @@ export class WardRoundsService {
           patient: admission.patient
             ? {
                 id: admission.patient.id,
-                firstName: admission.patient.firstName,
-                surname: admission.patient.surname,
                 patientId: admission.patient.patientId,
+                ...toPatientNameDto(admission.patient),
               }
             : undefined,
         },

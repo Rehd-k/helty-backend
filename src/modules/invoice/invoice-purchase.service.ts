@@ -8,6 +8,7 @@ import { InvoiceAuditAction, InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PurchaseItemStockService } from '../purchases/purchase-item-stock.service';
 import { InvoiceService } from './invoice.service';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { ReturnPurchaseInvoiceItemDto } from './dto/invoice.dto';
 
 @Injectable()
@@ -146,7 +147,7 @@ export class InvoicePurchaseService {
           where: { id: invoiceId },
           include: {
             patient: {
-              select: { id: true, patientId: true, firstName: true, surname: true },
+              select: patientNameFieldsSelect,
             },
             invoiceItems: {
               where: { purchaseItemId: { not: null } },

@@ -4,6 +4,7 @@ import { CreateWardDto } from './dto/create-ward.dto';
 import { UpdateWardDto } from './dto/update-ward.dto';
 import { CreateBedDto } from './dto/create-bed.dto';
 import { UpdateBedDto } from './dto/update-bed.dto';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class WardService {
@@ -50,12 +51,7 @@ export class WardService {
             room: true,
             reason: true,
             patient: {
-              select: {
-                id: true,
-                firstName: true,
-                surname: true,
-                patientId: true,
-              },
+              select: patientNameFieldsSelect,
             },
             bed: {
               select: {

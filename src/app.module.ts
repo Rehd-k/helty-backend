@@ -14,6 +14,12 @@ import { PrescriptionModule } from './modules/prescription/prescription.module';
 import { ServiceModule } from './modules/service/service.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { PatientAuthModule } from './modules/patient-auth/patient-auth.module';
+import { PatientMedicalRecordsModule } from './modules/patient-medical-records/patient-medical-records.module';
+import { PatientLabReportsModule } from './modules/patient-lab-reports/patient-lab-reports.module';
+import { PatientRadiologyReportsModule } from './modules/patient-radiology-reports/patient-radiology-reports.module';
+import { PatientMedicationsModule } from './modules/patient-medications/patient-medications.module';
+import { PatientBillingModule } from './modules/patient-billing/patient-billing.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LocalTimestampInterceptor } from './common/interceptors/local-timestamp.interceptor';
@@ -81,6 +87,12 @@ import { TheatreModule } from './modules/theatre/theatre.module';
     ServiceModule,
     StaffModule,
     AuthModule,
+    PatientAuthModule,
+    PatientMedicalRecordsModule,
+    PatientLabReportsModule,
+    PatientRadiologyReportsModule,
+    PatientMedicationsModule,
+    PatientBillingModule,
     DepartmentModule,
     InvoiceModule,
     LoggerModule.forRoot({
