@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AccountsReportsService } from './accounts-reports.service';
 
@@ -52,6 +53,11 @@ describe('AccountsReportsService', () => {
           },
         ]),
       },
+      invoiceItemPayment: {
+        findMany: jest.fn(),
+        count: jest.fn(),
+        aggregate: jest.fn(),
+      },
     };
   }
 
@@ -92,6 +98,139 @@ describe('AccountsReportsService', () => {
       expect(result.rows[0].partyName).toBe('NHIS Plan A');
       expect(result.rows[0].totalDue).toBe(70000);
       expect(result.buckets.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('revenueByServiceDetails', () => {
+    const sampleAllocation = {
+      id: 'alloc-1',
+      amount: new Prisma.Decimal(15000),
+      invoicePayment: {
+        id: 'pay-1',
+        paidAt: new Date('2026-06-15T10:30:00Z'),
+        source: 'CASH',
+        method: 'CASH',
+        reference: null,
+        receivedBy: {
+          firstName: 'Jane',
+          lastName: 'Accountant',
+          email: null,
+          staffId: 'STF-01',
+        },
+      },
+      invoiceItem: {
+        quantity: 1,
+        unitPrice: new Prisma.Decimal(15000),
+        customDescription: null,
+        invoice: {
+          id: 'inv-1',
+          invoiceID: 'INV-2026-0042',
+          encounterId: 'enc-1',
+          patient: {
+            id: 'pat-1',
+            patientId: 'P-00123',
+            title: 'Mr',
+            firstName: 'John',
+            otherName: null,
+            surname: 'Doe',
+            gender: 'Male',
+            dob: new Date('1990-01-01'),
+            phoneNumber: '+2348012345678',
+          },
+        },
+        service: {
+          id: 'svc-1',
+          name: 'Full Blood Count',
+          category: { name: 'Laboratory' },
+        },
+      },
+    };
+
+    beforeEach(() => {
+      prisma.invoiceItemPayment.findMany.mockResolvedValue([sampleAllocation]);
+      prisma.invoiceItemPayment.count.mockResolvedValue(1);
+      prisma.invoiceItemPayment.aggregate.mockResolvedValue({
+        _sum: { amount: new Prisma.Decimal(15000) },
+      });
+    });
+
+    it('returns paginated payment rows for a service category', async () => {
+      const result = await service.revenueByServiceDetails({
+        period: 'month',
+        serviceCategory: 'Laboratory',
+        skip: 0,
+        take: 50,
+      });
+
+      expect(result.serviceCategory).toBe('Laboratory');
+      expect(result.total).toBe(1);
+      expect(result.totalAmount).toBe(15000);
+      expect(result.rows).toHaveLength(1);
+      expect(result.rows[0]).toMatchObject({
+        allocationId: 'alloc-1',
+        amount: 15000,
+        patient: {
+          id: 'pat-1',
+          patientId: 'P-00123',
+          displayName: 'Mr John Doe',
+          phoneNumber: '+2348012345678',
+        },
+        invoice: { id: 'inv-1', invoiceID: 'INV-2026-0042' },
+        service: {
+          id: 'svc-1',
+          name: 'Full Blood Count',
+          categoryName: 'Laboratory',
+        },
+        payment: {
+          id: 'pay-1',
+          source: 'CASH',
+          receivedBy: 'Jane Accountant',
+        },
+        encounterId: 'enc-1',
+      });
+      expect(result.rows[0].paidAt).toBe('2026-06-15T10:30:00.000Z');
+
+      const findManyCall = prisma.invoiceItemPayment.findMany.mock.calls[0][0];
+      expect(findManyCall.skip).toBe(0);
+      expect(findManyCall.take).toBe(50);
+      expect(findManyCall.orderBy).toEqual({
+        invoicePayment: { paidAt: 'desc' },
+      });
+      expect(findManyCall.where.invoiceItem.service).toEqual({
+        OR: [
+          { category: { name: 'Laboratory' } },
+          { category: null, name: 'Laboratory' },
+        ],
+      });
+    });
+
+    it('applies search filter when q is provided', async () => {
+      await service.revenueByServiceDetails({
+        period: 'month',
+        serviceCategory: 'Laboratory',
+        q: 'john',
+      });
+
+      const findManyCall = prisma.invoiceItemPayment.findMany.mock.calls[0][0];
+      expect(findManyCall.where.AND).toHaveLength(2);
+      expect(findManyCall.where.AND[1].OR).toEqual(
+        expect.arrayContaining([
+          {
+            invoiceItem: {
+              invoice: { patient: { firstName: { contains: 'john', mode: 'insensitive' } } },
+            },
+          },
+        ]),
+      );
+    });
+
+    it('throws when serviceCategory is missing', async () => {
+      await expect(
+        service.revenueByServiceDetails({
+          period: 'month',
+          serviceCategory: '   ',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

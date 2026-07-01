@@ -6,23 +6,28 @@ import {
   Prisma,
 } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
+import {
+  formatPatientDisplayName,
+  patientNameFieldsSelect,
+} from '../../common/utils/patient-display-name.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   getCurrentWindow,
   getPreviousWindow,
-  type AnalyticsPeriod,
 } from '../billing-analytics/billing-analytics-period';
 import { BillingAnalyticsService } from '../billing-analytics/billing-analytics.service';
 import {
   ageDays,
   agingBucket,
   formatDateOnly,
+  staffLabel,
   toNumber,
 } from './accounts.utils';
 import {
   AccountsAgingQueryDto,
   AccountsDateRangeQueryDto,
   AccountsPeriodQueryDto,
+  AccountsRevenueByServiceDetailsQueryDto,
 } from './dto/accounts-query.dto';
 
 type DailyRow = {
@@ -46,6 +51,43 @@ export class AccountsReportsService {
 
   private parseRange(q: AccountsDateRangeQueryDto) {
     return parseDateRange(q.from, q.to);
+  }
+
+  private serviceCategoryLabel(
+    service: { name: string; category?: { name: string } | null } | null | undefined,
+  ): string {
+    return service?.category?.name ?? service?.name ?? 'Other';
+  }
+
+  private buildServiceCategoryWhere(
+    serviceCategory: string,
+  ): Prisma.ServiceWhereInput {
+    if (serviceCategory === 'Other') {
+      return {
+        category: null,
+        name: '',
+      };
+    }
+    return {
+      OR: [
+        { category: { name: serviceCategory } },
+        { category: null, name: serviceCategory },
+      ],
+    };
+  }
+
+  private buildRevenueDetailsSearchOr(
+    q: string,
+  ): Prisma.InvoiceItemPaymentWhereInput[] {
+    const needle = { contains: q, mode: 'insensitive' as const };
+    return [
+      { invoiceItem: { invoice: { patient: { firstName: needle } } } },
+      { invoiceItem: { invoice: { patient: { surname: needle } } } },
+      { invoiceItem: { invoice: { patient: { otherName: needle } } } },
+      { invoiceItem: { invoice: { patient: { patientId: needle } } } },
+      { invoiceItem: { invoice: { patient: { phoneNumber: needle } } } },
+      { invoiceItem: { invoice: { invoiceID: needle } } },
+    ];
   }
 
   async dailyCollections(q: AccountsDateRangeQueryDto) {
@@ -293,10 +335,7 @@ export class AccountsReportsService {
       { amount: number; transactionCount: number }
     >();
     for (const a of allocations) {
-      const label =
-        a.invoiceItem.service?.category?.name ??
-        a.invoiceItem.service?.name ??
-        'Other';
+      const label = this.serviceCategoryLabel(a.invoiceItem.service);
       const cur = byCategory.get(label) ?? { amount: 0, transactionCount: 0 };
       cur.amount += toNumber(a.amount);
       cur.transactionCount += 1;
@@ -314,6 +353,141 @@ export class AccountsReportsService {
             total > 0 ? Math.round((v.amount / total) * 1000) / 10 : 0,
         }))
         .sort((a, b) => b.amount - a.amount),
+    };
+  }
+
+  async revenueByServiceDetails(q: AccountsRevenueByServiceDetailsQueryDto) {
+    const serviceCategory = q.serviceCategory?.trim();
+    if (!serviceCategory) {
+      throw new BadRequestException('serviceCategory is required');
+    }
+
+    const anchor = q.asOf ? new Date(q.asOf) : new Date();
+    if (q.asOf && Number.isNaN(anchor.getTime())) {
+      throw new BadRequestException('Invalid asOf date');
+    }
+    const window = getCurrentWindow(q.period, anchor);
+    const skip = q.skip ?? 0;
+    const take = Math.min(q.take ?? 50, 100);
+    const needle = q.q?.trim();
+
+    const baseWhere: Prisma.InvoiceItemPaymentWhereInput = {
+      invoicePayment: {
+        paidAt: { gte: window.start, lte: window.end },
+      },
+      invoiceItem: {
+        serviceId: { not: null },
+        service: this.buildServiceCategoryWhere(serviceCategory),
+      },
+    };
+
+    const where: Prisma.InvoiceItemPaymentWhereInput = needle
+      ? { AND: [baseWhere, { OR: this.buildRevenueDetailsSearchOr(needle) }] }
+      : baseWhere;
+
+    const [allocations, total, sum] = await Promise.all([
+      this.prisma.invoiceItemPayment.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { invoicePayment: { paidAt: 'desc' } },
+        include: {
+          invoicePayment: {
+            select: {
+              id: true,
+              paidAt: true,
+              source: true,
+              method: true,
+              reference: true,
+              receivedBy: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  staffId: true,
+                },
+              },
+            },
+          },
+          invoiceItem: {
+            select: {
+              quantity: true,
+              unitPrice: true,
+              customDescription: true,
+              invoice: {
+                select: {
+                  id: true,
+                  invoiceID: true,
+                  encounterId: true,
+                  patient: {
+                    select: { ...patientNameFieldsSelect, phoneNumber: true },
+                  },
+                },
+              },
+              service: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.invoiceItemPayment.count({ where }),
+      this.prisma.invoiceItemPayment.aggregate({
+        where,
+        _sum: { amount: true },
+      }),
+    ]);
+
+    return {
+      period: q.period,
+      asOf: anchor.toISOString(),
+      serviceCategory,
+      totalAmount: toNumber(sum._sum.amount),
+      total,
+      skip,
+      take,
+      rows: allocations.map((a) => {
+        const payment = a.invoicePayment!;
+        const item = a.invoiceItem;
+        const patient = item.invoice.patient;
+        return {
+          allocationId: a.id,
+          paidAt: payment.paidAt.toISOString(),
+          amount: toNumber(a.amount),
+          patient: {
+            id: patient.id,
+            patientId: patient.patientId,
+            displayName: formatPatientDisplayName(patient),
+            phoneNumber: patient.phoneNumber,
+          },
+          invoice: {
+            id: item.invoice.id,
+            invoiceID: item.invoice.invoiceID,
+          },
+          service: {
+            id: item.service?.id ?? null,
+            name: item.service?.name ?? null,
+            categoryName: item.service?.category?.name ?? null,
+          },
+          lineItem: {
+            quantity: item.quantity,
+            unitPrice: toNumber(item.unitPrice),
+            customDescription: item.customDescription,
+          },
+          payment: {
+            id: payment.id,
+            source: payment.source,
+            method: payment.method,
+            reference: payment.reference,
+            receivedBy: staffLabel(payment.receivedBy),
+          },
+          encounterId: item.invoice.encounterId,
+        };
+      }),
     };
   }
 

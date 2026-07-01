@@ -99,3 +99,34 @@ export class AccountsAgingQueryDto {
   @IsIn(['hmo', 'discount', 'all'])
   type?: 'hmo' | 'discount' | 'all' = 'all';
 }
+
+export class AccountsRevenueByServiceDetailsQueryDto extends AccountsPeriodQueryDto {
+  @ApiProperty({
+    description: 'Exact serviceCategory label from the revenue-by-service summary row',
+    example: 'Laboratory',
+  })
+  @IsString()
+  serviceCategory!: string;
+
+  @ApiPropertyOptional({
+    description: 'Search patient name, hospital patientId, phone, or invoice number',
+  })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  skip?: number = 0;
+
+  @ApiPropertyOptional({ default: 50, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  take?: number = 50;
+}

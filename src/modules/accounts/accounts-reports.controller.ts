@@ -8,6 +8,7 @@ import {
   AccountsAgingQueryDto,
   AccountsDateRangeQueryDto,
   AccountsPeriodQueryDto,
+  AccountsRevenueByServiceDetailsQueryDto,
 } from './dto/accounts-query.dto';
 
 @ApiTags('Accounts - Reports')
@@ -33,6 +34,16 @@ export class AccountsReportsController {
   @ApiOperation({ summary: 'Collection efficiency metrics' })
   collectionEfficiency(@Query() q: AccountsPeriodQueryDto) {
     return this.service.collectionEfficiency(q);
+  }
+
+  @Get('revenue-by-service/details')
+  @ApiOperation({
+    summary: 'Revenue by service category — payment drill-down',
+    description:
+      'Paginated list of patient payments for a service category row from revenue-by-service. Pass the same period and asOf as the summary.',
+  })
+  revenueByServiceDetails(@Query() q: AccountsRevenueByServiceDetailsQueryDto) {
+    return this.service.revenueByServiceDetails(q);
   }
 
   @Get('revenue-by-service')
