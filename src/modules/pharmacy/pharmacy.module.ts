@@ -24,10 +24,23 @@ import { PharmacyDashboardController } from './pharmacy.dashboard.controller';
 import { PharmacyDashboardService } from './pharmacy.dashboard.service';
 import { PharmacyMedicationRequestController } from './pharmacy.medication-request.controller';
 import { MedicationRequestModule } from '../medication-request/medication-request.module';
+import { InvoiceModule } from '../invoice/invoice.module';
+import { PatientMedicationsModule } from '../patient-medications/patient-medications.module';
 import { DrugStockModule } from './drug-stock.module';
+import { PharmacyRefillRequestController } from './pharmacy.refill-request.controller';
+import { PharmacyRefillRequestService } from './pharmacy.refill-request.service';
+import { PharmacyHeadDashboardService } from './pharmacy-head-dashboard.service';
+import { PharmacyReportsController } from './pharmacy.reports.controller';
+import { PharmacyReportsService } from './pharmacy-reports.service';
 
 @Module({
-  imports: [PrismaModule, DrugStockModule, MedicationRequestModule],
+  imports: [
+    PrismaModule,
+    DrugStockModule,
+    MedicationRequestModule,
+    InvoiceModule,
+    PatientMedicationsModule,
+  ],
   controllers: [
     PharmacyDrugController,
     PharmacyDrugPriceController,
@@ -41,6 +54,8 @@ import { DrugStockModule } from './drug-stock.module';
     PharmacyStockTransferController,
     PharmacyDashboardController,
     PharmacyMedicationRequestController,
+    PharmacyRefillRequestController,
+    PharmacyReportsController,
   ],
   providers: [
     PharmacyDrugService,
@@ -54,6 +69,9 @@ import { DrugStockModule } from './drug-stock.module';
     PharmacyGoodsReceiptService,
     PharmacyStockTransferService,
     PharmacyDashboardService,
+    PharmacyRefillRequestService,
+    PharmacyHeadDashboardService,
+    PharmacyReportsService,
   ],
   exports: [
     DrugStockModule,

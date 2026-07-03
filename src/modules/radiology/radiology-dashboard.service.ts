@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RadiologyRequestStatus } from '@prisma/client';
+import { parseDateRange } from '../../common/utils/date-range';
+import { RadiologyDashboardQueryDto } from './dto/radiology-dashboard-query.dto';
 
 const ACTIVE_STATUSES: RadiologyRequestStatus[] = [
   RadiologyRequestStatus.PENDING,
@@ -15,51 +17,45 @@ const COMPLETED_STATUSES: RadiologyRequestStatus[] = [
 
 @Injectable()
 export class RadiologyDashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
-  async getDashboard() {
-    const now = new Date();
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      0,
-      0,
-      0,
-      0,
-    );
+  async getDashboard(query: RadiologyDashboardQueryDto) {
+    const { from, to } = parseDateRange(query.fromDate, query.toDate);
+    const dateFilter = { createdAt: { gte: from, lte: to } };
 
     const [totalToday, pending, completed, waitingReports, urgentCount] =
       await Promise.all([
         this.prisma.radiologyOrderItem.count({
-          where: { createdAt: { gte: startOfToday } },
+          where: dateFilter,
         }),
         this.prisma.radiologyOrderItem.count({
-          where: { status: { in: ACTIVE_STATUSES } },
+          where: { ...dateFilter, status: { in: ACTIVE_STATUSES } },
         }),
         this.prisma.radiologyOrderItem.count({
-          where: { status: { in: COMPLETED_STATUSES } },
+          where: { ...dateFilter, status: { in: COMPLETED_STATUSES } },
         }),
         this.prisma.radiologyOrderItem.count({
           where: {
+            ...dateFilter,
             status: RadiologyRequestStatus.COMPLETED,
             report: null,
           },
         }),
         this.prisma.radiologyOrderItem.count({
           where: {
+            ...dateFilter,
             priority: 'EMERGENCY',
             status: { in: ACTIVE_STATUSES },
           },
         }),
       ]);
-
     return {
       totalScansToday: totalToday,
       pending,
       completed,
       waitingReports,
       urgentCases: urgentCount,
+      window: { from: from.toISOString(), to: to.toISOString() },
     };
   }
 }

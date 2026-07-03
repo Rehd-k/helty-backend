@@ -22,6 +22,10 @@ jest.mock('../../common/utils/human-readable-id.util', () => ({
   generateHumanReadableId: jest.fn().mockReturnValue('ID001'),
 }));
 
+jest.mock('../pharmacy/pharmacy-payer-type.util', () => ({
+  resolvePharmacyPayerType: jest.fn().mockResolvedValue('Cash'),
+}));
+
 const admissionId = 'adm-1';
 const orderId = 'order-1';
 const nurseId = 'nurse-1';
@@ -99,7 +103,7 @@ function createService(
     prisma as never,
     {
       getAvailableQuantity: jest.fn().mockResolvedValue(10),
-      deductDrugStockFifo: jest.fn().mockResolvedValue(undefined),
+      applyFifoOut: jest.fn().mockResolvedValue(undefined),
       ...drugStockService,
     } as DrugStockService,
     {
@@ -245,7 +249,7 @@ describe('MedicationAdministrationService', () => {
     scheduleAwareTransaction(prisma, created);
     const drugStock = {
       getAvailableQuantity: jest.fn(),
-      deductDrugStockFifo: jest.fn(),
+      applyFifoOut: jest.fn(),
     };
     const billSettledDrugDispenseLine = jest.fn();
     const service = createService(prisma, drugStock, {
@@ -256,7 +260,7 @@ describe('MedicationAdministrationService', () => {
 
     expect(billSettledDrugDispenseLine).not.toHaveBeenCalled();
     expect(drugStock.getAvailableQuantity).not.toHaveBeenCalled();
-    expect(drugStock.deductDrugStockFifo).not.toHaveBeenCalled();
+    expect(drugStock.applyFifoOut).not.toHaveBeenCalled();
     expect(result.pharmacyLocation).toBeNull();
     expect(result.stockDeductedQuantity).toBeNull();
   });
@@ -311,7 +315,7 @@ describe('MedicationAdministrationService', () => {
     scheduleAwareTransaction(prisma, created);
     const drugStock = {
       getAvailableQuantity: jest.fn().mockResolvedValue(10),
-      deductDrugStockFifo: jest.fn().mockResolvedValue(undefined),
+      applyFifoOut: jest.fn().mockResolvedValue(undefined),
     };
     const billSettledDrugDispenseLine = jest.fn().mockResolvedValue({
       id: 'item-1',
@@ -361,11 +365,17 @@ describe('MedicationAdministrationService', () => {
       },
       expect.anything(),
     );
-    expect(drugStock.deductDrugStockFifo).toHaveBeenCalledWith(
+    expect(drugStock.applyFifoOut).toHaveBeenCalledWith(
       expect.anything(),
-      drugId,
-      3,
-      locationId,
+      expect.objectContaining({
+        drugId,
+        locationId,
+        quantity: 3,
+        ctx: expect.objectContaining({
+          invoiceItemId: 'item-1',
+          dispensedById: nurseId,
+        }),
+      }),
     );
     expect(result.pharmacyLocation).toEqual({
       id: locationId,
@@ -476,7 +486,7 @@ describe('MedicationAdministrationService', () => {
     scheduleAwareTransaction(prisma, created);
     const drugStock = {
       getAvailableQuantity: jest.fn(),
-      deductDrugStockFifo: jest.fn(),
+      applyFifoOut: jest.fn(),
     };
     const service = createService(prisma, drugStock);
 
@@ -493,7 +503,7 @@ describe('MedicationAdministrationService', () => {
     );
 
     expect(drugStock.getAvailableQuantity).not.toHaveBeenCalled();
-    expect(drugStock.deductDrugStockFifo).not.toHaveBeenCalled();
+    expect(drugStock.applyFifoOut).not.toHaveBeenCalled();
   });
 
   it('throws 404 when medication order not on admission', async () => {

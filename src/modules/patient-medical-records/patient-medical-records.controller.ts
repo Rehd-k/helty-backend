@@ -12,6 +12,7 @@ import {
   EncounterDetailDto,
   EncounterListResponseDto,
 } from './dto/encounter-response.dto';
+import { MedicalRecordsDashboardResponseDto } from './dto/medical-records-dashboard-response.dto';
 import { ListMedicalRecordsQueryDto } from './dto/list-medical-records-query.dto';
 import { PatientMedicalRecordsService } from './patient-medical-records.service';
 
@@ -22,12 +23,28 @@ export class PatientMedicalRecordsController {
     private readonly patientMedicalRecordsService: PatientMedicalRecordsService,
   ) {}
 
+  @Get('medical-records/dashboard')
+  @AccountTypes(PATIENT_ACCOUNT_TYPE)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Medical records dashboard summary' })
+  @ApiResponse({ status: 200, type: MedicalRecordsDashboardResponseDto })
+  @ApiResponse({
+    status: 403,
+    description: 'Staff token cannot access patient routes',
+  })
+  getDashboard(@Request() req: { user: PatientJwtPayload }) {
+    return this.patientMedicalRecordsService.getDashboard(req.user);
+  }
+
   @Get('medical-records')
   @AccountTypes(PATIENT_ACCOUNT_TYPE)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List patient medical records (encounters)' })
   @ApiResponse({ status: 200, type: EncounterListResponseDto })
-  @ApiResponse({ status: 403, description: 'Staff token cannot access patient routes' })
+  @ApiResponse({
+    status: 403,
+    description: 'Staff token cannot access patient routes',
+  })
   listMedicalRecords(
     @Request() req: { user: PatientJwtPayload },
     @Query() query: ListMedicalRecordsQueryDto,
@@ -44,7 +61,10 @@ export class PatientMedicalRecordsController {
   @ApiOperation({ summary: 'Get a single patient medical record (encounter)' })
   @ApiResponse({ status: 200, type: EncounterDetailDto })
   @ApiResponse({ status: 404, description: 'Medical record not found' })
-  @ApiResponse({ status: 403, description: 'Staff token cannot access patient routes' })
+  @ApiResponse({
+    status: 403,
+    description: 'Staff token cannot access patient routes',
+  })
   getEncounter(
     @Request() req: { user: PatientJwtPayload },
     @Param('id') id: string,

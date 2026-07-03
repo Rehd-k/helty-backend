@@ -120,12 +120,18 @@ export function buildAppointmentMessages(params: {
 export { formatPatientDisplayName as formatPatientName } from '../../../common/utils/patient-display-name.util';
 
 export function isCancelledStatus(status: string | null | undefined): boolean {
-  return status?.trim().toLowerCase() === 'cancelled';
+  const normalized = status?.trim().toLowerCase();
+  return normalized === 'cancelled' || normalized === 'canceled';
 }
 
 export function isReminderEligibleStatus(
   status: string | null | undefined,
 ): boolean {
   const normalized = status?.trim().toLowerCase();
-  return normalized === 'scheduled' || normalized === 'rescheduled';
+  return (
+    normalized === 'scheduled' ||
+    normalized === 'rescheduled' ||
+    normalized === 'confirmed' ||
+    normalized === 'pending'
+  );
 }

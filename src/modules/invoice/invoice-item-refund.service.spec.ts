@@ -183,11 +183,36 @@ describe('InvoiceItemRefundService', () => {
       expect(prisma.invoiceItemRefundRequest.update).toHaveBeenCalled();
     });
 
-    it('requires account head role', async () => {
+    it('requires account head or billing head role', async () => {
       const service = createService({});
       await expect(
         service.reject('req-1', 'reason', 'staff-1', 'ACCOUNTING_STAFF'),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('allows billing head to reject', async () => {
+      const prisma = {
+        invoiceItemRefundRequest: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'req-1',
+            status: InvoiceItemRefundStatus.pending,
+          }),
+          update: jest.fn().mockResolvedValue({
+            id: 'req-1',
+            status: InvoiceItemRefundStatus.rejected,
+          }),
+        },
+      };
+      const service = createService({ prisma });
+
+      const result = await service.reject(
+        'req-1',
+        'Not eligible',
+        'billing-head-1',
+        'BILLING_HEAD',
+      );
+
+      expect(result.status).toBe(InvoiceItemRefundStatus.rejected);
     });
   });
 

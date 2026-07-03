@@ -4,6 +4,7 @@ import {
 } from '@prisma/client';
 
 export const ACTIVE_PRESCRIPTION_STATUSES: PrescriptionStatus[] = [
+  PrescriptionStatus.PENDING,
   PrescriptionStatus.PARTIALLY_DISPENSED,
   PrescriptionStatus.COMPLETED,
 ];
@@ -43,6 +44,12 @@ export function buildActivePrescriptionWhere(
     patientId,
     type: PrescriptionType.OUTPATIENT,
     status: { in: ACTIVE_PRESCRIPTION_STATUSES },
+    items: {
+      some: {
+        itemType: 'DRUG' as const,
+        quantityDispensed: { gt: 0 },
+      },
+    },
     startDate: { lte: todayEnd },
     OR: [{ endDate: null }, { endDate: { gte: todayEnd } }],
   };

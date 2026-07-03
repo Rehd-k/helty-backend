@@ -3,9 +3,26 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { ListMedicalRecordsQueryDto } from './dto/list-medical-records-query.dto';
 import {
+  toMedicalRecordAllergyDto,
+  toMedicalRecordLabResultDto,
+  toMedicalRecordRecentDiagnosisDto,
   toEncounterDetailDto,
   toEncounterSummaryDto,
+  toLatestVitalsDto,
 } from './patient-medical-records.util';
+
+const HOME_VITALS_SELECT = {
+  pulseRate: true,
+  systolic: true,
+  diastolic: true,
+  recordedAt: true,
+} as const;
+
+const HOME_VITALS_OR = [
+  { pulseRate: { not: null } },
+  { systolic: { not: null } },
+  { diastolic: { not: null } },
+] as const;
 
 const ENCOUNTER_LIST_INCLUDE = {
   doctor: {
@@ -87,6 +104,82 @@ const ENCOUNTER_DETAIL_INCLUDE = {
 export class PatientMedicalRecordsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getDashboard(user: PatientJwtPayload) {
+    const [
+      latestBloodGroupRecord,
+      latestHeightWeight,
+      latestHomeVitalsRow,
+      allergies,
+      recentDiagnoses,
+      recentLabResults,
+    ] = await Promise.all([
+      this.prisma.pregnancy.findFirst({
+        where: { patientId: user.sub, bloodGroup: { not: null } },
+        orderBy: { updatedAt: 'desc' },
+        select: { bloodGroup: true },
+      }),
+      this.prisma.patientVitals.findFirst({
+        where: { patientId: user.sub },
+        orderBy: { recordedAt: 'desc' },
+        select: { height: true, weight: true },
+      }),
+      this.findLatestHomeVitals(user.sub),
+      this.prisma.patientAllergy.findMany({
+        where: { patientId: user.sub },
+        orderBy: { createdAt: 'desc' },
+        select: { allergen: true, severity: true },
+      }),
+      this.prisma.encounterDiagnosis.findMany({
+        where: { encounter: { patientId: user.sub } },
+        orderBy: { createdAt: 'desc' },
+        take: 2,
+        include: {
+          encounter: {
+            select: {
+              status: true,
+              doctor: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  department: { select: { name: true } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.labResult.findMany({
+        where: { orderItem: { order: { patientId: user.sub } } },
+        orderBy: { createdAt: 'desc' },
+        take: 3,
+        select: {
+          value: true,
+          abnormalFlag: true,
+          createdAt: true,
+          field: {
+            select: {
+              label: true,
+              referenceRange: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const bloodType = latestBloodGroupRecord?.bloodGroup ?? null;
+
+    return {
+      bloodType,
+      heightCm: latestHeightWeight?.height ?? null,
+      weightKg: latestHeightWeight?.weight ?? null,
+      latestVitals: toLatestVitalsDto(latestHomeVitalsRow),
+      allergies: allergies.map(toMedicalRecordAllergyDto),
+      recentDiagnoses: recentDiagnoses.map(toMedicalRecordRecentDiagnosisDto),
+      immunizations: [],
+      recentLabResults: recentLabResults.map(toMedicalRecordLabResultDto),
+    };
+  }
+
   async listMedicalRecords(
     user: PatientJwtPayload,
     query: ListMedicalRecordsQueryDto,
@@ -130,5 +223,28 @@ export class PatientMedicalRecordsService {
     }
 
     return toEncounterDetailDto(encounter);
+  }
+
+  private async findLatestHomeVitals(patientId: string) {
+    const baseWhere = {
+      patientId,
+      OR: [...HOME_VITALS_OR],
+    };
+
+    const encounterVitals = await this.prisma.patientVitals.findFirst({
+      where: { ...baseWhere, encounterId: { not: null } },
+      orderBy: { recordedAt: 'desc' },
+      select: HOME_VITALS_SELECT,
+    });
+
+    if (encounterVitals) {
+      return encounterVitals;
+    }
+
+    return this.prisma.patientVitals.findFirst({
+      where: baseWhere,
+      orderBy: { recordedAt: 'desc' },
+      select: HOME_VITALS_SELECT,
+    });
   }
 }

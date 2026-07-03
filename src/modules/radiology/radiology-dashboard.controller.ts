@@ -1,8 +1,9 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { RadiologyDashboardService } from './radiology-dashboard.service';
+import { RadiologyDashboardQueryDto } from './dto/radiology-dashboard-query.dto';
 
 @ApiTags('Radiology – Dashboard')
 @Controller('radiology/dashboard')
@@ -16,9 +17,9 @@ export class RadiologyDashboardController {
   @Get()
   @ApiOperation({
     summary:
-      'Get radiology dashboard counts (today, pending, completed, waiting reports, urgent)',
+      'Get radiology dashboard counts (scans in range, pending, completed, waiting reports, urgent)',
   })
-  getDashboard() {
-    return this.radiologyDashboardService.getDashboard();
+  getDashboard(@Query() query: RadiologyDashboardQueryDto) {
+    return this.radiologyDashboardService.getDashboard(query);
   }
 }

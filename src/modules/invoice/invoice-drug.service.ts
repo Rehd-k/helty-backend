@@ -6,11 +6,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Prisma, InvoiceStatus, InvoiceAuditAction, MedicationRequestStatus } from '@prisma/client';
+import { Prisma, InvoiceStatus, InvoiceAuditAction, MedicationRequestStatus, PrescriptionRefillRequestStatus } from '@prisma/client';
 import {
   startOfToday,
 } from '../pharmacy/pharmacy-sellable-stock.util';
 import { DrugStockService } from '../pharmacy/drug-stock.service';
+import { resolvePharmacyPayerType } from '../pharmacy/pharmacy-payer-type.util';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
@@ -21,6 +22,8 @@ import {
   ReturnDrugInvoiceItemDto,
 } from './dto/invoice.dto';
 import { InvoiceService } from './invoice.service';
+import { MedicationOrderPrescriptionSyncService } from '../patient-medications/medication-order-prescription.sync';
+import { PrescriptionRefillFulfillmentService } from '../patient-medications/prescription-refill-fulfillment.service';
 
 @Injectable()
 export class InvoiceDrugService {
@@ -28,6 +31,8 @@ export class InvoiceDrugService {
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
     private readonly drugStockService: DrugStockService,
+    private readonly orderPrescriptionSync: MedicationOrderPrescriptionSyncService,
+    private readonly refillFulfillment: PrescriptionRefillFulfillmentService,
   ) { }
 
   private static readonly invoiceItemCreatedBySelect = {
@@ -559,12 +564,26 @@ export class InvoiceDrugService {
         }
         const dispensedAt = settlingNow ? new Date() : undefined;
         if (settlingNow) {
-          await this.drugStockService.deductDrugStockFifo(
+          const payerType = await resolvePharmacyPayerType(
             tx,
-            existing.drugId!,
-            nextQuantity,
-            locationId,
+            invoiceId,
+            itemId,
           );
+          await this.drugStockService.applyFifoOut(tx, {
+            drugId: existing.drugId!,
+            locationId: locationId!,
+            quantity: nextQuantity,
+            ctx: {
+              invoiceItemId: itemId,
+              unitSellingPrice:
+                dto.unitPrice !== undefined
+                  ? this.asDecimal(dto.unitPrice)
+                  : existing.unitPrice,
+              payerType,
+              dispensedById: performedByStaffId!,
+              dispensedAt: dispensedAt!,
+            },
+          });
         }
         const updatedItem = await tx.invoiceItem.update({
           where: { id: itemId },
@@ -607,6 +626,10 @@ export class InvoiceDrugService {
                 where: { id: linkedRequest.medicationOrderId },
                 data: { status: 'Dispensed' },
               });
+              await this.orderPrescriptionSync.syncDispensedOrder(
+                linkedRequest.medicationOrderId,
+                tx,
+              );
             }
           } else {
             const linkedOrder = await tx.medicationOrder.findFirst({
@@ -629,6 +652,16 @@ export class InvoiceDrugService {
                 data: { status: 'Dispensed' },
               });
             }
+          }
+
+          const linkedRefill = await tx.prescriptionRefillRequest.findFirst({
+            where: { invoiceItemId: itemId },
+            select: { id: true, status: true },
+          });
+          if (linkedRefill?.status === PrescriptionRefillRequestStatus.APPROVED) {
+            await this.refillFulfillment.fulfillRefill(linkedRefill.id, tx, {
+              quantity: nextQuantity,
+            });
           }
         }
 
@@ -937,12 +970,24 @@ export class InvoiceDrugService {
         const dispensary = await this.findFirstDispensaryLocationByName(tx);
 
         if (item.settled) {
-          await this.creditDrugStockToDispensary(
-            tx,
-            item.drugId,
-            returnQty,
-            dispensary.id,
-          );
+          const allocationCount = await tx.dispenseBatchAllocation.count({
+            where: { invoiceItemId: item.id },
+          });
+          if (allocationCount > 0) {
+            await this.drugStockService.releaseDispenseAllocationsForInvoiceItem(
+              tx,
+              item.id,
+              returnQty,
+              performedByStaffId,
+            );
+          } else {
+            await this.creditDrugStockToDispensary(
+              tx,
+              item.drugId,
+              returnQty,
+              dispensary.id,
+            );
+          }
         }
 
         const isFullReturn = returnQty === item.quantity;

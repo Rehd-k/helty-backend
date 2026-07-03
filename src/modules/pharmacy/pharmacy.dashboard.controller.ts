@@ -1,18 +1,28 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AccountTypes } from '../../common/decorators/account-types.decorator';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { PharmacyDashboardService } from './pharmacy.dashboard.service';
+import { PharmacyHeadDashboardService } from './pharmacy-head-dashboard.service';
+import { PHARMACY_HEAD_ACCESS } from './pharmacy.constants';
 import {
   PharmacyDashboardChartQueryDto,
   PharmacyDashboardQueryDto,
   PharmacyDrugUsageChartQueryDto,
 } from './dto/pharmacy-dashboard-query.dto';
+import {
+  PharmacyHeadSummaryQueryDto,
+  PharmacySalesProfitChartQueryDto,
+} from './dto/pharmacy-reports-query.dto';
 
 @ApiTags('Pharmacy - Dashboard')
 @Controller('pharmacy/dashboard')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PharmacyDashboardController {
-  constructor(private readonly service: PharmacyDashboardService) {}
+  constructor(
+    private readonly service: PharmacyDashboardService,
+    private readonly headService: PharmacyHeadDashboardService,
+  ) {}
 
   @Get('summary')
   @ApiOperation({ summary: 'Pharmacy dashboard summary KPIs' })
@@ -99,5 +109,19 @@ export class PharmacyDashboardController {
   })
   dispenseHistory(@Query() query: PharmacyDashboardQueryDto) {
     return this.service.getDispenseHistory(query);
+  }
+
+  @Get('head-summary')
+  @AccountTypes(...PHARMACY_HEAD_ACCESS)
+  @ApiOperation({ summary: 'Pharmacy head executive KPIs with profit' })
+  headSummary(@Query() query: PharmacyHeadSummaryQueryDto) {
+    return this.headService.getHeadSummary(query);
+  }
+
+  @Get('charts/sales-profit')
+  @AccountTypes(...PHARMACY_HEAD_ACCESS)
+  @ApiOperation({ summary: 'Sales and profit time series (pharmacy head)' })
+  salesProfitChart(@Query() query: PharmacySalesProfitChartQueryDto) {
+    return this.headService.getSalesProfitChart(query);
   }
 }

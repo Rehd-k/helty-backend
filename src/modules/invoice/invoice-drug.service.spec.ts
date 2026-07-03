@@ -7,6 +7,16 @@ import { InvoiceStatus, Prisma } from '@prisma/client';
 import { InvoiceDrugService } from './invoice-drug.service';
 import { InvoiceService } from './invoice.service';
 import { DrugStockService } from '../pharmacy/drug-stock.service';
+import { MedicationOrderPrescriptionSyncService } from '../patient-medications/medication-order-prescription.sync';
+import { PrescriptionRefillFulfillmentService } from '../patient-medications/prescription-refill-fulfillment.service';
+
+jest.mock('../../common/utils/human-readable-id.util', () => ({
+  generateHumanReadableId: jest.fn().mockReturnValue('ID001'),
+}));
+
+jest.mock('../pharmacy/pharmacy-payer-type.util', () => ({
+  resolvePharmacyPayerType: jest.fn().mockResolvedValue('Cash'),
+}));
 
 function createDrugService(
   prisma: any,
@@ -17,10 +27,20 @@ function createDrugService(
     prisma,
     invoiceService as InvoiceService,
     {
+      applyFifoOut: jest.fn().mockResolvedValue(undefined),
       deductDrugStockFifo: jest.fn().mockResolvedValue(undefined),
+      releaseDispenseAllocationsForInvoiceItem: jest
+        .fn()
+        .mockResolvedValue(undefined),
       getAvailableQuantity: jest.fn().mockResolvedValue(10),
       ...drugStockService,
     } as DrugStockService,
+    {
+      syncDispensedOrder: jest.fn().mockResolvedValue(undefined),
+    } as unknown as MedicationOrderPrescriptionSyncService,
+    {
+      fulfillRefill: jest.fn().mockResolvedValue(undefined),
+    } as unknown as PrescriptionRefillFulfillmentService,
   );
 }
 
@@ -167,6 +187,9 @@ describe('InvoiceDrugService', () => {
             drugBatch,
             invoiceDrugReturn: {
               create: jest.fn().mockResolvedValue({ id: 'ret-1' }),
+            },
+            dispenseBatchAllocation: {
+              count: jest.fn().mockResolvedValue(0),
             },
             invoiceAuditLog: { create: jest.fn().mockResolvedValue({}) },
           };
@@ -420,6 +443,9 @@ describe('InvoiceDrugService', () => {
               findFirst: jest.fn().mockResolvedValue(null),
               updateMany: jest.fn(),
             },
+            prescriptionRefillRequest: {
+              findFirst: jest.fn().mockResolvedValue(null),
+            },
             invoice: {
               findUnique: jest.fn().mockResolvedValue({
                 id: 'inv-1',
@@ -459,7 +485,7 @@ describe('InvoiceDrugService', () => {
   });
 
   it('updateDrugInvoiceItem delegates stock deduction to DrugStockService on settle', async () => {
-    const deductDrugStockFifo = jest.fn().mockResolvedValue(undefined);
+    const applyFifoOut = jest.fn().mockResolvedValue(undefined);
     const prisma: any = {
       invoiceItem: {
         count: jest.fn().mockResolvedValue(1),
@@ -500,6 +526,9 @@ describe('InvoiceDrugService', () => {
               findFirst: jest.fn().mockResolvedValue(null),
               updateMany: jest.fn(),
             },
+            prescriptionRefillRequest: {
+              findFirst: jest.fn().mockResolvedValue(null),
+            },
             invoice: {
               findUnique: jest.fn().mockResolvedValue({
                 id: 'inv-1',
@@ -512,7 +541,7 @@ describe('InvoiceDrugService', () => {
           return cb(tx);
         }),
     };
-    const service = createDrugService(prisma, {}, { deductDrugStockFifo });
+    const service = createDrugService(prisma, {}, { applyFifoOut });
 
     await service.updateDrugInvoiceItem(
       'inv-1',
@@ -522,11 +551,18 @@ describe('InvoiceDrugService', () => {
       'staff-1',
     );
 
-    expect(deductDrugStockFifo).toHaveBeenCalledWith(
+    expect(applyFifoOut).toHaveBeenCalledWith(
       expect.anything(),
-      'drug-1',
-      2,
-      'loc-1',
+      expect.objectContaining({
+        drugId: 'drug-1',
+        locationId: 'loc-1',
+        quantity: 2,
+        ctx: expect.objectContaining({
+          invoiceItemId: 'item-1',
+          dispensedById: 'staff-1',
+          payerType: 'Cash',
+        }),
+      }),
     );
   });
 

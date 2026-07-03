@@ -18,7 +18,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConsumableStockService } from '../store/consumable-stock.service';
 import { PurchaseItemStockService } from '../purchases/purchase-item-stock.service';
-import { assertAccountHead, staffLabel } from '../accounts/accounts.utils';
+import { assertRefundReviewer, staffLabel } from '../accounts/accounts.utils';
 import { InvoiceService } from './invoice.service';
 
 const refundItemInclude = {
@@ -414,7 +414,7 @@ export class InvoiceItemRefundService {
     reviewerId: string,
     staffRole?: string,
   ) {
-    assertAccountHead(staffRole);
+    assertRefundReviewer(staffRole);
     const trimmed = reason.trim();
     if (!trimmed) {
       throw new BadRequestException('Rejection reason is required.');
@@ -442,7 +442,7 @@ export class InvoiceItemRefundService {
   }
 
   async approve(id: string, reviewerId: string, staffRole?: string) {
-    assertAccountHead(staffRole);
+    assertRefundReviewer(staffRole);
 
     return this.prisma.$transaction(async (tx) => {
       const request = await tx.invoiceItemRefundRequest.findUnique({

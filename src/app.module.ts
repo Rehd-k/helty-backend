@@ -20,6 +20,7 @@ import { PatientLabReportsModule } from './modules/patient-lab-reports/patient-l
 import { PatientRadiologyReportsModule } from './modules/patient-radiology-reports/patient-radiology-reports.module';
 import { PatientMedicationsModule } from './modules/patient-medications/patient-medications.module';
 import { PatientBillingModule } from './modules/patient-billing/patient-billing.module';
+import { PatientAppointmentsModule } from './modules/patient-appointments/patient-appointments.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LocalTimestampInterceptor } from './common/interceptors/local-timestamp.interceptor';
@@ -93,6 +94,7 @@ import { TheatreModule } from './modules/theatre/theatre.module';
     PatientRadiologyReportsModule,
     PatientMedicationsModule,
     PatientBillingModule,
+    PatientAppointmentsModule,
     DepartmentModule,
     InvoiceModule,
     LoggerModule.forRoot({

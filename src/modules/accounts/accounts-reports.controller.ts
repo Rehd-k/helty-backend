@@ -36,7 +36,9 @@ export class AccountsReportsController {
     return this.service.collectionEfficiency(q);
   }
 
+  
   @Get('revenue-by-service/details')
+  @AccountTypes(...ACCOUNTING_ACCESS, 'BILLING_HEAD')
   @ApiOperation({
     summary: 'Revenue by service category — payment drill-down',
     description:
@@ -47,6 +49,7 @@ export class AccountsReportsController {
   }
 
   @Get('revenue-by-service')
+  @AccountTypes(...ACCOUNTING_ACCESS, 'BILLING_HEAD')
   @ApiOperation({ summary: 'Revenue breakdown by service category' })
   revenueByService(@Query() q: AccountsPeriodQueryDto) {
     return this.service.revenueByService(q);

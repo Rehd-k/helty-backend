@@ -10,7 +10,7 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AccountTypes } from '../../common/decorators/account-types.decorator';
 import { JwtAuthGuard, AccessGuard } from '../../common/guards';
-import { ACCOUNT_HEAD_ACCESS } from './accounts.constants';
+import { REFUND_REVIEW_ACCESS } from './accounts.constants';
 import {
   RejectInvoiceItemRefundDto,
   ReviewInvoiceItemRefundDto,
@@ -20,9 +20,9 @@ import { InvoiceItemRefundService } from '../invoice/invoice-item-refund.service
 @ApiTags('Accounts - Refund Requests')
 @Controller('accounts/refund-requests')
 @UseGuards(JwtAuthGuard, AccessGuard)
-@AccountTypes(...ACCOUNT_HEAD_ACCESS)
+@AccountTypes(...REFUND_REVIEW_ACCESS)
 export class AccountsRefundRequestsController {
-  constructor(private readonly service: InvoiceItemRefundService) {}
+  constructor(private readonly service: InvoiceItemRefundService) { }
 
   @Get('pending')
   @ApiOperation({ summary: 'Pending invoice line refund requests' })

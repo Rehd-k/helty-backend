@@ -17,10 +17,22 @@ export function isAccountHead(staffRole?: string): boolean {
   return staffRole === 'ACCOUNT_HEAD' || staffRole === 'SUPER_ADMIN';
 }
 
+export function isRefundReviewer(staffRole?: string): boolean {
+  return isAccountHead(staffRole) || staffRole === 'BILLING_HEAD';
+}
+
 export function assertAccountHead(staffRole?: string): void {
   if (!isAccountHead(staffRole)) {
     throw new ForbiddenException(
       'Only account head staff can perform this action.',
+    );
+  }
+}
+
+export function assertRefundReviewer(staffRole?: string): void {
+  if (!isRefundReviewer(staffRole)) {
+    throw new ForbiddenException(
+      'Only account head or billing head staff can perform this action.',
     );
   }
 }

@@ -22,6 +22,8 @@ import {
   buildActivePrescriptionWhere,
   DOSE_LOG_INCLUDE,
 } from './patient-medications.constants';
+import { PatientMedicationDoseGeneratorService } from './patient-medication-dose.generator';
+import { MedicationOrderPrescriptionSyncService } from './medication-order-prescription.sync';
 import {
   getHospitalDayEnd,
   getHospitalDayStart,
@@ -44,7 +46,11 @@ const HISTORY_INCLUDE = {
 
 @Injectable()
 export class PatientMedicationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly doseGenerator: PatientMedicationDoseGeneratorService,
+    private readonly orderPrescriptionSync: MedicationOrderPrescriptionSyncService,
+  ) {}
 
   async getDashboard(user: PatientJwtPayload) {
     const now = new Date();
@@ -52,10 +58,60 @@ export class PatientMedicationsService {
     const todayEnd = getHospitalDayEnd(now);
     const nextWindowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    const [nextDoses, todaySchedule, activePrescriptions] = await Promise.all([
+    await this.orderPrescriptionSync.syncDispensedOutpatientOrdersForPatient(
+      user.sub,
+    );
+
+    const [initialDoseData, activePrescriptions] = await Promise.all([
+      this.fetchDashboardDoseData(user.sub, todayStart, todayEnd, nextWindowEnd),
+      this.prisma.prescription.findMany({
+        where: buildActivePrescriptionWhere(user.sub, todayEnd),
+        include: ACTIVE_PRESCRIPTION_INCLUDE,
+        orderBy: { startDate: 'desc' },
+      }),
+    ]);
+
+    let doseData = initialDoseData;
+
+    if (
+      !doseData.nextDoses.length &&
+      !doseData.todaySchedule.length &&
+      activePrescriptions.length
+    ) {
+      await Promise.all(
+        activePrescriptions.map((prescription) =>
+          this.doseGenerator.generateDosesForPrescription(prescription.id),
+        ),
+      );
+      doseData = await this.fetchDashboardDoseData(
+        user.sub,
+        todayStart,
+        todayEnd,
+        nextWindowEnd,
+      );
+    }
+
+    return {
+      nextDoses: doseData.nextDoses.map((dose) => toMedicationDoseSummaryDto(dose)),
+      todaySchedule: doseData.todaySchedule.map((dose) =>
+        toMedicationScheduleEntryDto(dose),
+      ),
+      activePrescriptions: activePrescriptions.map((prescription) =>
+        toActivePrescriptionSummaryDto(prescription, now),
+      ),
+    };
+  }
+
+  private async fetchDashboardDoseData(
+    patientId: string,
+    todayStart: Date,
+    todayEnd: Date,
+    nextWindowEnd: Date,
+  ) {
+    const [nextDoses, todaySchedule] = await Promise.all([
       this.prisma.patientMedicationDoseLog.findMany({
         where: {
-          patientId: user.sub,
+          patientId,
           status: PatientMedicationDoseStatus.UPCOMING,
           scheduledAt: {
             gte: todayStart,
@@ -68,7 +124,7 @@ export class PatientMedicationsService {
       }),
       this.prisma.patientMedicationDoseLog.findMany({
         where: {
-          patientId: user.sub,
+          patientId,
           scheduledAt: {
             gte: todayStart,
             lt: todayEnd,
@@ -77,22 +133,9 @@ export class PatientMedicationsService {
         orderBy: { scheduledAt: 'asc' },
         include: DOSE_LOG_INCLUDE,
       }),
-      this.prisma.prescription.findMany({
-        where: buildActivePrescriptionWhere(user.sub, now),
-        include: ACTIVE_PRESCRIPTION_INCLUDE,
-        orderBy: { startDate: 'desc' },
-      }),
     ]);
 
-    return {
-      nextDoses: nextDoses.map((dose) => toMedicationDoseSummaryDto(dose)),
-      todaySchedule: todaySchedule.map((dose) =>
-        toMedicationScheduleEntryDto(dose),
-      ),
-      activePrescriptions: activePrescriptions.map((prescription) =>
-        toActivePrescriptionSummaryDto(prescription, now),
-      ),
-    };
+    return { nextDoses, todaySchedule };
   }
 
   async markDoseTaken(
@@ -186,7 +229,7 @@ export class PatientMedicationsService {
     const prescription = await this.prisma.prescription.findFirst({
       where: {
         id: prescriptionId,
-        ...buildActivePrescriptionWhere(user.sub, now),
+        ...buildActivePrescriptionWhere(user.sub, getHospitalDayEnd(now)),
       },
     });
 

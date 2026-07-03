@@ -71,7 +71,7 @@ const radiologyFileInterceptor = FileInterceptor('file', {
 @Controller('radiology')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class RadiologyImageController {
-  constructor(private readonly radiologyImageService: RadiologyImageService) {}
+  constructor(private readonly radiologyImageService: RadiologyImageService) { }
 
   @Post('order-items/:orderItemId/images')
   @HttpCode(HttpStatus.CREATED)

@@ -1,4 +1,4 @@
-import { EncounterStatus } from '@prisma/client';
+import { EncounterStatus, LabAbnormalFlag } from '@prisma/client';
 import {
   EncounterDiagnosisDto,
   EncounterPrescriptionDto,
@@ -7,6 +7,12 @@ import {
   EncounterSummaryDto,
   EncounterVitalsDto,
 } from './dto/encounter-response.dto';
+import {
+  MedicalRecordAllergyDto,
+  MedicalRecordLabResultDto,
+  MedicalRecordRecentDiagnosisDto,
+  LatestVitalsDto,
+} from './dto/medical-records-dashboard-response.dto';
 
 type DoctorNameFields = {
   firstName: string | null;
@@ -27,6 +33,58 @@ type EncounterListRow = {
     primaryIcdDescription: string | null;
   }>;
 };
+
+type HomeVitalsRow = {
+  pulseRate: number | null;
+  systolic: number | null;
+  diastolic: number | null;
+  recordedAt: Date;
+};
+
+export function hasHomeVitals(vitals: HomeVitalsRow): boolean {
+  return (
+    vitals.pulseRate != null ||
+    vitals.systolic != null ||
+    vitals.diastolic != null
+  );
+}
+
+export function computeBloodPressureStatus(
+  systolic: number | null | undefined,
+  diastolic: number | null | undefined,
+): string | null {
+  if (systolic == null || diastolic == null) {
+    return null;
+  }
+  if (systolic < 120 && diastolic < 80) {
+    return 'Normal';
+  }
+  if (systolic >= 120 && systolic <= 129 && diastolic < 80) {
+    return 'Elevated';
+  }
+  if (systolic >= 130 || diastolic >= 80) {
+    return 'High';
+  }
+  return null;
+}
+
+export function toLatestVitalsDto(
+  vitals: HomeVitalsRow | null | undefined,
+): LatestVitalsDto | null {
+  if (!vitals || !hasHomeVitals(vitals)) {
+    return null;
+  }
+  return {
+    pulseRate: vitals.pulseRate,
+    systolic: vitals.systolic,
+    diastolic: vitals.diastolic,
+    recordedAt: vitals.recordedAt,
+    bloodPressureStatus: computeBloodPressureStatus(
+      vitals.systolic,
+      vitals.diastolic,
+    ),
+  };
+}
 
 type VitalsRow = {
   systolic: number | null;
@@ -189,7 +247,9 @@ function toSoapDto(encounter: EncounterDetailRow): EncounterSoapDto | null {
   return hasContent ? soap : null;
 }
 
-function buildDiagnoses(encounter: EncounterDetailRow): EncounterDiagnosisDto[] {
+function buildDiagnoses(
+  encounter: EncounterDetailRow,
+): EncounterDiagnosisDto[] {
   if (encounter.diagnoses.length > 0) {
     return encounter.diagnoses.map(toDiagnosisDto);
   }
@@ -226,5 +286,63 @@ export function toEncounterDetailDto(
     followUpDate: encounter.followUpDate,
     followUpInstructions: encounter.followUpInstructions,
     referral: encounter.referral,
+  };
+}
+
+type DashboardDiagnosisRow = {
+  id: string;
+  primaryIcdDescription: string | null;
+  createdAt: Date;
+  encounter: {
+    status: EncounterStatus;
+    doctor: {
+      firstName: string;
+      lastName: string;
+      department: { name: string } | null;
+    };
+  };
+};
+
+type DashboardLabResultRow = {
+  value: string | null;
+  abnormalFlag: LabAbnormalFlag | null;
+  createdAt: Date;
+  field: {
+    label: string;
+    referenceRange: string | null;
+  };
+};
+
+export function toMedicalRecordAllergyDto(allergy: {
+  allergen: string;
+  severity: string | null;
+}): MedicalRecordAllergyDto {
+  return {
+    name: allergy.allergen,
+    severity: allergy.severity,
+  };
+}
+
+export function toMedicalRecordRecentDiagnosisDto(
+  diagnosis: DashboardDiagnosisRow,
+): MedicalRecordRecentDiagnosisDto {
+  return {
+    id: diagnosis.id,
+    title: diagnosis.primaryIcdDescription ?? 'Diagnosis',
+    doctorName: formatDoctorName(diagnosis.encounter.doctor),
+    specialty: diagnosis.encounter.doctor.department?.name ?? null,
+    status: diagnosis.encounter.status,
+    diagnosedAt: diagnosis.createdAt,
+  };
+}
+
+export function toMedicalRecordLabResultDto(
+  result: DashboardLabResultRow,
+): MedicalRecordLabResultDto {
+  return {
+    testName: result.field.label,
+    result: result.value,
+    referenceRange: result.field.referenceRange,
+    status: result.abnormalFlag ?? 'UNKNOWN',
   };
 }

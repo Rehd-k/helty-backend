@@ -33,6 +33,7 @@ import {
   toAdministrationQuantity,
 } from './medication-administration.utils';
 import { DrugStockService } from '../pharmacy/drug-stock.service';
+import { resolvePharmacyPayerType } from '../pharmacy/pharmacy-payer-type.util';
 import { InvoiceService } from '../invoice/invoice.service';
 import { medicationOrderForAdmissionWhere } from './admission-medication-order.util';
 
@@ -238,12 +239,23 @@ export class MedicationAdministrationService {
         );
         invoiceItemId = invoiceItem.id;
 
-        await this.drugStockService.deductDrugStockFifo(
+        const payerType = await resolvePharmacyPayerType(
           tx,
-          order.drugId,
-          stockDeductedQuantity,
-          pharmacyLocationId,
+          invoiceItem.invoice.id,
+          invoiceItem.id,
         );
+        await this.drugStockService.applyFifoOut(tx, {
+          drugId: order.drugId,
+          locationId: pharmacyLocationId,
+          quantity: stockDeductedQuantity,
+          ctx: {
+            invoiceItemId: invoiceItem.id,
+            unitSellingPrice: invoiceItem.unitPrice,
+            payerType,
+            dispensedById: staffId,
+            dispensedAt: invoiceItem.dispensedAt ?? new Date(),
+          },
+        });
       }
 
       const administration = await tx.medicationAdministration.create({
