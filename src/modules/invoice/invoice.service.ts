@@ -3407,14 +3407,44 @@ export class InvoiceService {
         })()
         : {};
 
+    const labCategorySet = new Set(
+      LAB_BILLING_CATEGORIES.map((c) => c.toLowerCase()),
+    );
+    const labCategories = normalized.filter((c) =>
+      labCategorySet.has(c.toLowerCase()),
+    );
+    const nonLabCategories = normalized.filter(
+      (c) => !labCategorySet.has(c.toLowerCase()),
+    );
+
     const itemMatchWhere: Prisma.InvoiceItemWhereInput = {
       serviceId: { not: null },
-      service: {
-        categoryId: { not: null },
-        category: {
-          name: { in: normalized, mode: 'insensitive' },
-        },
-      },
+      service: { categoryId: { not: null } },
+      OR: [
+        ...(labCategories.length
+          ? [
+            {
+              service: {
+                category: {
+                  name: { in: labCategories, mode: 'insensitive' as const },
+                },
+              },
+              labOrder: null,
+            },
+          ]
+          : []),
+        ...(nonLabCategories.length
+          ? [
+            {
+              service: {
+                category: {
+                  name: { in: nonLabCategories, mode: 'insensitive' as const },
+                },
+              },
+            },
+          ]
+          : []),
+      ],
     };
 
     const andExtra: Prisma.InvoiceWhereInput[] = [];

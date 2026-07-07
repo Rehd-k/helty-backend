@@ -172,7 +172,7 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'List invoices by service category (matching line items only)',
     description:
-      'Returns invoices that have at least one line item linked to a Service whose ServiceCategory name matches any of the given strings (case-insensitive). Each row includes a nested `invoice` object (id, invoiceID, status, patientId, patient, invoiceItems with service + category) plus display fields (patientName, phone, age, date). Optional filters: `status` (e.g. PAID; FULLY_PAID accepted as alias), `search`, `transactionId`, `invoiceId` / `invoiceID`, `patientName`. Categories align with seeded `ServiceCategory` names (see REF_Categories.csv).',
+      'Returns invoices that have at least one line item linked to a Service whose ServiceCategory name matches any of the given strings (case-insensitive). Each row includes a nested `invoice` object (id, invoiceID, status, patientId, patient, invoiceItems with service + category) plus display fields (patientName, phone, age, date). Optional filters: `status` (e.g. PAID; FULLY_PAID accepted as alias), `search`, `transactionId`, `invoiceId` / `invoiceID`, `patientName`. Categories align with seeded `ServiceCategory` names (see REF_Categories.csv). For Laboratory / Laboratory Tests categories, invoice lines that already have a lab order (`LabOrder` linked via `invoiceItemId`) are excluded from both the invoice match and nested `invoiceItems` — only pending lab work is returned.',
   })
   @ApiQuery({
     name: 'category',

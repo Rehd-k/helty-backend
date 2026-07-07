@@ -1966,4 +1966,101 @@ describe('InvoiceService', () => {
       });
     });
   });
+
+  describe('listInvoicesByServiceCategories', () => {
+    it('excludes Laboratory invoice lines that already have a lab order', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const count = jest.fn().mockResolvedValue(0);
+      const prisma: any = {
+        invoice: { findMany, count },
+      };
+      const service = createInvoiceService(prisma);
+
+      await service.listInvoicesByServiceCategories({
+        category: ['Laboratory'],
+        skip: 0,
+        take: 20,
+      });
+
+      const where = findMany.mock.calls[0][0].where;
+      expect(where.invoiceItems.some).toEqual({
+        serviceId: { not: null },
+        service: { categoryId: { not: null } },
+        OR: [
+          {
+            service: {
+              category: {
+                name: { in: ['Laboratory'], mode: 'insensitive' },
+              },
+            },
+            labOrder: null,
+          },
+        ],
+      });
+      expect(findMany.mock.calls[0][0].include.invoiceItems.where).toEqual(
+        where.invoiceItems.some,
+      );
+    });
+
+    it('does not apply labOrder filter for non-laboratory categories', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const count = jest.fn().mockResolvedValue(0);
+      const prisma: any = {
+        invoice: { findMany, count },
+      };
+      const service = createInvoiceService(prisma);
+
+      await service.listInvoicesByServiceCategories({
+        category: ['Pharmacy'],
+        skip: 0,
+        take: 20,
+      });
+
+      const itemWhere = findMany.mock.calls[0][0].where.invoiceItems.some;
+      expect(itemWhere.OR).toEqual([
+        {
+          service: {
+            category: {
+              name: { in: ['Pharmacy'], mode: 'insensitive' },
+            },
+          },
+        },
+      ]);
+      expect(itemWhere.OR[0]).not.toHaveProperty('labOrder');
+    });
+
+    it('applies labOrder filter only to laboratory categories in mixed queries', async () => {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const count = jest.fn().mockResolvedValue(0);
+      const prisma: any = {
+        invoice: { findMany, count },
+      };
+      const service = createInvoiceService(prisma);
+
+      await service.listInvoicesByServiceCategories({
+        category: ['Laboratory', 'Pharmacy'],
+        skip: 0,
+        take: 20,
+      });
+
+      const itemWhere = findMany.mock.calls[0][0].where.invoiceItems.some;
+      expect(itemWhere.OR).toEqual([
+        {
+          service: {
+            category: {
+              name: { in: ['Laboratory'], mode: 'insensitive' },
+            },
+          },
+          labOrder: null,
+        },
+        {
+          service: {
+            category: {
+              name: { in: ['Pharmacy'], mode: 'insensitive' },
+            },
+          },
+        },
+      ]);
+    });
+  });
 });
