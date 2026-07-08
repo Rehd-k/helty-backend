@@ -23,7 +23,11 @@ import { medicationRequestWithDetailsInclude } from './medication-request-includ
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
 import { loadDrugWithLatestCost } from '../pharmacy/drug-pricing-batch.util';
 
-const REQUESTABLE_ORDER_STATUSES = ['Prescribed', 'Pending Dispense'] as const;
+const REQUESTABLE_ORDER_STATUSES = [
+  'Prescribed',
+  'Pending Dispense',
+  'Dispensed',
+] as const;
 
 type RequestForMutation = Prisma.MedicationRequestGetPayload<{
   include: {

@@ -232,6 +232,35 @@ describe('MedicationRequestService', () => {
     );
   });
 
+  it('creates a medication request from a dispensed order', async () => {
+    medicationOrderFindUnique.mockResolvedValueOnce({
+      id: orderId,
+      drugId,
+      doctorId,
+      encounterId,
+      patientId,
+      status: 'Dispensed',
+      prescribedDrugName: 'Paracetamol',
+      encounter: { id: encounterId, patientId },
+    });
+
+    await service.create({
+      medicationOrderId: orderId,
+      requestedQuantity: 4,
+      requestedByNurseId: nurseId,
+    });
+
+    expect(medicationRequestCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          medicationOrderId: orderId,
+          requestedQuantity: 4,
+          requestedByNurseId: nurseId,
+        }),
+      }),
+    );
+  });
+
   it('rejects nurse requests for outpatient patients', async () => {
     mockIsOutpatientPatient.mockResolvedValue(true);
 
