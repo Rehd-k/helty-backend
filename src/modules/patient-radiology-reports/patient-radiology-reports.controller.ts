@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  Request,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -56,5 +63,34 @@ export class PatientRadiologyReportsController {
     @Param('id') id: string,
   ) {
     return this.patientRadiologyReportsService.getRadiologyReport(req.user, id);
+  }
+
+  @Get('radiology-reports/:reportId/images/:imageId/file')
+  @AccountTypes(PATIENT_ACCOUNT_TYPE)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Download a radiology image/file for a patient report' })
+  @ApiResponse({ status: 404, description: 'Report or image not found' })
+  @ApiResponse({
+    status: 403,
+    description: 'Payment required or staff token cannot access patient routes',
+  })
+  async getRadiologyImageFile(
+    @Request() req: { user: PatientJwtPayload },
+    @Param('reportId') reportId: string,
+    @Param('imageId') imageId: string,
+    @Res() res: { setHeader: (k: string, v: string) => void; sendFile: (p: string) => void },
+  ) {
+    const { filePath, fileName, mimeType } =
+      await this.patientRadiologyReportsService.getRadiologyImageFile(
+        req.user,
+        reportId,
+        imageId,
+      );
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(fileName)}"`,
+    );
+    res.sendFile(filePath);
   }
 }

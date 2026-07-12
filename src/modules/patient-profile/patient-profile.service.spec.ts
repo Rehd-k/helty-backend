@@ -37,6 +37,7 @@ describe('PatientProfileService', () => {
     phoneNumber: '08000000000',
     addressOfResidence: 'Lagos',
     hmo: null,
+    avatarUrl: null,
     status: PatientStatus.OUTPATIENT,
     hmoProvider: { name: 'Test HMO' },
   };
@@ -64,6 +65,7 @@ describe('PatientProfileService', () => {
       phoneNumber: '08000000000',
       addressOfResidence: 'Lagos',
       hmo: 'Test HMO',
+      avatarUrl: null,
     });
     expect(result).not.toHaveProperty('patient');
   });

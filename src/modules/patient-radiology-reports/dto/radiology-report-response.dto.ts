@@ -16,6 +16,32 @@ export enum RadiologyModality {
   OTHER = 'OTHER',
 }
 
+export enum RadiologyReportSeverity {
+  NORMAL = 'NORMAL',
+  ABNORMAL = 'ABNORMAL',
+  CRITICAL = 'CRITICAL',
+}
+
+export class RadiologyReportImageDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  fileName!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  mimeType?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  fileSize?: number | null;
+
+  @ApiProperty()
+  uploadedAt!: Date;
+
+  @ApiProperty()
+  fileUrl!: string;
+}
+
 export class RadiologyReportSummaryDto {
   @ApiProperty()
   id!: string;
@@ -87,5 +113,19 @@ export class RadiologyReportDetailDto extends RadiologyReportSummaryDto {
   impression?: string | null;
 
   @ApiPropertyOptional({ nullable: true })
+  recommendations?: string | null;
+
+  @ApiPropertyOptional({ enum: RadiologyReportSeverity, nullable: true })
+  severity?: RadiologyReportSeverity | null;
+
+  @ApiPropertyOptional({ nullable: true })
   reportBody?: string | null;
+
+  @ApiPropertyOptional({ type: [RadiologyReportImageDto] })
+  images?: RadiologyReportImageDto[];
+
+  @ApiPropertyOptional({
+    description: 'True when the linked invoice is unpaid and results are withheld',
+  })
+  paymentRequired?: boolean;
 }

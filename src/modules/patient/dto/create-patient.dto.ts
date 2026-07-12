@@ -322,4 +322,5 @@ export class PatientResponseDto {
   createdAt: Date;
   updatedAt: Date;
   status: string;
+  avatarUrl?: string | null;
 }

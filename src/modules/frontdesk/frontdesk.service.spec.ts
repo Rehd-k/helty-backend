@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { PatientFeedbackStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FrontdeskService } from './frontdesk.service';
 
@@ -154,5 +154,84 @@ describe('FrontdeskService', () => {
     expect(q).toHaveLength(1);
     expect(q[0].status).toBe('Waiting');
     expect(q[0].id).toBe('wp:wp-2');
+  });
+
+  it('lists patient feedback with patient display names', async () => {
+    const prisma = mockPrisma({
+      patientFeedback: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'fb-1',
+            patient: {
+              id: 'p1',
+              title: null,
+              firstName: 'Ann',
+              otherName: null,
+              surname: 'Lee',
+            },
+          },
+        ]),
+        count: jest.fn().mockResolvedValue(1),
+      },
+    });
+
+    const service = new FrontdeskService(prisma);
+    const result = await service.listFeedback({
+      status: PatientFeedbackStatus.OPEN,
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.total).toBe(1);
+    expect(result.data[0].patient.patientName).toBe('Ann Lee');
+    expect(prisma.patientFeedback.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: PatientFeedbackStatus.OPEN },
+      }),
+    );
+  });
+
+  it('marks feedback as responded by the current staff member', async () => {
+    const row = {
+      id: 'fb-1',
+      status: PatientFeedbackStatus.OPEN,
+      patient: {
+        id: 'p1',
+        title: null,
+        firstName: 'Ann',
+        otherName: null,
+        surname: 'Lee',
+      },
+    };
+    const prisma = mockPrisma({
+      patientFeedback: {
+        findUnique: jest.fn().mockResolvedValue(row),
+        update: jest.fn().mockResolvedValue({
+          ...row,
+          status: PatientFeedbackStatus.RESOLVED,
+          staffResponse: 'Thank you. Resolved.',
+        }),
+      },
+    });
+
+    const service = new FrontdeskService(prisma);
+    const result = await service.updateFeedback(
+      'fb-1',
+      {
+        status: PatientFeedbackStatus.RESOLVED,
+        staffResponse: 'Thank you. Resolved.',
+      },
+      'staff-1',
+    );
+
+    expect(result.status).toBe(PatientFeedbackStatus.RESOLVED);
+    expect(prisma.patientFeedback.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          respondedById: 'staff-1',
+          status: PatientFeedbackStatus.RESOLVED,
+        }),
+      }),
+    );
   });
 });

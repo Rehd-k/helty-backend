@@ -1,9 +1,12 @@
 import { dobMatches, toCalendarDateString } from './patient-auth.util';
 
 describe('patient-auth.util', () => {
-  it('formats calendar dates in UTC', () => {
+  it('formats calendar dates in hospital timezone', () => {
     expect(toCalendarDateString(new Date('1990-05-15T00:00:00.000Z'))).toBe(
       '1990-05-15',
+    );
+    expect(toCalendarDateString(new Date('2026-05-11T23:00:00.000Z'))).toBe(
+      '2026-05-12',
     );
   });
 
@@ -11,5 +14,11 @@ describe('patient-auth.util', () => {
     const stored = new Date('1990-05-15T00:00:00.000Z');
     expect(dobMatches(stored, '1990-05-15')).toBe(true);
     expect(dobMatches(stored, '1990-05-16')).toBe(false);
+  });
+
+  it('matches dob stored as local midnight Lagos time', () => {
+    const stored = new Date('2026-05-11T23:00:00.000Z');
+    expect(dobMatches(stored, '2026-05-12')).toBe(true);
+    expect(dobMatches(stored, '2026-05-11')).toBe(false);
   });
 });

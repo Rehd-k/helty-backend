@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RadiologyRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { InvoiceService } from '../invoice/invoice.service';
+import { RadiologyImageService } from '../radiology/radiology-image.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { ListRadiologyReportsQueryDto } from './dto/list-radiology-reports-query.dto';
 import {
@@ -20,6 +26,7 @@ const PATIENT_ITEM_WHERE = {
 const RADIOLOGY_ITEM_LIST_INCLUDE = {
   order: {
     select: {
+      patientId: true,
       requestedBy: { select: { firstName: true, lastName: true } },
     },
   },
@@ -29,11 +36,26 @@ const RADIOLOGY_ITEM_LIST_INCLUDE = {
       signedAt: true,
       findings: true,
       impression: true,
+      recommendations: true,
+      severity: true,
       signedBy: { select: { firstName: true, lastName: true } },
     },
   },
   invoiceItem: {
-    select: { service: { select: { name: true } } },
+    select: {
+      id: true,
+      service: { select: { name: true } },
+    },
+  },
+  images: {
+    select: {
+      id: true,
+      fileName: true,
+      mimeType: true,
+      fileSize: true,
+      uploadedAt: true,
+    },
+    orderBy: { uploadedAt: 'asc' as const },
   },
 } as const;
 
@@ -44,6 +66,8 @@ export class PatientRadiologyReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly invoiceService: InvoiceService,
+    private readonly radiologyImageService: RadiologyImageService,
   ) {}
 
   private getApiBaseUrl(): string {
@@ -55,6 +79,26 @@ export class PatientRadiologyReportsService {
       ...PATIENT_ITEM_WHERE,
       order: { patientId },
     };
+  }
+
+  async canPatientAccessResults(
+    patientId: string,
+    invoiceItemId: string | null | undefined,
+  ): Promise<boolean> {
+    if (!invoiceItemId) {
+      return true;
+    }
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await this.invoiceService.assertInvoiceItemPaidOrInpatientCredit(tx, {
+          invoiceItemId,
+          patientId,
+        });
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async listRadiologyReports(
@@ -106,9 +150,19 @@ export class PatientRadiologyReportsService {
       isPendingReviewStatus(row.status),
     ).length;
 
+    const accessByItem = await Promise.all(
+      items.map((item) =>
+        this.canPatientAccessResults(user.sub, item.invoiceItem?.id),
+      ),
+    );
+
     return {
-      data: items.map((item) =>
-        toRadiologyReportSummaryDto(item, apiBaseUrl),
+      data: items.map((item, index) =>
+        toRadiologyReportSummaryDto(
+          item,
+          apiBaseUrl,
+          accessByItem[index],
+        ),
       ),
       total,
       page,
@@ -136,6 +190,52 @@ export class PatientRadiologyReportsService {
       throw new NotFoundException(`Radiology report "${id}" not found.`);
     }
 
-    return toRadiologyReportDetailDto(item, apiBaseUrl);
+    const canAccessResults = await this.canPatientAccessResults(
+      user.sub,
+      item.invoiceItem?.id,
+    );
+
+    return toRadiologyReportDetailDto(item, apiBaseUrl, canAccessResults);
+  }
+
+  async getRadiologyImageFile(
+    user: PatientJwtPayload,
+    reportId: string,
+    imageId: string,
+  ) {
+    const item = await this.prisma.radiologyOrderItem.findFirst({
+      where: {
+        id: reportId,
+        ...this.patientItemWhere(user.sub),
+      },
+      select: {
+        id: true,
+        invoiceItemId: true,
+        images: {
+          where: { id: imageId },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundException(`Radiology report "${reportId}" not found.`);
+    }
+
+    if (!item.images.length) {
+      throw new NotFoundException(`Radiology image "${imageId}" not found.`);
+    }
+
+    const canAccessResults = await this.canPatientAccessResults(
+      user.sub,
+      item.invoiceItemId,
+    );
+    if (!canAccessResults) {
+      throw new ForbiddenException(
+        'Payment is required before viewing imaging files.',
+      );
+    }
+
+    return this.radiologyImageService.getFile(imageId);
   }
 }

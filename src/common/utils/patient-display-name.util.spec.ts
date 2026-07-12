@@ -46,6 +46,7 @@ describe('toPatientNameDto', () => {
       otherName: 'Grace',
       surname: 'Okafor',
       displayName: 'Dr Ada Grace Okafor',
+      avatarUrl: null,
     });
   });
 
@@ -56,6 +57,20 @@ describe('toPatientNameDto', () => {
       otherName: null,
       surname: null,
       displayName: 'Sam',
+      avatarUrl: null,
+    });
+  });
+
+  it('passes through avatarUrl when present', () => {
+    expect(
+      toPatientNameDto({
+        firstName: 'Ada',
+        surname: 'Okafor',
+        avatarUrl: 'https://api.example.com/uploads/patients/uuid/avatar.jpg',
+      }),
+    ).toMatchObject({
+      avatarUrl: 'https://api.example.com/uploads/patients/uuid/avatar.jpg',
+      displayName: 'Ada Okafor',
     });
   });
 });

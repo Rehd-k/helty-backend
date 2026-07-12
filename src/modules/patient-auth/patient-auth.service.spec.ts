@@ -32,6 +32,7 @@ describe('PatientAuthService', () => {
     phoneNumber: '08000000000',
     addressOfResidence: 'Lagos',
     hmo: null,
+    avatarUrl: null,
     status: PatientStatus.OUTPATIENT,
     hmoProvider: { name: 'Test HMO' },
   };
@@ -59,6 +60,7 @@ describe('PatientAuthService', () => {
     });
     expect(result.accessToken).toBe('signed-token');
     expect(result.patient.hmo).toBe('Test HMO');
+    expect(result.patient.avatarUrl).toBeNull();
   });
 
   it('rejects unknown patient ID', async () => {

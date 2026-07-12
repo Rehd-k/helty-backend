@@ -1,6 +1,30 @@
 import { BadRequestException } from '@nestjs/common';
 import { AdmissionStatus } from '@prisma/client';
+
+jest.mock('../invoice/invoice.service', () => ({
+  InvoiceService: jest.fn().mockImplementation(() => ({
+    recalculateInvoiceTotals: jest.fn().mockResolvedValue({
+      id: 'inv-1',
+      status: 'PENDING',
+      totalAmount: 100,
+      amountPaid: 0,
+    }),
+  })),
+}));
+
 import { AdmissionService } from './admission.service';
+
+function makeInvoiceService(overrides: Record<string, unknown> = {}) {
+  return {
+    recalculateInvoiceTotals: jest.fn().mockResolvedValue({
+      id: 'inv-1',
+      status: 'PENDING',
+      totalAmount: 100,
+      amountPaid: 0,
+    }),
+    ...overrides,
+  };
+}
 
 function makeTx(overrides: Record<string, unknown> = {}) {
   const tx: any = {
@@ -25,7 +49,13 @@ function makeTx(overrides: Record<string, unknown> = {}) {
       update: jest.fn().mockResolvedValue({ id: 'adm-1' }),
     },
     invoice: {
-      findMany: jest.fn().mockResolvedValue([{ id: 'inv-1' }]),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'inv-1',
+          totalAmount: 100,
+          amountPaid: 0,
+        },
+      ]),
       findUnique: jest.fn().mockResolvedValue({
         id: 'inv-1',
         amountPaid: { gte: () => false, gt: () => false },
@@ -33,6 +63,9 @@ function makeTx(overrides: Record<string, unknown> = {}) {
       }),
       update: jest.fn().mockResolvedValue({}),
       count: jest.fn().mockResolvedValue(1),
+    },
+    invoiceCoverage: {
+      groupBy: jest.fn().mockResolvedValue([]),
     },
     invoiceItemUsageSegment: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -53,7 +86,7 @@ describe('AdmissionService', () => {
       $transaction: jest.fn().mockImplementation((cb) => cb(tx)),
     };
 
-    const service = new AdmissionService(prisma);
+    const service = new AdmissionService(prisma, makeInvoiceService() as any);
     await service.update(
       'adm-1',
       {
@@ -82,14 +115,14 @@ describe('AdmissionService', () => {
   it('clinical discharge with paid invoices auto-finalizes to DISCHARGED', async () => {
     const tx = makeTx({
       invoice: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'inv-1' }]),
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'inv-1',
-          amountPaid: { gte: () => true, gt: () => true },
-          invoiceItems: [],
-        }),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'inv-1',
+            totalAmount: 100,
+            amountPaid: 100,
+          },
+        ]),
         update: jest.fn().mockResolvedValue({}),
-        count: jest.fn().mockResolvedValue(0),
       },
       admission: {
         findUnique: jest.fn().mockResolvedValue({
@@ -114,7 +147,7 @@ describe('AdmissionService', () => {
       $transaction: jest.fn().mockImplementation((cb) => cb(tx)),
     };
 
-    const service = new AdmissionService(prisma);
+    const service = new AdmissionService(prisma, makeInvoiceService() as any);
     const result = await service.update(
       'adm-1',
       {
@@ -160,7 +193,7 @@ describe('AdmissionService', () => {
       $transaction: jest.fn().mockImplementation((cb) => cb(tx)),
     };
 
-    const service = new AdmissionService(prisma);
+    const service = new AdmissionService(prisma, makeInvoiceService() as any);
     const result = await service.update(
       'adm-1',
       {
@@ -194,8 +227,15 @@ describe('AdmissionService', () => {
         }),
       },
       invoice: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'inv-1' }]),
-        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'inv-1',
+            invoiceID: 'INV-001',
+            status: 'PAID',
+            totalAmount: 100,
+            amountPaid: 100,
+          },
+        ]),
       },
     });
 
@@ -203,7 +243,7 @@ describe('AdmissionService', () => {
       $transaction: jest.fn().mockImplementation((cb) => cb(tx)),
     };
 
-    const service = new AdmissionService(prisma);
+    const service = new AdmissionService(prisma, makeInvoiceService() as any);
     const result = await service.clearBillingClearance('adm-1', 'billing-1');
 
     expect(result.status).toBe(AdmissionStatus.DISCHARGED);
@@ -238,7 +278,6 @@ describe('AdmissionService', () => {
             amountPaid: 40,
           },
         ]),
-        count: jest.fn().mockResolvedValue(1),
       },
     });
 
@@ -246,9 +285,55 @@ describe('AdmissionService', () => {
       $transaction: jest.fn().mockImplementation((cb) => cb(tx)),
     };
 
-    const service = new AdmissionService(prisma);
+    const service = new AdmissionService(prisma, makeInvoiceService() as any);
     await expect(
       service.clearBillingClearance('adm-1', 'billing-1'),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('billing clearance allows invoices fully covered by discount or HMO', async () => {
+    const tx = makeTx({
+      admission: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'adm-1',
+          patientId: 'pat-1',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+          outcome: 'Duly Discharged',
+          encounter: { id: 'enc-1' },
+        }),
+        update: jest.fn().mockResolvedValue({
+          id: 'adm-1',
+          status: AdmissionStatus.DISCHARGED,
+        }),
+      },
+      invoice: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'inv-1',
+            invoiceID: 'ZS70S124BC',
+            status: 'PENDING',
+            totalAmount: 5000,
+            amountPaid: 0,
+          },
+        ]),
+      },
+      invoiceCoverage: {
+        groupBy: jest.fn().mockResolvedValue([
+          {
+            invoiceId: 'inv-1',
+            _sum: { amount: 5000 },
+          },
+        ]),
+      },
+    });
+
+    const prisma: any = {
+      $transaction: jest.fn().mockImplementation((cb) => cb(tx)),
+    };
+
+    const service = new AdmissionService(prisma, makeInvoiceService() as any);
+    const result = await service.clearBillingClearance('adm-1', 'billing-1');
+
+    expect(result.status).toBe(AdmissionStatus.DISCHARGED);
   });
 });

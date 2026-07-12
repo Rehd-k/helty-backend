@@ -21,6 +21,7 @@ import { PatientRadiologyReportsModule } from './modules/patient-radiology-repor
 import { PatientMedicationsModule } from './modules/patient-medications/patient-medications.module';
 import { PatientBillingModule } from './modules/patient-billing/patient-billing.module';
 import { PatientAppointmentsModule } from './modules/patient-appointments/patient-appointments.module';
+import { PatientFeedbackModule } from './modules/patient-feedback/patient-feedback.module';
 import { PatientProfileModule } from './modules/patient-profile/patient-profile.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -96,6 +97,7 @@ import { TheatreModule } from './modules/theatre/theatre.module';
     PatientMedicationsModule,
     PatientBillingModule,
     PatientAppointmentsModule,
+    PatientFeedbackModule,
     PatientProfileModule,
     DepartmentModule,
     InvoiceModule,

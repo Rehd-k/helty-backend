@@ -1,11 +1,14 @@
 import {
   RadiologyModality as PrismaRadiologyModality,
   RadiologyRequestStatus,
+  ReportSeverity,
 } from '@prisma/client';
 import { formatDoctorName } from '../patient-medical-records/patient-medical-records.util';
 import {
   RadiologyModality,
   RadiologyReportDetailDto,
+  RadiologyReportImageDto,
+  RadiologyReportSeverity,
   RadiologyReportStatus,
   RadiologyReportSummaryDto,
   RadiologyStatisticsDto,
@@ -14,6 +17,14 @@ import {
 type DoctorNameFields = {
   firstName: string | null;
   lastName: string | null;
+};
+
+type RadiologyImageRow = {
+  id: string;
+  fileName: string;
+  mimeType: string | null;
+  fileSize: number | null;
+  uploadedAt: Date;
 };
 
 type RadiologyItemRow = {
@@ -34,11 +45,15 @@ type RadiologyItemRow = {
     signedAt: Date;
     findings: string | null;
     impression: string | null;
+    recommendations: string | null;
+    severity: ReportSeverity | null;
     signedBy: DoctorNameFields;
   } | null;
   invoiceItem: {
+    id: string;
     service: { name: string } | null;
   } | null;
+  images?: RadiologyImageRow[];
 };
 
 type PatientProfileFields = {
@@ -85,6 +100,8 @@ const PROFILE_COMPLETENESS_FIELDS: (keyof PatientProfileFields)[] = [
   'nationality',
 ];
 
+const RASTER_MIME_PREFIXES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
 export function mapModality(
   scanType: PrismaRadiologyModality,
 ): RadiologyModality {
@@ -117,6 +134,22 @@ export function mapReportStatus(
       return RadiologyReportStatus.VERIFIED;
     default:
       return RadiologyReportStatus.PENDING;
+  }
+}
+
+export function mapReportSeverity(
+  severity: ReportSeverity | null | undefined,
+): RadiologyReportSeverity | null {
+  if (!severity) return null;
+  switch (severity) {
+    case ReportSeverity.NORMAL:
+      return RadiologyReportSeverity.NORMAL;
+    case ReportSeverity.ABNORMAL:
+      return RadiologyReportSeverity.ABNORMAL;
+    case ReportSeverity.CRITICAL:
+      return RadiologyReportSeverity.CRITICAL;
+    default:
+      return null;
   }
 }
 
@@ -190,16 +223,65 @@ function buildPdfUrl(
   itemId: string,
   hasReport: boolean,
   apiBaseUrl: string,
+  canAccessResults: boolean,
 ): string | null {
-  if (!hasReport || !apiBaseUrl) {
+  if (!hasReport || !apiBaseUrl || !canAccessResults) {
     return null;
   }
   return `${apiBaseUrl}/patient/radiology-reports/${itemId}/pdf`;
 }
 
+function buildPatientImageFileUrl(
+  reportId: string,
+  imageId: string,
+  apiBaseUrl: string,
+): string {
+  return `${apiBaseUrl}/patient/radiology-reports/${reportId}/images/${imageId}/file`;
+}
+
+function isRasterMimeType(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  const normalized = mimeType.toLowerCase();
+  return RASTER_MIME_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
+export function mapPatientRadiologyImages(
+  item: RadiologyItemRow,
+  apiBaseUrl: string,
+  canAccessResults: boolean,
+): RadiologyReportImageDto[] {
+  if (!canAccessResults || !apiBaseUrl || !item.images?.length) {
+    return [];
+  }
+  return item.images.map((image) => ({
+    id: image.id,
+    fileName: image.fileName,
+    mimeType: image.mimeType,
+    fileSize: image.fileSize,
+    uploadedAt: image.uploadedAt,
+    fileUrl: buildPatientImageFileUrl(item.id, image.id, apiBaseUrl),
+  }));
+}
+
+function resolveThumbnailUrl(
+  item: RadiologyItemRow,
+  apiBaseUrl: string,
+  canAccessResults: boolean,
+): string | null {
+  if (!canAccessResults || !apiBaseUrl || !item.images?.length) {
+    return null;
+  }
+  const firstRaster = item.images.find((image) =>
+    isRasterMimeType(image.mimeType),
+  );
+  const firstImage = firstRaster ?? item.images[0];
+  return buildPatientImageFileUrl(item.id, firstImage.id, apiBaseUrl);
+}
+
 export function toRadiologyReportSummaryDto(
   item: RadiologyItemRow,
   apiBaseUrl = '',
+  canAccessResults = true,
 ): RadiologyReportSummaryDto {
   const radiologist = item.report?.signedBy;
   return {
@@ -212,22 +294,48 @@ export function toRadiologyReportSummaryDto(
       : 'Pending assignment',
     referringDoctorName: formatDoctorName(item.order.requestedBy),
     status: mapReportStatus(item.status),
-    pdfUrl: buildPdfUrl(item.id, Boolean(item.report), apiBaseUrl),
+    pdfUrl: buildPdfUrl(
+      item.id,
+      Boolean(item.report),
+      apiBaseUrl,
+      canAccessResults,
+    ),
     dicomUrl: null,
-    thumbnailUrl: null,
+    thumbnailUrl: resolveThumbnailUrl(item, apiBaseUrl, canAccessResults),
   };
 }
 
 export function toRadiologyReportDetailDto(
   item: RadiologyItemRow,
   apiBaseUrl = '',
+  canAccessResults = true,
 ): RadiologyReportDetailDto {
-  const summary = toRadiologyReportSummaryDto(item, apiBaseUrl);
+  const summary = toRadiologyReportSummaryDto(item, apiBaseUrl, canAccessResults);
+  const paymentRequired = !canAccessResults && Boolean(item.invoiceItem?.id);
+
+  if (!canAccessResults) {
+    return {
+      ...summary,
+      verifiedAt: null,
+      findings: null,
+      impression: null,
+      recommendations: null,
+      severity: null,
+      reportBody: null,
+      images: [],
+      paymentRequired,
+    };
+  }
+
   return {
     ...summary,
     verifiedAt: item.report?.signedAt ?? null,
     findings: item.report?.findings ?? null,
     impression: item.report?.impression ?? null,
+    recommendations: item.report?.recommendations ?? null,
+    severity: mapReportSeverity(item.report?.severity),
     reportBody: null,
+    images: mapPatientRadiologyImages(item, apiBaseUrl, canAccessResults),
+    paymentRequired: false,
   };
 }

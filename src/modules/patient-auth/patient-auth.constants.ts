@@ -17,6 +17,7 @@ export const PATIENT_AUTH_SELECT = {
   addressOfResidence: true,
   hmo: true,
   status: true,
+  avatarUrl: true,
   hmoProvider: {
     select: { name: true },
   },

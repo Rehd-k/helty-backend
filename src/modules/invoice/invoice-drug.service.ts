@@ -405,26 +405,57 @@ export class InvoiceDrugService {
             },
           },
         },
+        coverages: {
+          where: { status: { not: 'REVERSED' } },
+          select: {
+            scope: true,
+            amount: true,
+            invoiceItemId: true,
+          },
+        },
       },
     });
 
     if (!invoice) throw new NotFoundException(`Invoice ${id} not found`);
-    const amountDue = this.asDecimal(invoice.totalAmount).sub(
-      invoice.amountPaid,
+    const coveredAmount = invoice.coverages.reduce(
+      (sum, c) => sum.add(this.asDecimal(c.amount)),
+      new Prisma.Decimal(0),
     );
+    const effectivePayable = this.asDecimal(invoice.totalAmount).sub(coveredAmount);
+    const amountDue = effectivePayable.sub(invoice.amountPaid);
     const now = new Date();
+    const lineCoveredById = this.invoiceService.computeLineCoverageFromRows(
+      invoice.invoiceItems,
+      invoice.coverages.map((c) => ({
+        scope: c.scope,
+        amount: c.amount,
+        invoiceItemId: c.invoiceItemId ?? null,
+      })),
+      now,
+    );
     const invoiceItems = this.enrichDrugInvoiceItems(
       invoice.invoiceItems.map((item) => {
         const lineTotal = this.invoiceLineTotal(item, now);
+        const lineCovered = this.asDecimal(lineCoveredById.get(item.id) ?? 0);
+        const lineEffectiveDue = lineTotal.sub(lineCovered);
         const paid = this.asDecimal(item.amountPaid);
         return {
           ...item,
           lineTotal,
-          lineAmountDue: lineTotal.sub(paid),
+          lineCovered,
+          lineEffectiveDue,
+          lineAmountDue: lineEffectiveDue.sub(paid),
         };
       }),
     );
-    return { ...invoice, invoiceItems, amountDue };
+    return {
+      ...invoice,
+      invoiceItems,
+      coveredAmount,
+      effectivePayable,
+      amountDue,
+      netAmountDue: amountDue,
+    };
   }
 
   async updateDrugInvoice(id: string, dto: UpdateInvoiceDto, req: any) {

@@ -38,7 +38,7 @@ export class WaitingPatientController {
   @Get()
   @ApiOperation({
     summary:
-      'List nursing queue from paid consultation invoices (registered patients only)',
+      'List nursing queue from paid consultation invoices (outpatients only)',
   })
   findAll(@Query() query: QueryWaitingPatientDto) {
     return this.waitingPatientService.findAll(query);

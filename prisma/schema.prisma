@@ -44,6 +44,7 @@ model Patient {
   hmo                   String?
   hmoId                 String?
   fingerprintData       String?
+  avatarUrl             String?
   status                PatientStatus @default(OUTPATIENT)
 
   hmoProvider Hmo? @relation(fields: [hmoId], references: [id])
@@ -91,6 +92,7 @@ model Patient {
   archivedEncounters        PatientArchivedEncounter[]
   referrals                 Referral[]
   complaints                PatientComplaint[]
+  feedbackSubmissions       PatientFeedback[]
   safetyIncidents           SafetyIncident[]
   infectionCases            InfectionCase[]
   medicationDoseLogs        PatientMedicationDoseLog[]
@@ -2225,6 +2227,7 @@ model Department {
   storeStockMovements StoreStockMovement[]
   referrals           Referral[]
   complaints          PatientComplaint[]
+  patientFeedback     PatientFeedback[]
   safetyIncidents     SafetyIncident[]
   infectionCases      InfectionCase[]
   nurseShiftRosters   NurseShiftRoster[]
@@ -2446,6 +2449,7 @@ model Staff {
   referralsCreated                   Referral[]                     @relation("ReferralCreatedBy")
   complaintsCreated                  PatientComplaint[]             @relation("ComplaintCreatedBy")
   complaintsAssigned                 PatientComplaint[]             @relation("ComplaintAssignedTo")
+  patientFeedbackResponded           PatientFeedback[]              @relation("PatientFeedbackRespondedBy")
   safetyIncidentsReported            SafetyIncident[]               @relation("SafetyIncidentReportedBy")
   infectionCasesCreated              InfectionCase[]                @relation("InfectionCaseCreatedBy")
   cmdCommunicationsCreated           CmdCommunication[]             @relation("CmdCommunicationCreatedBy")
@@ -3218,6 +3222,19 @@ enum ComplaintStatus {
   CLOSED
 }
 
+enum PatientFeedbackKind {
+  COMPLAINT
+  SUGGESTION
+  GENERAL
+}
+
+enum PatientFeedbackStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
 enum SafetyIncidentType {
   MEDICATION
   FALL
@@ -3305,6 +3322,29 @@ model PatientComplaint {
 
   @@index([patientId])
   @@index([status, reportedAt])
+  @@index([departmentId])
+}
+
+model PatientFeedback {
+  id            String                @id @default(uuid())
+  patient       Patient               @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId     String
+  kind          PatientFeedbackKind
+  subject       String
+  message       String
+  status        PatientFeedbackStatus @default(OPEN)
+  department    Department?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId  String?
+  staffResponse String?
+  resolvedAt    DateTime?
+  respondedBy   Staff?                @relation("PatientFeedbackRespondedBy", fields: [respondedById], references: [id], onDelete: SetNull)
+  respondedById String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([patientId])
+  @@index([status, createdAt])
+  @@index([kind, createdAt])
   @@index([departmentId])
 }
 

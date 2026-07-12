@@ -11,11 +11,13 @@ import {
 import {
   AdmissionStatus,
   EncounterStatus,
+  InvoiceCoverageStatus,
   InvoiceStatus,
   PatientStatus,
   Prisma,
 } from '@prisma/client';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { InvoiceService } from '../invoice/invoice.service';
 
 const ADMISSION_UPDATE_INCLUDE = {
   updatedBy: {
@@ -35,9 +37,10 @@ const ADMISSION_UPDATE_INCLUDE = {
 
 @Injectable()
 export class AdmissionService {
-  constructor(private prisma: PrismaService) { }
-
-  private readonly dayMs = 24 * 60 * 60 * 1000;
+  constructor(
+    private prisma: PrismaService,
+    private readonly invoiceService: InvoiceService,
+  ) { }
 
   /** Ward whose trimmed name is `OPD` (same rule as `PatientService`). */
   private async resolveOpdWardId(
@@ -53,21 +56,6 @@ export class AdmissionService {
       );
     }
     return opd.id;
-  }
-
-  private computeRecurringAmount(
-    segments: Array<{ startAt: Date; endAt: Date | null }>,
-    unitPrice: Prisma.Decimal,
-    now: Date,
-  ) {
-    let totalDays = 0;
-    for (const segment of segments) {
-      const endAt = segment.endAt ?? now;
-      const ms = endAt.getTime() - segment.startAt.getTime();
-      if (ms <= 0) continue;
-      totalDays += Math.ceil(ms / this.dayMs);
-    }
-    return unitPrice.mul(totalDays);
   }
 
   private asDecimal(
@@ -106,46 +94,123 @@ export class AdmissionService {
     });
   }
 
+  private async invoiceCoveredAmountsByInvoiceId(
+    tx: Prisma.TransactionClient,
+    invoiceIds: string[],
+  ): Promise<Map<string, Prisma.Decimal>> {
+    const coveredByInvoiceId = new Map<string, Prisma.Decimal>(
+      invoiceIds.map((id) => [id, new Prisma.Decimal(0)]),
+    );
+    if (!invoiceIds.length) return coveredByInvoiceId;
+
+    const rows = await tx.invoiceCoverage.groupBy({
+      by: ['invoiceId'],
+      where: {
+        invoiceId: { in: invoiceIds },
+        status: { not: InvoiceCoverageStatus.REVERSED },
+      },
+      _sum: { amount: true },
+    });
+    for (const row of rows) {
+      coveredByInvoiceId.set(
+        row.invoiceId,
+        this.asDecimal(row._sum.amount ?? 0),
+      );
+    }
+    return coveredByInvoiceId;
+  }
+
+  private invoiceOutstandingBalance(
+    invoice: {
+      totalAmount: Prisma.Decimal;
+      amountPaid: Prisma.Decimal;
+    },
+    coveredAmount: Prisma.Decimal,
+  ): Prisma.Decimal {
+    const balance = this.asDecimal(invoice.totalAmount)
+      .sub(this.asDecimal(invoice.amountPaid))
+      .sub(coveredAmount);
+    return balance.gt(0) ? balance : new Prisma.Decimal(0);
+  }
+
   private async recalculateInvoiceTotalsForDischarge(
     invoiceId: string,
     now: Date = new Date(),
     tx: Prisma.TransactionClient = this.prisma,
     updatedByStaffId?: string,
   ) {
-    const invoice = await tx.invoice.findUnique({
-      where: { id: invoiceId },
-      include: {
-        invoiceItems: {
-          include: { usageSegments: true },
-        },
-      },
-    });
-    if (!invoice) return null;
-
-    const totalAmount = invoice.invoiceItems.reduce((sum, item) => {
-      if (item.isRecurringDaily) {
-        return sum.add(
-          this.computeRecurringAmount(item.usageSegments, item.unitPrice, now),
-        );
-      }
-      return sum.add(item.unitPrice.mul(item.quantity));
-    }, new Prisma.Decimal(0));
-
-    let status: InvoiceStatus = InvoiceStatus.PENDING;
-    if (totalAmount.gt(0) && invoice.amountPaid.gte(totalAmount)) {
-      status = InvoiceStatus.PAID;
-    } else if (invoice.amountPaid.gt(0)) {
-      status = InvoiceStatus.PARTIALLY_PAID;
+    const updated = await this.invoiceService.recalculateInvoiceTotals(
+      invoiceId,
+      tx,
+      now,
+    );
+    if (updatedByStaffId) {
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: { updatedById: updatedByStaffId },
+      });
     }
+    return updated;
+  }
 
-    return tx.invoice.update({
-      where: { id: invoice.id },
-      data: {
-        totalAmount,
-        status,
-        ...(updatedByStaffId ? { updatedById: updatedByStaffId } : {}),
-      },
+  private async areAllAdmissionInvoicesPaid(
+    tx: Prisma.TransactionClient,
+    invoiceIds: string[],
+  ): Promise<boolean> {
+    if (!invoiceIds.length) return true;
+
+    const invoices = await tx.invoice.findMany({
+      where: { id: { in: invoiceIds } },
+      select: { id: true, totalAmount: true, amountPaid: true },
     });
+    const coveredByInvoiceId = await this.invoiceCoveredAmountsByInvoiceId(
+      tx,
+      invoiceIds,
+    );
+
+    return invoices.every(
+      (invoice) =>
+        this.invoiceOutstandingBalance(
+          invoice,
+          coveredByInvoiceId.get(invoice.id) ?? new Prisma.Decimal(0),
+        ).lte(0),
+    );
+  }
+
+  private buildBillingSummary(
+    invoices: Array<{
+      id: string;
+      invoiceID: string;
+      status: InvoiceStatus;
+      totalAmount: Prisma.Decimal;
+      amountPaid: Prisma.Decimal;
+    }>,
+    coveredByInvoiceId: Map<string, Prisma.Decimal>,
+  ) {
+    let totalBalance = new Prisma.Decimal(0);
+    const rows = invoices.map((invoice) => {
+      const total = this.asDecimal(invoice.totalAmount);
+      const paid = this.asDecimal(invoice.amountPaid);
+      const covered = coveredByInvoiceId.get(invoice.id) ?? new Prisma.Decimal(0);
+      const balance = this.invoiceOutstandingBalance(invoice, covered);
+      if (balance.gt(0)) {
+        totalBalance = totalBalance.add(balance);
+      }
+      return {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceID,
+        status: invoice.status,
+        totalAmount: total.toFixed(2),
+        amountPaid: paid.toFixed(2),
+        coveredAmount: covered.toFixed(2),
+        balance: balance.toFixed(2),
+      };
+    });
+    return {
+      invoices: rows,
+      totalBalance: totalBalance.toFixed(2),
+      allPaid: totalBalance.lte(0),
+    };
   }
 
   private async closeUsageSegmentsForDischarge(
@@ -163,53 +228,6 @@ export class AdmissionService {
       },
       data: { endAt: dischargedAt },
     });
-  }
-
-  private async areAllAdmissionInvoicesPaid(
-    tx: Prisma.TransactionClient,
-    invoiceIds: string[],
-  ): Promise<boolean> {
-    if (!invoiceIds.length) return true;
-    const unpaidCount = await tx.invoice.count({
-      where: {
-        id: { in: invoiceIds },
-        status: { not: InvoiceStatus.PAID },
-      },
-    });
-    return unpaidCount === 0;
-  }
-
-  private buildBillingSummary(
-    invoices: Array<{
-      id: string;
-      invoiceID: string;
-      status: InvoiceStatus;
-      totalAmount: Prisma.Decimal;
-      amountPaid: Prisma.Decimal;
-    }>,
-  ) {
-    let totalBalance = new Prisma.Decimal(0);
-    const rows = invoices.map((invoice) => {
-      const total = this.asDecimal(invoice.totalAmount);
-      const paid = this.asDecimal(invoice.amountPaid);
-      const balance = total.sub(paid);
-      if (balance.gt(0)) {
-        totalBalance = totalBalance.add(balance);
-      }
-      return {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceID,
-        status: invoice.status,
-        totalAmount: total.toFixed(2),
-        amountPaid: paid.toFixed(2),
-        balance: balance.gt(0) ? balance.toFixed(2) : '0.00',
-      };
-    });
-    return {
-      invoices: rows,
-      totalBalance: totalBalance.toFixed(2),
-      allPaid: totalBalance.lte(0),
-    };
   }
 
   private async finalizeAdmission(
@@ -414,6 +432,10 @@ export class AdmissionService {
     const rows = await Promise.all(
       admissions.map(async (admission) => {
         const invoices = await this.getAdmissionInvoices(this.prisma, admission);
+        const coveredByInvoiceId = await this.invoiceCoveredAmountsByInvoiceId(
+          this.prisma,
+          invoices.map((invoice) => invoice.id),
+        );
         return {
           id: admission.id,
           admissionDate: admission.admissionDate,
@@ -426,7 +448,7 @@ export class AdmissionService {
           attendingDoctor: admission.attendingDoctor,
           clinicallyDischargedBy: admission.clinicallyDischargedBy,
           patient: admission.patient,
-          billing: this.buildBillingSummary(invoices),
+          billing: this.buildBillingSummary(invoices, coveredByInvoiceId),
         };
       }),
     );
@@ -456,12 +478,16 @@ export class AdmissionService {
 
       const invoices = await this.getAdmissionInvoices(tx, admission);
       const invoiceIds = invoices.map((invoice) => invoice.id);
+      const coveredByInvoiceId = await this.invoiceCoveredAmountsByInvoiceId(
+        tx,
+        invoiceIds,
+      );
       const allPaid = await this.areAllAdmissionInvoicesPaid(tx, invoiceIds);
       if (!allPaid) {
         throw new BadRequestException({
           message:
             'Cannot clear billing while linked invoices are unpaid. Record payments first.',
-          billing: this.buildBillingSummary(invoices),
+          billing: this.buildBillingSummary(invoices, coveredByInvoiceId),
         });
       }
 

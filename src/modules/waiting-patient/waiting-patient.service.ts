@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { PatientStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateWaitingPatientDto,
@@ -46,9 +46,11 @@ export class WaitingPatientService {
   ): Prisma.InvoiceWhereInput {
     const patientWhere: Prisma.PatientWhereInput = opts?.unregisteredOnly
       ? {
+        status: PatientStatus.OUTPATIENT,
         OR: [{ patientId: null }, { patientId: '' }],
       }
       : {
+        status: PatientStatus.OUTPATIENT,
         patientId: { not: null },
         NOT: { patientId: '' },
       };

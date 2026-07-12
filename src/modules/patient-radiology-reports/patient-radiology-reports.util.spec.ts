@@ -1,9 +1,11 @@
 import {
   RadiologyModality as PrismaRadiologyModality,
   RadiologyRequestStatus,
+  ReportSeverity,
 } from '@prisma/client';
 import {
   RadiologyModality,
+  RadiologyReportSeverity,
   RadiologyReportStatus,
 } from './dto/radiology-report-response.dto';
 import {
@@ -11,7 +13,9 @@ import {
   formatScanType,
   isPendingReviewStatus,
   mapModality,
+  mapReportSeverity,
   mapReportStatus,
+  mapPatientRadiologyImages,
   resolvePerformedAt,
   toRadiologyReportDetailDto,
   toRadiologyReportSummaryDto,
@@ -85,7 +89,7 @@ describe('patient-radiology-reports.util', () => {
       expect(
         formatScanType({
           ...baseItem,
-          invoiceItem: { service: { name: 'Brain MRI (With Contrast)' } },
+          invoiceItem: { id: 'inv-1', service: { name: 'Brain MRI (With Contrast)' } },
         }),
       ).toBe('Brain MRI (With Contrast)');
     });
@@ -196,12 +200,15 @@ describe('patient-radiology-reports.util', () => {
         signedAt: new Date('2024-11-12T16:45:00.000Z'),
         findings: 'No acute abnormality.',
         impression: 'Unremarkable.',
+        recommendations: null,
+        severity: null,
         signedBy: {
           firstName: 'Emem',
           lastName: 'Akpan',
         },
       },
       invoiceItem: null,
+      images: [],
     };
 
     it('maps list fields', () => {
@@ -241,9 +248,12 @@ describe('patient-radiology-reports.util', () => {
           signedAt: new Date('2024-10-24T16:00:00.000Z'),
           findings: 'Clear lung fields.',
           impression: 'Normal chest X-ray.',
+          recommendations: 'No follow-up needed.',
+          severity: ReportSeverity.NORMAL,
           signedBy: { firstName: 'Olayinka', lastName: 'G.' },
         },
         invoiceItem: null,
+        images: [],
       };
 
       const dto = toRadiologyReportDetailDto(item);
@@ -251,8 +261,129 @@ describe('patient-radiology-reports.util', () => {
       expect(dto.verifiedAt).toEqual(item.report.signedAt);
       expect(dto.findings).toBe('Clear lung fields.');
       expect(dto.impression).toBe('Normal chest X-ray.');
+      expect(dto.recommendations).toBe('No follow-up needed.');
+      expect(dto.severity).toBe(RadiologyReportSeverity.NORMAL);
       expect(dto.reportBody).toBeNull();
       expect(dto.pdfUrl).toBeNull();
+    });
+  });
+
+  describe('mapReportSeverity', () => {
+    it('maps Prisma severity values', () => {
+      expect(mapReportSeverity(ReportSeverity.CRITICAL)).toBe(
+        RadiologyReportSeverity.CRITICAL,
+      );
+      expect(mapReportSeverity(null)).toBeNull();
+    });
+  });
+
+  describe('mapPatientRadiologyImages', () => {
+    it('builds patient file URLs when access is allowed', () => {
+      const images = mapPatientRadiologyImages(
+        {
+          id: 'item-1',
+          scanType: PrismaRadiologyModality.MRI,
+          bodyPart: null,
+          contrast: false,
+          status: RadiologyRequestStatus.REPORTED,
+          createdAt: new Date(),
+          order: { requestedBy: { firstName: 'A', lastName: 'B' } },
+          procedure: null,
+          report: null,
+          invoiceItem: null,
+          images: [
+            {
+              id: 'img-1',
+              fileName: 'scan.jpg',
+              mimeType: 'image/jpeg',
+              fileSize: 100,
+              uploadedAt: new Date('2024-01-01T00:00:00.000Z'),
+            },
+          ],
+        },
+        'https://api.example.com',
+        true,
+      );
+
+      expect(images).toEqual([
+        expect.objectContaining({
+          id: 'img-1',
+          fileUrl:
+            'https://api.example.com/patient/radiology-reports/item-1/images/img-1/file',
+        }),
+      ]);
+    });
+
+    it('returns empty list when access is denied', () => {
+      expect(
+        mapPatientRadiologyImages(
+          {
+            id: 'item-1',
+            scanType: PrismaRadiologyModality.MRI,
+            bodyPart: null,
+            contrast: false,
+            status: RadiologyRequestStatus.REPORTED,
+            createdAt: new Date(),
+            order: { requestedBy: { firstName: 'A', lastName: 'B' } },
+            procedure: null,
+            report: null,
+            invoiceItem: { id: 'inv-1', service: { name: 'MRI' } },
+            images: [
+              {
+                id: 'img-1',
+                fileName: 'scan.jpg',
+                mimeType: 'image/jpeg',
+                fileSize: 100,
+                uploadedAt: new Date(),
+              },
+            ],
+          },
+          'https://api.example.com',
+          false,
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  describe('toRadiologyReportDetailDto payment gating', () => {
+    it('masks sensitive fields when unpaid', () => {
+      const dto = toRadiologyReportDetailDto(
+        {
+          id: 'item-1',
+          scanType: PrismaRadiologyModality.CT,
+          bodyPart: 'Abdomen',
+          contrast: false,
+          status: RadiologyRequestStatus.REPORTED,
+          createdAt: new Date(),
+          order: { requestedBy: { firstName: 'Jane', lastName: 'Doe' } },
+          procedure: null,
+          report: {
+            signedAt: new Date(),
+            findings: 'Hidden',
+            impression: 'Hidden',
+            recommendations: 'Hidden',
+            severity: ReportSeverity.ABNORMAL,
+            signedBy: { firstName: 'Rad', lastName: 'One' },
+          },
+          invoiceItem: { id: 'inv-1', service: { name: 'CT Abdomen' } },
+          images: [
+            {
+              id: 'img-1',
+              fileName: 'scan.jpg',
+              mimeType: 'image/jpeg',
+              fileSize: 1,
+              uploadedAt: new Date(),
+            },
+          ],
+        },
+        'https://api.example.com',
+        false,
+      );
+
+      expect(dto.paymentRequired).toBe(true);
+      expect(dto.findings).toBeNull();
+      expect(dto.images).toEqual([]);
+      expect(dto.thumbnailUrl).toBeNull();
     });
   });
 });

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   AdmissionStatus,
   EncounterStatus,
   EncounterType,
+  PatientFeedbackStatus,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -12,6 +13,10 @@ import {
   patientNameFieldsSelect,
   toPatientNameWithLegacyKey,
 } from '../../common/utils/patient-display-name.util';
+import {
+  FrontdeskFeedbackQueryDto,
+  UpdateFrontdeskFeedbackDto,
+} from './dto/frontdesk-feedback.dto';
 
 /** Matches seed / REF_Categories: Consultations & Reviews */
 export const CONSULTATIONS_REVIEWS_CATEGORY = 'Consultations & Reviews';
@@ -332,5 +337,85 @@ export class FrontdeskService {
     out.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
     return out;
+  }
+
+  async listFeedback(query: FrontdeskFeedbackQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+    const where: Prisma.PatientFeedbackWhereInput = {
+      ...(query.kind ? { kind: query.kind } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.departmentId ? { departmentId: query.departmentId } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.patientFeedback.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: this.feedbackInclude(),
+      }),
+      this.prisma.patientFeedback.count({ where }),
+    ]);
+
+    return {
+      data: items.map((item) => ({
+        ...item,
+        patient: toPatientNameWithLegacyKey(item.patient, 'patientName'),
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getFeedback(id: string) {
+    const item = await this.prisma.patientFeedback.findUnique({
+      where: { id },
+      include: this.feedbackInclude(),
+    });
+    if (!item) throw new NotFoundException(`Feedback "${id}" not found.`);
+    return {
+      ...item,
+      patient: toPatientNameWithLegacyKey(item.patient, 'patientName'),
+    };
+  }
+
+  async updateFeedback(
+    id: string,
+    dto: UpdateFrontdeskFeedbackDto,
+    staffId: string,
+  ) {
+    await this.getFeedback(id);
+
+    const terminal =
+      dto.status === PatientFeedbackStatus.RESOLVED ||
+      dto.status === PatientFeedbackStatus.CLOSED;
+
+    const updated = await this.prisma.patientFeedback.update({
+      where: { id },
+      data: {
+        status: dto.status,
+        staffResponse: dto.staffResponse,
+        respondedById: staffId,
+        resolvedAt: terminal ? new Date() : dto.status ? null : undefined,
+      },
+      include: this.feedbackInclude(),
+    });
+
+    return {
+      ...updated,
+      patient: toPatientNameWithLegacyKey(updated.patient, 'patientName'),
+    };
+  }
+
+  private feedbackInclude() {
+    return {
+      patient: { select: patientNameFieldsSelect },
+      department: { select: { id: true, name: true } },
+      respondedBy: { select: { id: true, firstName: true, lastName: true } },
+    };
   }
 }

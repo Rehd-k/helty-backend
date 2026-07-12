@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { InvoiceModule } from '../invoice/invoice.module';
 import { RadiologyRequestController } from './radiology-request.controller';
+import { RadiologyOrderItemController } from './radiology-order-item.controller';
 import { RadiologyRequestService } from './radiology-request.service';
 import { RadiologyWorklistController } from './radiology-worklist.controller';
 import { RadiologyScheduleController } from './radiology-schedule.controller';
@@ -25,6 +26,7 @@ import { RadiologyInvestigationsService } from './radiology-investigations/radio
   imports: [PrismaModule, InvoiceModule],
   controllers: [
     RadiologyRequestController,
+    RadiologyOrderItemController,
     RadiologyWorklistController,
     RadiologyScheduleController,
     RadiologyProcedureController,

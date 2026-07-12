@@ -112,6 +112,20 @@ export class InvoiceCoverageService {
     return this.asDecimal(aggregated._sum.amount ?? 0);
   }
 
+  private async afterCoverageApplied(
+    tx: Prisma.TransactionClient,
+    invoiceId: string,
+  ) {
+    const updated = await this.invoiceService.recalculateInvoiceTotals(
+      invoiceId,
+      tx,
+    );
+    if (updated.status === InvoiceStatus.PAID) {
+      await this.invoiceService.handleInvoiceFullyPaid(tx, invoiceId, new Date());
+    }
+    return updated;
+  }
+
   private async resolveHmoCoveragePercent(params: {
     tx: Prisma.TransactionClient;
     hmoId: string;
@@ -214,17 +228,7 @@ export class InvoiceCoverageService {
         },
       });
 
-      const updatedInvoice = await this.invoiceService.recalculateInvoiceTotals(
-        invoiceId,
-        tx,
-      );
-      if (updatedInvoice.status === InvoiceStatus.PAID) {
-        await this.invoiceService.stampConsultationCreditExpiry(
-          tx,
-          invoiceId,
-          new Date(),
-        );
-      }
+      await this.afterCoverageApplied(tx, invoiceId);
       await this.logInvoiceAudit(tx, {
         invoiceId,
         action: InvoiceAuditAction.COVERAGE_APPLIED,
@@ -318,7 +322,7 @@ export class InvoiceCoverageService {
           );
         }
 
-        await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
+        await this.afterCoverageApplied(tx, invoiceId);
         await this.logInvoiceAudit(tx, {
           invoiceId,
           action: InvoiceAuditAction.COVERAGE_APPLIED,
@@ -355,7 +359,7 @@ export class InvoiceCoverageService {
         },
       });
 
-      await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
+      await this.afterCoverageApplied(tx, invoiceId);
       await this.logInvoiceAudit(tx, {
         invoiceId,
         action: InvoiceAuditAction.COVERAGE_APPLIED,

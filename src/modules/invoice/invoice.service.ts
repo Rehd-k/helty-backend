@@ -878,7 +878,7 @@ export class InvoiceService {
     return this.asDecimal(aggregated._sum.amount ?? 0);
   }
 
-  private computeLineCoverageFromRows(
+  computeLineCoverageFromRows(
     items: Array<{
       id: string;
       unitPrice: Prisma.Decimal;
@@ -2663,7 +2663,19 @@ export class InvoiceService {
   }
 
   /**
-   * When an invoice becomes fully PAID via `recordPaymentWithTx`, rebuild per-line
+   * Side effects when an invoice becomes fully PAID (cash, coverage, or mixed):
+   * rebuild per-line payments after coverage and stamp consultation credit expiry.
+   */
+  async handleInvoiceFullyPaid(
+    tx: Prisma.TransactionClient,
+    invoiceId: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    await this.reconcileLinePaymentsWhenInvoiceFullyPaid(tx, invoiceId, now);
+  }
+
+  /**
+   * When an invoice becomes fully PAID, rebuild per-line
    * `InvoiceItemPayment` rows and set each line's `amountPaid` to its line total
    * so voids and "unpaid line" rules stay consistent.
    */
@@ -2881,7 +2893,7 @@ export class InvoiceService {
     const updated = await this.recalculateInvoiceTotals(invoiceId, tx);
     const now = new Date();
     if (updated.status === InvoiceStatus.PAID) {
-      await this.reconcileLinePaymentsWhenInvoiceFullyPaid(tx, invoiceId, now);
+      await this.handleInvoiceFullyPaid(tx, invoiceId, now);
     }
     await this.logInvoiceAudit(tx, {
       invoiceId,

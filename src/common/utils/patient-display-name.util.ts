@@ -3,6 +3,7 @@ export type PatientNameFields = {
   firstName?: string | null;
   otherName?: string | null;
   surname?: string | null;
+  avatarUrl?: string | null;
 };
 
 export type PatientNameDto = {
@@ -11,6 +12,7 @@ export type PatientNameDto = {
   otherName: string | null;
   surname: string | null;
   displayName: string;
+  avatarUrl: string | null;
 };
 
 /** Display name: optional title, then firstName, otherName, surname. */
@@ -31,6 +33,7 @@ export function toPatientNameDto(p: PatientNameFields): PatientNameDto {
     otherName: p.otherName ?? null,
     surname: p.surname ?? null,
     displayName: formatPatientDisplayName(p),
+    avatarUrl: p.avatarUrl ?? null,
   };
 }
 
@@ -60,4 +63,5 @@ export const patientNameFieldsSelect = {
   ...patientNameOnlySelect,
   gender: true,
   dob: true,
+  avatarUrl: true,
 } as const;

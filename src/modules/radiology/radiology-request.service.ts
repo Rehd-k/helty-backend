@@ -18,6 +18,41 @@ import {
 } from '../encounter/encounter-inpatient-edit.util';
 import { syncRadiologyOrderStatusAfterItemChange } from './radiology-order-status.util';
 
+const RADIOLOGY_ORDER_ITEM_DETAIL_INCLUDE = {
+  schedule: {
+    include: {
+      radiographer: {
+        select: { id: true, firstName: true, lastName: true },
+      },
+      machine: true,
+    },
+  },
+  procedure: {
+    include: {
+      performedBy: {
+        select: { id: true, firstName: true, lastName: true },
+      },
+      machine: true,
+    },
+  },
+  images: true,
+  report: {
+    include: {
+      signedBy: {
+        select: { id: true, firstName: true, lastName: true },
+      },
+    },
+  },
+  invoiceItem: {
+    select: {
+      id: true,
+      invoiceId: true,
+      serviceId: true,
+      service: { select: { id: true, name: true } },
+    },
+  },
+} as const;
+
 @Injectable()
 export class RadiologyRequestService {
   constructor(
@@ -365,7 +400,56 @@ export class RadiologyRequestService {
     });
   }
 
+  async findItemById(itemId: string) {
+    const item = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: itemId },
+      include: RADIOLOGY_ORDER_ITEM_DETAIL_INCLUDE,
+    });
+    if (!item) {
+      throw new NotFoundException(
+        `Radiology order item "${itemId}" not found.`,
+      );
+    }
+    return item;
+  }
+
+  async updateItemById(itemId: string, dto: UpdateRadiologyOrderItemDto) {
+    const item = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: itemId },
+      select: { orderId: true },
+    });
+    if (!item) {
+      throw new NotFoundException(
+        `Radiology order item "${itemId}" not found.`,
+      );
+    }
+    await this.applyItemUpdate(item.orderId, itemId, dto);
+    return this.findItemById(itemId);
+  }
+
+  async removeItemById(itemId: string) {
+    const item = await this.prisma.radiologyOrderItem.findUnique({
+      where: { id: itemId },
+      select: { orderId: true },
+    });
+    if (!item) {
+      throw new NotFoundException(
+        `Radiology order item "${itemId}" not found.`,
+      );
+    }
+    return this.removeItem(item.orderId, itemId);
+  }
+
   async updateItem(
+    orderId: string,
+    itemId: string,
+    dto: UpdateRadiologyOrderItemDto,
+  ) {
+    await this.applyItemUpdate(orderId, itemId, dto);
+    return this.findOne(orderId);
+  }
+
+  private async applyItemUpdate(
     orderId: string,
     itemId: string,
     dto: UpdateRadiologyOrderItemDto,
@@ -386,10 +470,10 @@ export class RadiologyRequestService {
 
     if (dto.status === RadiologyRequestStatus.CANCELLED) {
       if (item.status === RadiologyRequestStatus.CANCELLED) {
-        return this.findOne(orderId);
+        return;
       }
       this.assertRadiologyOrderItemCancellable(item);
-      return this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx) => {
         await this.invoiceService.removeBillableLineForEncounterRequest(
           item.invoiceItemId,
           tx,
@@ -399,21 +483,51 @@ export class RadiologyRequestService {
           data: { status: RadiologyRequestStatus.CANCELLED },
         });
         await syncRadiologyOrderStatusAfterItemChange(tx, orderId);
-        return this.findOne(orderId);
       });
+      return;
     }
 
-    if (dto.status === undefined) {
-      return this.findOne(orderId);
+    const hasClinicalUpdates =
+      dto.clinicalNotes !== undefined ||
+      dto.reasonForInvestigation !== undefined ||
+      dto.priority !== undefined ||
+      dto.scanType !== undefined ||
+      dto.bodyPart !== undefined ||
+      dto.contrast !== undefined;
+
+    if (hasClinicalUpdates) {
+      if (item.procedure || item.report) {
+        throw new BadRequestException(
+          'Cannot update clinical details after the study has been performed or reported.',
+        );
+      }
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updateData: Prisma.RadiologyOrderItemUpdateInput = {};
+    if (dto.status !== undefined) updateData.status = dto.status;
+    if (dto.clinicalNotes !== undefined) {
+      updateData.clinicalNotes = dto.clinicalNotes;
+    }
+    if (dto.reasonForInvestigation !== undefined) {
+      updateData.reasonForInvestigation = dto.reasonForInvestigation;
+    }
+    if (dto.priority !== undefined) updateData.priority = dto.priority;
+    if (dto.scanType !== undefined) updateData.scanType = dto.scanType;
+    if (dto.bodyPart !== undefined) updateData.bodyPart = dto.bodyPart;
+    if (dto.contrast !== undefined) updateData.contrast = dto.contrast;
+
+    if (Object.keys(updateData).length === 0) {
+      return;
+    }
+
+    await this.prisma.$transaction(async (tx) => {
       await tx.radiologyOrderItem.update({
         where: { id: itemId },
-        data: { status: dto.status },
+        data: updateData,
       });
-      await syncRadiologyOrderStatusAfterItemChange(tx, orderId);
-      return this.findOne(orderId);
+      if (dto.status !== undefined) {
+        await syncRadiologyOrderStatusAfterItemChange(tx, orderId);
+      }
     });
   }
 
