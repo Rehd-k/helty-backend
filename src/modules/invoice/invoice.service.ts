@@ -33,6 +33,7 @@ import {
   UpdateInvoiceItemDto,
   WalletDepositDto,
   ListInvoicesByCategoryQueryDto,
+  ListInvoicePaymentsQueryDto,
   SplitInvoiceDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
@@ -262,6 +263,27 @@ export class InvoiceService {
       or.push({ id: q });
     }
     return or;
+  }
+
+  private buildPaymentListSearchOr(
+    q: string,
+  ): Prisma.InvoicePaymentWhereInput[] {
+    const needle = { contains: q, mode: 'insensitive' as const };
+    return [
+      { reference: needle },
+      { invoice: { invoiceID: needle } },
+      {
+        invoice: {
+          patient: {
+            OR: [
+              { firstName: needle },
+              { surname: needle },
+              { otherName: needle },
+            ],
+          },
+        },
+      },
+    ];
   }
 
   /** True when the patient has at least one admission with status ACTIVE. */
@@ -3269,13 +3291,7 @@ export class InvoiceService {
     });
   }
 
-  async listAllPayments(
-    query: DateRangeSkipTakeDto & {
-      source?: InvoicePaymentSource;
-      paymentMethod?: InvoicePaymentMethod;
-      processedById?: string;
-    },
-  ) {
+  async listAllPayments(query: ListInvoicePaymentsQueryDto) {
     const {
       skip = 0,
       take = 20,
@@ -3284,14 +3300,17 @@ export class InvoiceService {
       source,
       paymentMethod,
       processedById,
+      q,
     } = query;
     const { from, to } = parseDateRange(fromDate, toDate);
+    const needle = q?.trim();
 
     const where: Prisma.InvoicePaymentWhereInput = {
       paidAt: { gte: from, lte: to },
       ...(source ? { source } : {}),
       ...(paymentMethod ? { method: paymentMethod } : {}),
       ...(processedById ? { receivedById: processedById } : {}),
+      ...(needle ? { OR: this.buildPaymentListSearchOr(needle) } : {}),
     };
 
     const [payments, total, grouped] = await Promise.all([

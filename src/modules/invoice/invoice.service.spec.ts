@@ -2063,4 +2063,71 @@ describe('InvoiceService', () => {
       ]);
     });
   });
+
+  describe('listAllPayments', () => {
+    function createListPaymentsPrisma() {
+      const findMany = jest.fn().mockResolvedValue([]);
+      const count = jest.fn().mockResolvedValue(0);
+      const groupBy = jest.fn().mockResolvedValue([]);
+      const staffFindMany = jest.fn().mockResolvedValue([]);
+      return {
+        prisma: {
+          invoicePayment: { findMany, count, groupBy },
+          staff: { findMany: staffFindMany },
+        },
+        findMany,
+        count,
+        groupBy,
+      };
+    }
+
+    it('applies q search across reference, invoice number, and patient name', async () => {
+      const { prisma, findMany, count, groupBy } = createListPaymentsPrisma();
+      const service = createInvoiceService(prisma);
+
+      await service.listAllPayments({
+        q: 'francine',
+        skip: 0,
+        take: 20,
+        fromDate: '2026-07-01',
+        toDate: '2026-07-12',
+      });
+
+      const expectedOr = [
+        { reference: { contains: 'francine', mode: 'insensitive' } },
+        { invoice: { invoiceID: { contains: 'francine', mode: 'insensitive' } } },
+        {
+          invoice: {
+            patient: {
+              OR: [
+                { firstName: { contains: 'francine', mode: 'insensitive' } },
+                { surname: { contains: 'francine', mode: 'insensitive' } },
+                { otherName: { contains: 'francine', mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
+      ];
+
+      for (const mock of [findMany, count, groupBy]) {
+        expect(mock.mock.calls[0][0].where.OR).toEqual(expectedOr);
+      }
+    });
+
+    it('does not add OR clause when q is absent', async () => {
+      const { prisma, findMany, count, groupBy } = createListPaymentsPrisma();
+      const service = createInvoiceService(prisma);
+
+      await service.listAllPayments({
+        skip: 0,
+        take: 20,
+        fromDate: '2026-07-01',
+        toDate: '2026-07-12',
+      });
+
+      for (const mock of [findMany, count, groupBy]) {
+        expect(mock.mock.calls[0][0].where).not.toHaveProperty('OR');
+      }
+    });
+  });
 });

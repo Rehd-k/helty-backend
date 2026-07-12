@@ -54,7 +54,6 @@ export class PurchasesLocationService {
       skip = 0,
       limit = 20,
     } = query;
-    console.log('findAll', query);
     const take = Math.min(Math.max(1, limit), 100);
 
     const where: Prisma.PurchasesLocationWhereInput = {};
@@ -81,7 +80,6 @@ export class PurchasesLocationService {
       }),
       this.prisma.purchasesLocation.count({ where }),
     ]);
-    console.log(data, total, skip, take);
     return { data, total, skip, take };
   }
 

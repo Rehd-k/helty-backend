@@ -101,6 +101,24 @@ describe('AccountsReportsService', () => {
     });
   });
 
+  describe('revenueByService', () => {
+    it('filters allocations by custom date range', async () => {
+      prisma.invoiceItemPayment.findMany.mockResolvedValue([]);
+
+      await service.revenueByService({
+        period: 'custom',
+        from: '2025-12-31T23:00:00.000Z',
+        to: '2026-07-12T22:59:59.999Z',
+      });
+
+      const findManyCall = prisma.invoiceItemPayment.findMany.mock.calls[0][0];
+      expect(findManyCall.where.invoicePayment.paidAt).toEqual({
+        gte: new Date('2025-12-31T23:00:00.000Z'),
+        lte: new Date('2026-07-12T22:59:59.999Z'),
+      });
+    });
+  });
+
   describe('revenueByServiceDetails', () => {
     const sampleAllocation = {
       id: 'alloc-1',
@@ -231,6 +249,20 @@ describe('AccountsReportsService', () => {
           serviceCategory: '   ',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('returns from/to metadata for custom period', async () => {
+      const result = await service.revenueByServiceDetails({
+        period: 'custom',
+        from: '2025-12-31T23:00:00.000Z',
+        to: '2026-07-12T22:59:59.999Z',
+        serviceCategory: 'Laboratory',
+      });
+
+      expect(result.period).toBe('custom');
+      expect(result.from).toBe('2025-12-31T23:00:00.000Z');
+      expect(result.to).toBe('2026-07-12T22:59:59.999Z');
+      expect(result).not.toHaveProperty('asOf');
     });
   });
 });

@@ -8,6 +8,7 @@ import {
   AccountsAgingQueryDto,
   AccountsDateRangeQueryDto,
   AccountsPeriodQueryDto,
+  AccountsReportPeriodQueryDto,
   AccountsRevenueByServiceDetailsQueryDto,
 } from './dto/accounts-query.dto';
 
@@ -42,7 +43,7 @@ export class AccountsReportsController {
   @ApiOperation({
     summary: 'Revenue by service category — payment drill-down',
     description:
-      'Paginated list of patient payments for a service category row from revenue-by-service. Pass the same period and asOf as the summary.',
+      'Paginated list of patient payments for a service category row from revenue-by-service. Pass the same period, asOf (or from/to for custom), as the summary.',
   })
   revenueByServiceDetails(@Query() q: AccountsRevenueByServiceDetailsQueryDto) {
     return this.service.revenueByServiceDetails(q);
@@ -51,7 +52,7 @@ export class AccountsReportsController {
   @Get('revenue-by-service')
   @AccountTypes(...ACCOUNTING_ACCESS, 'BILLING_HEAD')
   @ApiOperation({ summary: 'Revenue breakdown by service category' })
-  revenueByService(@Query() q: AccountsPeriodQueryDto) {
+  revenueByService(@Query() q: AccountsReportPeriodQueryDto) {
     return this.service.revenueByService(q);
   }
 

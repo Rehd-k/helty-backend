@@ -608,7 +608,6 @@ export class AdmissionService {
     if (!admission) {
       throw new NotFoundException('Admission not found');
     }
-    console.log(admission.patientVitals);
     return admission;
   }
 

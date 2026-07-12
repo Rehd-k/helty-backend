@@ -14,6 +14,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   getCurrentWindow,
   getPreviousWindow,
+  InvalidPeriodWindowError,
+  resolvePeriodWindow,
 } from '../billing-analytics/billing-analytics-period';
 import { BillingAnalyticsService } from '../billing-analytics/billing-analytics.service';
 import {
@@ -27,6 +29,7 @@ import {
   AccountsAgingQueryDto,
   AccountsDateRangeQueryDto,
   AccountsPeriodQueryDto,
+  AccountsReportPeriodQueryDto,
   AccountsRevenueByServiceDetailsQueryDto,
 } from './dto/accounts-query.dto';
 
@@ -51,6 +54,27 @@ export class AccountsReportsService {
 
   private parseRange(q: AccountsDateRangeQueryDto) {
     return parseDateRange(q.from, q.to);
+  }
+
+  private resolveReportWindow(q: AccountsReportPeriodQueryDto) {
+    const anchor = q.asOf ? new Date(q.asOf) : new Date();
+    if (q.asOf && Number.isNaN(anchor.getTime())) {
+      throw new BadRequestException('Invalid asOf date');
+    }
+    try {
+      return {
+        anchor,
+        window: resolvePeriodWindow(q.period, anchor, {
+          from: q.from,
+          to: q.to,
+        }),
+      };
+    } catch (e) {
+      if (e instanceof InvalidPeriodWindowError) {
+        throw new BadRequestException(e.message);
+      }
+      throw e;
+    }
   }
 
   private serviceCategoryLabel(
@@ -308,9 +332,8 @@ export class AccountsReportsService {
     };
   }
 
-  async revenueByService(q: AccountsPeriodQueryDto) {
-    const anchor = q.asOf ? new Date(q.asOf) : new Date();
-    const window = getCurrentWindow(q.period, anchor);
+  async revenueByService(q: AccountsReportPeriodQueryDto) {
+    const { window } = this.resolveReportWindow(q);
 
     const allocations = await this.prisma.invoiceItemPayment.findMany({
       where: {
@@ -362,11 +385,7 @@ export class AccountsReportsService {
       throw new BadRequestException('serviceCategory is required');
     }
 
-    const anchor = q.asOf ? new Date(q.asOf) : new Date();
-    if (q.asOf && Number.isNaN(anchor.getTime())) {
-      throw new BadRequestException('Invalid asOf date');
-    }
-    const window = getCurrentWindow(q.period, anchor);
+    const { anchor, window } = this.resolveReportWindow(q);
     const skip = q.skip ?? 0;
     const take = Math.min(q.take ?? 50, 100);
     const needle = q.q?.trim();
@@ -444,7 +463,9 @@ export class AccountsReportsService {
 
     return {
       period: q.period,
-      asOf: anchor.toISOString(),
+      ...(q.period === 'custom'
+        ? { from: window.start.toISOString(), to: window.end.toISOString() }
+        : { asOf: anchor.toISOString() }),
       serviceCategory,
       totalAmount: toNumber(sum._sum.amount),
       total,

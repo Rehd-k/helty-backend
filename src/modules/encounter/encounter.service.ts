@@ -514,7 +514,6 @@ export class EncounterService {
     staffId: string,
   ) {
     const access = await this.editPolicy.assertCanEdit(id, staffId);
-    console.log('access', dto);
 
     const encounter = await this.prisma.encounter.findUnique({
       where: { id },

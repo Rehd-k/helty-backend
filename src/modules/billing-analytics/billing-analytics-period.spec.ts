@@ -3,6 +3,7 @@ import {
   getPreviousWindow,
   getRevenueSeriesBuckets,
   newOverdueCreatedAtRange,
+  resolvePeriodWindow,
 } from './billing-analytics-period';
 
 describe('billing-analytics-period', () => {
@@ -53,5 +54,28 @@ describe('billing-analytics-period', () => {
     const thirty = 30 * 24 * 60 * 60 * 1000;
     expect(r.createdAtMin.getTime()).toBe(w.start.getTime() - thirty);
     expect(r.createdAtMax.getTime()).toBe(w.end.getTime() - thirty);
+  });
+
+  it('resolvePeriodWindow custom uses exact from/to instants', () => {
+    const from = '2025-12-31T23:00:00.000Z';
+    const to = '2026-07-12T22:59:59.999Z';
+    const w = resolvePeriodWindow('custom', anchor, { from, to });
+    expect(w.start.toISOString()).toBe(from);
+    expect(w.end.toISOString()).toBe(to);
+  });
+
+  it('resolvePeriodWindow custom rejects missing bounds', () => {
+    expect(() =>
+      resolvePeriodWindow('custom', anchor, { from: '2026-01-01' }),
+    ).toThrow('from and to are required when period is custom');
+  });
+
+  it('resolvePeriodWindow custom rejects inverted range', () => {
+    expect(() =>
+      resolvePeriodWindow('custom', anchor, {
+        from: '2026-02-01',
+        to: '2026-01-01',
+      }),
+    ).toThrow('from must be before or equal to to');
   });
 });

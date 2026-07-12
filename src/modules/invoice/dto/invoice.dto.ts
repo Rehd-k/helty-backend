@@ -170,6 +170,42 @@ export class ListInvoicesByCategoryQueryDto extends DateRangeSkipTakeDto {
   patientName?: string;
 }
 
+/** Query for GET /invoices/payments */
+export class ListInvoicePaymentsQueryDto extends DateRangeSkipTakeDto {
+  @ApiPropertyOptional({
+    description:
+      'Search patient first/surname/other name, payment reference (transaction id), or human invoice number (substring, case-insensitive)',
+  })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({
+    enum: InvoicePaymentSource,
+    description: 'Filter by payment source (e.g. CASH, WALLET)',
+  })
+  @IsOptional()
+  @IsEnum(InvoicePaymentSource)
+  source?: InvoicePaymentSource;
+
+  @ApiPropertyOptional({
+    enum: InvoicePaymentMethod,
+    description:
+      'Filter by payment method (CASH, CARD, TRANSFER, etc.). Alias: `method`.',
+  })
+  @IsOptional()
+  @Transform(({ obj, value }) => value ?? obj.method)
+  @IsEnum(InvoicePaymentMethod)
+  paymentMethod?: InvoicePaymentMethod;
+
+  @ApiPropertyOptional({
+    description: 'Filter by staff UUID that received payment',
+  })
+  @IsOptional()
+  @IsUUID()
+  processedById?: string;
+}
+
 // ─── InvoiceItem DTOs ──────────────────────────────────────────────────────────
 
 export class AddInvoiceItemDto {

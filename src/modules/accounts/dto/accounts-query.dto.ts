@@ -4,14 +4,18 @@ import {
   IsDateString,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Max,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import {
   ANALYTICS_PERIODS,
+  ANALYTICS_PERIODS_WITH_CUSTOM,
   type AnalyticsPeriod,
+  type AnalyticsPeriodWithCustom,
 } from '../../billing-analytics/billing-analytics-period';
 import { DateRangeSkipTakeDto } from '../../../common/dto/date-range.dto';
 import { FINANCE_AUDIT_ENTITIES } from '../accounts.constants';
@@ -25,6 +29,35 @@ export class AccountsPeriodQueryDto {
   @IsOptional()
   @IsDateString()
   asOf?: string;
+}
+
+export class AccountsReportPeriodQueryDto {
+  @ApiProperty({ enum: [...ANALYTICS_PERIODS_WITH_CUSTOM], example: 'month' })
+  @IsIn([...ANALYTICS_PERIODS_WITH_CUSTOM])
+  period!: AnalyticsPeriodWithCustom;
+
+  @ApiPropertyOptional({
+    description: 'Anchor instant (ISO 8601). Defaults to now. Ignored when period is custom.',
+  })
+  @IsOptional()
+  @IsDateString()
+  asOf?: string;
+
+  @ApiPropertyOptional({
+    description: 'Custom range start (ISO 8601). Required when period is custom.',
+  })
+  @ValidateIf((q: AccountsReportPeriodQueryDto) => q.period === 'custom')
+  @IsNotEmpty()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({
+    description: 'Custom range end (ISO 8601). Required when period is custom.',
+  })
+  @ValidateIf((q: AccountsReportPeriodQueryDto) => q.period === 'custom')
+  @IsNotEmpty()
+  @IsDateString()
+  to?: string;
 }
 
 export class AccountsDateRangeQueryDto {
@@ -100,7 +133,7 @@ export class AccountsAgingQueryDto {
   type?: 'hmo' | 'discount' | 'all' = 'all';
 }
 
-export class AccountsRevenueByServiceDetailsQueryDto extends AccountsPeriodQueryDto {
+export class AccountsRevenueByServiceDetailsQueryDto extends AccountsReportPeriodQueryDto {
   @ApiProperty({
     description: 'Exact serviceCategory label from the revenue-by-service summary row',
     example: 'Laboratory',

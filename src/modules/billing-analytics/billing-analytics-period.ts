@@ -10,6 +10,14 @@ export const ANALYTICS_PERIODS = [
 
 export type AnalyticsPeriod = (typeof ANALYTICS_PERIODS)[number];
 
+export const ANALYTICS_PERIODS_WITH_CUSTOM = [
+  ...ANALYTICS_PERIODS,
+  'custom',
+] as const;
+
+export type AnalyticsPeriodWithCustom =
+  (typeof ANALYTICS_PERIODS_WITH_CUSTOM)[number];
+
 export interface DateWindow {
   start: Date;
   end: Date;
@@ -71,6 +79,48 @@ export function startOfYear(d: Date): Date {
 
 export function endOfYear(d: Date): Date {
   return new Date(d.getFullYear(), 11, 31, 23, 59, 59, 999);
+}
+
+export class InvalidPeriodWindowError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidPeriodWindowError';
+  }
+}
+
+function parseInstant(input: string, label: string): Date {
+  const parsed = new Date(input.trim());
+  if (Number.isNaN(parsed.getTime())) {
+    throw new InvalidPeriodWindowError(`Invalid ${label} date`);
+  }
+  return parsed;
+}
+
+/** Preset period windows, or an explicit [from, to] range when period is `custom`. */
+export function resolvePeriodWindow(
+  period: AnalyticsPeriodWithCustom,
+  anchor: Date,
+  custom?: { from?: string; to?: string },
+): DateWindow {
+  if (period !== 'custom') {
+    return getCurrentWindow(period, anchor);
+  }
+
+  const fromRaw = custom?.from?.trim();
+  const toRaw = custom?.to?.trim();
+  if (!fromRaw || !toRaw) {
+    throw new InvalidPeriodWindowError(
+      'from and to are required when period is custom',
+    );
+  }
+
+  const start = parseInstant(fromRaw, 'from');
+  const end = parseInstant(toRaw, 'to');
+  if (start.getTime() > end.getTime()) {
+    throw new InvalidPeriodWindowError('from must be before or equal to to');
+  }
+
+  return { start, end };
 }
 
 export function getCurrentWindow(

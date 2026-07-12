@@ -22,7 +22,6 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { InvoicePaymentMethod, InvoicePaymentSource } from '@prisma/client';
 import { AccountTypes } from '../../common/decorators/account-types.decorator';
 import { InvoiceService } from './invoice.service';
 import {
@@ -36,6 +35,7 @@ import {
   UpdateInvoiceItemDto,
   WalletDepositDto,
   ListInvoicesByCategoryQueryDto,
+  ListInvoicePaymentsQueryDto,
   SplitInvoiceDto,
 } from './dto/invoice.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
@@ -134,37 +134,16 @@ export class InvoiceController {
   @ApiOperation({
     summary: 'List all invoice payments (cashier/head of accounts view)',
     description:
-      'Returns all invoice payments within date range and a staff-level summary of who processed payments.',
-  })
-  @ApiQuery({ name: 'fromDate', required: false, type: String })
-  @ApiQuery({ name: 'toDate', required: false, type: String })
-  @ApiQuery({ name: 'skip', required: false, type: Number, example: 0 })
-  @ApiQuery({ name: 'take', required: false, type: Number, example: 20 })
-  @ApiQuery({
-    name: 'source',
-    required: false,
-    enum: InvoicePaymentSource,
-    description: 'Filter by payment source (e.g. CASH, WALLET)',
+      'Returns all invoice payments within date range and a staff-level summary of who processed payments. Optional `q` searches payment reference, invoice number, or patient name.',
   })
   @ApiQuery({
-    name: 'method',
+    name: 'q',
     required: false,
-    enum: InvoicePaymentMethod,
-    description: 'Filter by payment method (CASH, CARD, TRANSFER, etc.)',
+    type: String,
+    description:
+      'Search patient first/surname/other name, payment reference (transaction id), or human invoice number',
   })
-  @ApiQuery({
-    name: 'processedById',
-    required: false,
-    description: 'Filter by staff UUID that received payment',
-  })
-  listAllPayments(
-    @Query()
-    query: DateRangeSkipTakeDto & {
-      source?: InvoicePaymentSource;
-      paymentMethod?: InvoicePaymentMethod;
-      processedById?: string;
-    },
-  ) {
+  listAllPayments(@Query() query: ListInvoicePaymentsQueryDto) {
     return this.invoiceService.listAllPayments(query);
   }
 
