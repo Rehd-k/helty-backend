@@ -24,6 +24,19 @@ export class CreateNursingNoteDto {
   content: string;
 }
 
+export class UpdateNursingNoteDto {
+  @ApiPropertyOptional({ enum: NursingNoteType })
+  @IsOptional()
+  @IsEnum(NursingNoteType)
+  noteType?: NursingNoteType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  content?: string;
+}
+
 export class CreateProcedureRecordDto {
   @ApiProperty()
   @IsString()

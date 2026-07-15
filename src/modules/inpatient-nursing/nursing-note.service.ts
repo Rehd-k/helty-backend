@@ -1,11 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   assertAdmissionExists,
   assertAdmissionWritable,
   assertStaffIsNurseOrThrow,
 } from './inpatient-nursing.utils';
-import { CreateNursingNoteDto } from './dto/nursing-docs.dto';
+import {
+  CreateNursingNoteDto,
+  UpdateNursingNoteDto,
+} from './dto/nursing-docs.dto';
 
 const nurseSelect = {
   id: true,
@@ -42,6 +45,33 @@ export class NursingNoteService {
         nurseId: staffId,
         noteType: dto.noteType,
         content: dto.content.trim(),
+      },
+      include: { nurse: { select: nurseSelect } },
+    });
+  }
+
+  async update(
+    admissionId: string,
+    noteId: string,
+    dto: UpdateNursingNoteDto,
+    staffId: string,
+  ) {
+    await assertStaffIsNurseOrThrow(this.prisma, staffId);
+    const row = await this.prisma.nursingNote.findFirst({
+      where: { id: noteId, admissionId },
+    });
+    if (!row) {
+      throw new NotFoundException('Nursing note not found.');
+    }
+    if (row.nurseId !== staffId) {
+      throw new NotFoundException('Nursing note not found.');
+    }
+
+    return this.prisma.nursingNote.update({
+      where: { id: noteId },
+      data: {
+        ...(dto.noteType !== undefined && { noteType: dto.noteType }),
+        ...(dto.content !== undefined && { content: dto.content.trim() }),
       },
       include: { nurse: { select: nurseSelect } },
     });

@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -14,7 +15,10 @@ import { JwtAuthGuard, AccessGuard } from '../../common/guards';
 import { AccountTypes } from '../../common/decorators';
 import { INPATIENT_NURSING_READ_ACCESS, INPATIENT_NURSING_WRITE_ACCESS, NURSING_ASSIGNMENT_WITH_DOCTORS } from '../nursing/nursing.constants';
 import { NursingNoteService } from './nursing-note.service';
-import { CreateNursingNoteDto } from './dto/nursing-docs.dto';
+import {
+  CreateNursingNoteDto,
+  UpdateNursingNoteDto,
+} from './dto/nursing-docs.dto';
 
 @ApiTags('Inpatient — nursing notes')
 @ApiBearerAuth()
@@ -40,5 +44,17 @@ export class NursingNoteController {
     @Req() req: { user: { sub: string } },
   ) {
     return this.service.create(admissionId, dto, req.user.sub);
+  }
+
+  @Patch(':noteId')
+  @AccountTypes(...INPATIENT_NURSING_WRITE_ACCESS)
+  @ApiOperation({ summary: 'Update own nursing note' })
+  update(
+    @Param('admissionId') admissionId: string,
+    @Param('noteId') noteId: string,
+    @Body() dto: UpdateNursingNoteDto,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.service.update(admissionId, noteId, dto, req.user.sub);
   }
 }
