@@ -119,9 +119,12 @@ export class AccessGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
+    // Platform-wide access: SUPER_ADMIN and CMD may call any protected endpoint.
     if (
       user.staffRole === 'SUPER_ADMIN' ||
-      user.accountType === 'SUPER_ADMIN'
+      user.accountType === 'SUPER_ADMIN' ||
+      user.staffRole === 'CMD' ||
+      user.accountType === 'CMD'
     ) {
       return true;
     }
@@ -165,7 +168,10 @@ export class AccessGuard implements CanActivate {
       const rl = r?.toLowerCase();
       if (rl === 'admin') {
         return (
-          user.staffRole === 'SUPER_ADMIN' || user.accountType === 'SUPER_ADMIN'
+          user.staffRole === 'SUPER_ADMIN' ||
+          user.accountType === 'SUPER_ADMIN' ||
+          user.staffRole === 'CMD' ||
+          user.accountType === 'CMD'
         );
       }
       if (rl === 'doctor') return user.accountType === 'PHYSICIAN';

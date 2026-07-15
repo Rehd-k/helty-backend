@@ -85,7 +85,11 @@ export const CHARGE_ROLE_TO_UNIT: Partial<Record<StaffRole, NursingUnit>> = {
 };
 
 export function isMatronRole(staffRole?: string): boolean {
-  return staffRole === StaffRole.MATRON || staffRole === StaffRole.SUPER_ADMIN;
+  return (
+    staffRole === StaffRole.MATRON ||
+    staffRole === StaffRole.SUPER_ADMIN ||
+    staffRole === StaffRole.CMD
+  );
 }
 
 export function isChargeNurseRole(staffRole?: string): boolean {

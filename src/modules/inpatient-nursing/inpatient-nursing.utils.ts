@@ -2,14 +2,19 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AccountType, AdmissionStatus, StaffRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/** Matches AccessGuard: either field may mark the platform super-admin. */
+/**
+ * Matches AccessGuard unrestricted access: SUPER_ADMIN or CMD
+ * (either accountType or staffRole field).
+ */
 export function isSuperAdminStaff(staff: {
   accountType: AccountType;
   staffRole: StaffRole;
 }): boolean {
   return (
     staff.accountType === AccountType.SUPER_ADMIN ||
-    staff.staffRole === StaffRole.SUPER_ADMIN
+    staff.staffRole === StaffRole.SUPER_ADMIN ||
+    staff.accountType === AccountType.CMD ||
+    staff.staffRole === StaffRole.CMD
   );
 }
 

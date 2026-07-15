@@ -238,7 +238,11 @@ export class PurchasesRequisitionService {
   }
 
   private assertHead(staffRole?: string) {
-    if (staffRole !== 'PURCHASES_HEAD' && staffRole !== 'SUPER_ADMIN') {
+    if (
+      staffRole !== 'PURCHASES_HEAD' &&
+      staffRole !== 'SUPER_ADMIN' &&
+      staffRole !== 'CMD'
+    ) {
       throw new ForbiddenException(
         'Only purchases head staff can perform this action.',
       );

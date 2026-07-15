@@ -47,7 +47,9 @@ export class StaffConversationService {
     if (!s) return false;
     return (
       s.accountType === AccountType.SUPER_ADMIN ||
-      s.staffRole === StaffRole.SUPER_ADMIN
+      s.staffRole === StaffRole.SUPER_ADMIN ||
+      s.accountType === AccountType.CMD ||
+      s.staffRole === StaffRole.CMD
     );
   }
 

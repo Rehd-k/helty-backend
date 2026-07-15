@@ -168,7 +168,11 @@ export class PurchasesBatchService {
     dto: CorrectBatchQuantityDto,
     staffRole?: string,
   ) {
-    if (staffRole !== 'PURCHASES_HEAD' && staffRole !== 'SUPER_ADMIN') {
+    if (
+      staffRole !== 'PURCHASES_HEAD' &&
+      staffRole !== 'SUPER_ADMIN' &&
+      staffRole !== 'CMD'
+    ) {
       throw new ForbiddenException(
         'Only purchases head can correct batch quantities.',
       );

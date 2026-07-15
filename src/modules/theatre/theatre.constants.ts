@@ -47,5 +47,9 @@ export const SURGERY_REQUEST_ACCESS = [
 ] as const;
 
 export function isTheatreHeadRole(staffRole?: string): boolean {
-  return staffRole === 'THEATRE_HEAD' || staffRole === 'SUPER_ADMIN';
+  return (
+    staffRole === 'THEATRE_HEAD' ||
+    staffRole === 'SUPER_ADMIN' ||
+    staffRole === 'CMD'
+  );
 }

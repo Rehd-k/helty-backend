@@ -25,6 +25,7 @@ export const DIALYSIS_HEAD_ACCESS = ['DIALYSIS_HEAD', 'SUPER_ADMIN'] as const;
 export function isDialysisHeadRole(staffRole?: string): boolean {
   return (
     staffRole === 'DIALYSIS_HEAD' ||
-    staffRole === 'SUPER_ADMIN'
+    staffRole === 'SUPER_ADMIN' ||
+    staffRole === 'CMD'
   );
 }

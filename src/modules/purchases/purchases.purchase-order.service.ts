@@ -122,7 +122,8 @@ export class PurchasesPurchaseOrderService {
     if (
       status === PurchasesOrderStatus.APPROVED &&
       staffRole !== 'PURCHASES_HEAD' &&
-      staffRole !== 'SUPER_ADMIN'
+      staffRole !== 'SUPER_ADMIN' &&
+      staffRole !== 'CMD'
     ) {
       throw new ForbiddenException(
         'Only purchases head can approve purchase orders.',

@@ -49,7 +49,13 @@ export class EncounterEditPolicyService {
       select: { accountType: true, staffRole: true },
     });
     if (!staff) return false;
-    if (staff.accountType === 'SUPER_ADMIN') return true;
+    if (
+      staff.accountType === 'SUPER_ADMIN' ||
+      staff.accountType === 'CMD' ||
+      staff.staffRole === 'CMD'
+    ) {
+      return true;
+    }
     return (
       staff.accountType === 'PHYSICIAN' && staff.staffRole !== 'MEDICAL_STUDENT'
     );

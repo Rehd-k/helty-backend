@@ -14,7 +14,11 @@ export function toNumber(
 }
 
 export function isAccountHead(staffRole?: string): boolean {
-  return staffRole === 'ACCOUNT_HEAD' || staffRole === 'SUPER_ADMIN';
+  return (
+    staffRole === 'ACCOUNT_HEAD' ||
+    staffRole === 'SUPER_ADMIN' ||
+    staffRole === 'CMD'
+  );
 }
 
 export function isRefundReviewer(staffRole?: string): boolean {

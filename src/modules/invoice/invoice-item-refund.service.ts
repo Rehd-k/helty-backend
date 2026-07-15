@@ -395,7 +395,9 @@ export class InvoiceItemRefundService {
     }
 
     const isAccountHead =
-      staffRole === 'ACCOUNT_HEAD' || staffRole === 'SUPER_ADMIN';
+      staffRole === 'ACCOUNT_HEAD' ||
+      staffRole === 'SUPER_ADMIN' ||
+      staffRole === 'CMD';
     if (request.requestedById !== staffId && !isAccountHead) {
       throw new ForbiddenException(
         'Only the requester or account head can cancel this refund request.',
