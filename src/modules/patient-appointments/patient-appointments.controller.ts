@@ -126,8 +126,13 @@ export class PatientAppointmentsController {
   getAppointment(
     @Request() req: { user: PatientJwtPayload },
     @Param('id') id: string,
+    @Query('forPatientId') forPatientId?: string,
   ) {
-    return this.patientAppointmentsService.getAppointment(req.user, id);
+    return this.patientAppointmentsService.getAppointment(
+      req.user,
+      id,
+      forPatientId,
+    );
   }
 
   @Patch('appointments/:id')

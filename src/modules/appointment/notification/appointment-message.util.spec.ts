@@ -3,6 +3,7 @@ import {
   buildIdempotencyKey,
   getLagosDateBucket,
   getLagosDayBounds,
+  getLagosDayBoundsOffset,
   isCancelledStatus,
   isReminderEligibleStatus,
 } from './appointment-message.util';
@@ -32,6 +33,25 @@ describe('appointment-message.util', () => {
     ).toBe('appt-1:REMINDER_DAY_OF:SMS:2026-05-27');
   });
 
+  it('builds day-before messages and PUSH idempotency keys', () => {
+    const messages = buildAppointmentMessages({
+      kind: 'REMINDER_DAY_BEFORE',
+      patientName: 'Jane Doe',
+      appointmentDate: new Date('2026-05-28T09:00:00.000Z'),
+      hospitalName: 'Helty Hospital',
+    });
+    expect(messages.subject).toContain('tomorrow');
+    expect(messages.pushTitle).toContain('tomorrow');
+    expect(
+      buildIdempotencyKey({
+        appointmentId: 'appt-1',
+        kind: 'REMINDER_DAY_BEFORE',
+        channel: 'PUSH',
+        dateBucket: '2026-05-28',
+      }),
+    ).toBe('appt-1:REMINDER_DAY_BEFORE:PUSH:2026-05-28');
+  });
+
   it('detects cancelled and reminder-eligible statuses', () => {
     expect(isCancelledStatus('cancelled')).toBe(true);
     expect(isCancelledStatus('CANCELLED')).toBe(true);
@@ -47,5 +67,13 @@ describe('appointment-message.util', () => {
 
     const { from, to } = getLagosDayBounds(reference);
     expect(from.getTime()).toBeLessThan(to.getTime());
+  });
+
+  it('computes Lagos tomorrow bounds via offset', () => {
+    const reference = new Date('2026-05-27T04:00:00.000Z');
+    const today = getLagosDateBucket(reference);
+    const tomorrow = getLagosDayBoundsOffset(reference, 1);
+    expect(tomorrow.dateBucket).not.toBe(today);
+    expect(tomorrow.from.getTime()).toBeLessThan(tomorrow.to.getTime());
   });
 });

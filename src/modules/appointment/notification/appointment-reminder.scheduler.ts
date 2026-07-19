@@ -28,4 +28,22 @@ export class AppointmentReminderScheduler {
       );
     }
   }
+
+  /** Runs daily at 06:00; notifies patients with appointments tomorrow. */
+  @Cron('0 6 * * *', {
+    name: 'appointment-day-before-reminders',
+    timeZone: APPOINTMENT_REMINDER_TIMEZONE,
+  })
+  async handleDayBeforeReminders(): Promise<void> {
+    this.logger.log('Starting day-before appointment reminders');
+    try {
+      await this.notificationService.sendDayBeforeReminders(new Date());
+    } catch (err) {
+      this.logger.error(
+        `Day-before reminder job failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 }

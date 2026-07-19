@@ -23,10 +23,11 @@ import { PatientBillingModule } from './modules/patient-billing/patient-billing.
 import { PatientAppointmentsModule } from './modules/patient-appointments/patient-appointments.module';
 import { PatientFeedbackModule } from './modules/patient-feedback/patient-feedback.module';
 import { PatientProfileModule } from './modules/patient-profile/patient-profile.module';
+import { PatientFamilyModule } from './modules/patient-family/patient-family.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LocalTimestampInterceptor } from './common/interceptors/local-timestamp.interceptor';
-import { JwtAuthGuard, AccessGuard } from './common/guards';
+import { JwtAuthGuard, AccessGuard, ApprovedDeviceGuard } from './common/guards';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { InvoiceModule } from './modules/invoice/invoice.module';
@@ -69,6 +70,7 @@ import { CmacAnalyticsModule } from './modules/cmac-analytics/cmac-analytics.mod
 import { CmdAnalyticsModule } from './modules/cmd-analytics/cmd-analytics.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { TheatreModule } from './modules/theatre/theatre.module';
+import { FcmModule } from './modules/fcm/fcm.module';
 
 @Module({
   imports: [
@@ -78,6 +80,7 @@ import { TheatreModule } from './modules/theatre/theatre.module';
     ScheduleModule.forRoot(),
     RedisModule.register(),
     PrismaModule,
+    FcmModule,
     PatientModule,
     AppointmentModule,
     AdmissionModule,
@@ -99,6 +102,7 @@ import { TheatreModule } from './modules/theatre/theatre.module';
     PatientAppointmentsModule,
     PatientFeedbackModule,
     PatientProfileModule,
+    PatientFamilyModule,
     DepartmentModule,
     InvoiceModule,
     LoggerModule.forRoot({
@@ -159,6 +163,7 @@ import { TheatreModule } from './modules/theatre/theatre.module';
     AppService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: AccessGuard },
+    { provide: APP_GUARD, useClass: ApprovedDeviceGuard },
     { provide: APP_INTERCEPTOR, useClass: LocalTimestampInterceptor },
   ],
 })

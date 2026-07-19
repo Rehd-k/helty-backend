@@ -97,8 +97,53 @@ model Patient {
   infectionCases            InfectionCase[]
   medicationDoseLogs        PatientMedicationDoseLog[]
   prescriptionRefillRequests PrescriptionRefillRequest[]
+  devices                    PatientDevice[]
+  childrenAsParent           PatientFamilyLink[] @relation("FamilyParent")
+  parentsAsChild             PatientFamilyLink[] @relation("FamilyChild")
 
   @@index([hmoId])
+}
+
+enum PatientDeviceStatus {
+  PENDING
+  APPROVED
+}
+
+model PatientDevice {
+  id           String              @id @default(uuid())
+  patient      Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patientId    String
+  deviceKey    String              @unique
+  platform     String?
+  deviceLabel  String?
+  fcmToken     String?             @unique
+  status       PatientDeviceStatus @default(PENDING)
+  approvedAt   DateTime?
+  approvedBy   Staff?              @relation("PatientDeviceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedById String?
+  lastSeenAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([patientId])
+  @@index([patientId, status])
+  @@index([status])
+}
+
+model PatientFamilyLink {
+  id              String   @id @default(uuid())
+  parent          Patient  @relation("FamilyParent", fields: [parentPatientId], references: [id], onDelete: Cascade)
+  parentPatientId String
+  child           Patient  @relation("FamilyChild", fields: [childPatientId], references: [id], onDelete: Cascade)
+  childPatientId  String
+  createdBy       Staff    @relation("FamilyLinkCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdById     String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([parentPatientId, childPatientId])
+  @@index([parentPatientId])
+  @@index([childPatientId])
 }
 
 // ─── ICD-10 (optional: for diagnosis tab search; or use external API) ───────────
@@ -123,6 +168,7 @@ model Icd10Code {
 enum AppointmentNotificationChannel {
   EMAIL
   SMS
+  PUSH
 }
 
 enum AppointmentNotificationKind {
@@ -130,6 +176,29 @@ enum AppointmentNotificationKind {
   RESCHEDULED
   CANCELLED
   REMINDER_DAY_OF
+  REMINDER_DAY_BEFORE
+}
+
+enum CustomPushTargetType {
+  ALL
+  SELECTED
+}
+
+model CustomPushNotification {
+  id            String               @id @default(uuid())
+  title         String
+  body          String
+  imageUrl      String?
+  targetType    CustomPushTargetType
+  patientIds    Json
+  sentBy        Staff                @relation("CustomPushSentBy", fields: [sentById], references: [id])
+  sentById      String
+  successCount  Int                  @default(0)
+  failureCount  Int                  @default(0)
+  createdAt     DateTime             @default(now())
+
+  @@index([sentById])
+  @@index([createdAt])
 }
 
 enum AppointmentNotificationStatus {
@@ -2467,6 +2536,9 @@ model Staff {
   financeApprovalsReviewed           FinanceApproval[]              @relation("FinanceApprovalReviewedBy")
   fiscalPeriodsClosed                FiscalPeriod[]                 @relation("FiscalPeriodClosedBy")
   journalEntriesCreated              JournalEntry[]                 @relation("JournalEntryCreatedBy")
+  customPushNotificationsSent        CustomPushNotification[]       @relation("CustomPushSentBy")
+  patientDevicesApproved             PatientDevice[]                @relation("PatientDeviceApprovedBy")
+  familyLinksCreated                 PatientFamilyLink[]            @relation("FamilyLinkCreatedBy")
 
   @@index([wardId])
 }

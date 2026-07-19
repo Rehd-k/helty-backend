@@ -1,6 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PatientStatus } from '@prisma/client';
+import { PatientDeviceStatus, PatientStatus } from '@prisma/client';
 import { PatientAuthService } from './patient-auth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -9,6 +9,12 @@ describe('PatientAuthService', () => {
     patient: {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
+    },
+    patientDevice: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
     },
   } as unknown as PrismaService;
 
@@ -37,37 +43,109 @@ describe('PatientAuthService', () => {
     hmoProvider: { name: 'Test HMO' },
   };
 
+  const pendingDevice = {
+    id: 'device-1',
+    deviceKey: 'key-1',
+    platform: 'android',
+    deviceLabel: 'Phone',
+    status: PatientDeviceStatus.PENDING,
+    approvedAt: null,
+    lastSeenAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('returns token and patient on valid credentials', async () => {
+  it('creates PENDING device and returns token on first login', async () => {
     prisma.patient.findFirst = jest.fn().mockResolvedValue(patientRecord);
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
+    prisma.patientDevice.create = jest.fn().mockResolvedValue(pendingDevice);
 
     const result = await service.login({
       patientId: 'ab12cd34',
       dob: '1990-05-15',
+      deviceKey: 'key-1',
+      platform: 'android',
+      deviceLabel: 'Phone',
     });
 
-    expect(prisma.patient.findFirst).toHaveBeenCalledWith({
-      where: { patientId: { equals: 'ab12cd34', mode: 'insensitive' } },
-      select: expect.any(Object),
-    });
+    expect(prisma.patientDevice.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          patientId: 'uuid-1',
+          deviceKey: 'key-1',
+          status: PatientDeviceStatus.PENDING,
+        }),
+      }),
+    );
     expect(jwtService.sign).toHaveBeenCalledWith({
       sub: 'uuid-1',
       patientId: 'AB12CD34',
       accountType: 'PATIENT',
+      deviceId: 'device-1',
     });
     expect(result.accessToken).toBe('signed-token');
-    expect(result.patient.hmo).toBe('Test HMO');
-    expect(result.patient.avatarUrl).toBeNull();
+    expect(result.device.status).toBe(PatientDeviceStatus.PENDING);
+  });
+
+  it('reuses APPROVED device without changing status', async () => {
+    const approved = {
+      ...pendingDevice,
+      status: PatientDeviceStatus.APPROVED,
+      approvedAt: new Date(),
+    };
+    prisma.patient.findFirst = jest.fn().mockResolvedValue(patientRecord);
+    prisma.patientDevice.findUnique = jest.fn().mockImplementation(({ where }) => {
+      if (where.deviceKey) {
+        return Promise.resolve({
+          ...approved,
+          patientId: 'uuid-1',
+          fcmToken: null,
+        });
+      }
+      return Promise.resolve(null);
+    });
+    prisma.patientDevice.update = jest.fn().mockResolvedValue(approved);
+
+    const result = await service.login({
+      patientId: 'AB12CD34',
+      dob: '1990-05-15',
+      deviceKey: 'key-1',
+    });
+
+    expect(prisma.patientDevice.create).not.toHaveBeenCalled();
+    expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
+  });
+
+  it('rejects device owned by another patient', async () => {
+    prisma.patient.findFirst = jest.fn().mockResolvedValue(patientRecord);
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
+      id: 'device-x',
+      patientId: 'other-patient',
+      deviceKey: 'key-1',
+    });
+
+    await expect(
+      service.login({
+        patientId: 'AB12CD34',
+        dob: '1990-05-15',
+        deviceKey: 'key-1',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('rejects unknown patient ID', async () => {
     prisma.patient.findFirst = jest.fn().mockResolvedValue(null);
 
     await expect(
-      service.login({ patientId: 'UNKNOWN', dob: '1990-05-15' }),
+      service.login({
+        patientId: 'UNKNOWN',
+        dob: '1990-05-15',
+        deviceKey: 'key-1',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -75,7 +153,11 @@ describe('PatientAuthService', () => {
     prisma.patient.findFirst = jest.fn().mockResolvedValue(patientRecord);
 
     await expect(
-      service.login({ patientId: 'AB12CD34', dob: '1991-01-01' }),
+      service.login({
+        patientId: 'AB12CD34',
+        dob: '1991-01-01',
+        deviceKey: 'key-1',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -86,7 +168,30 @@ describe('PatientAuthService', () => {
     });
 
     await expect(
-      service.login({ patientId: 'AB12CD34', dob: '1990-05-15' }),
+      service.login({
+        patientId: 'AB12CD34',
+        dob: '1990-05-15',
+        deviceKey: 'key-1',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('logout deletes the current device', async () => {
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
+      id: 'device-1',
+      patientId: 'uuid-1',
+    });
+    prisma.patientDevice.delete = jest.fn().mockResolvedValue({});
+
+    await service.logout({
+      sub: 'uuid-1',
+      patientId: 'AB12CD34',
+      accountType: 'PATIENT',
+      deviceId: 'device-1',
+    });
+
+    expect(prisma.patientDevice.delete).toHaveBeenCalledWith({
+      where: { id: 'device-1' },
+    });
   });
 });

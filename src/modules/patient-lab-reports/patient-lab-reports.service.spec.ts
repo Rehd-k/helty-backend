@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { LabAbnormalFlag, LabOrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { LabSummaryStatus } from './dto/lab-report-response.dto';
 import { PatientLabReportsService } from './patient-lab-reports.service';
@@ -14,12 +15,21 @@ describe('PatientLabReportsService', () => {
     },
   } as unknown as PrismaService;
 
-  const service = new PatientLabReportsService(prisma);
+  const family = {
+    resolveSubjectPatientId: jest
+      .fn()
+      .mockImplementation(async (user: PatientJwtPayload, forPatientId?: string) =>
+        forPatientId?.trim() || user.sub,
+      ),
+  } as unknown as PatientFamilyService;
+
+  const service = new PatientLabReportsService(prisma, family);
 
   const patientUser: PatientJwtPayload = {
     sub: 'patient-uuid-1',
     patientId: 'AB12CD34',
     accountType: 'PATIENT',
+    deviceId: 'device-1',
   };
 
   const listOrder = {
@@ -68,6 +78,7 @@ describe('PatientLabReportsService', () => {
       total: 1,
       page: 2,
       limit: 10,
+      subjectPatientId: 'patient-uuid-1',
     });
   });
 

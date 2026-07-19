@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PatientStatus } from '@prisma/client';
+import { PatientDeviceStatus, PatientStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PatientLoginDto } from './dto/patient-login.dto';
 import {
@@ -19,7 +20,21 @@ export type PatientJwtPayload = {
   sub: string;
   patientId: string;
   accountType: typeof PATIENT_ACCOUNT_TYPE;
+  /** Bound device session; required for portal access after device approval rollout */
+  deviceId?: string;
 };
+
+const DEVICE_SELECT = {
+  id: true,
+  deviceKey: true,
+  platform: true,
+  deviceLabel: true,
+  status: true,
+  approvedAt: true,
+  lastSeenAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 const INVALID_CREDENTIALS_MESSAGE =
   'Invalid patient ID or date of birth';
@@ -35,15 +50,19 @@ export class PatientAuthService {
     const patient = await this.findPatientForAuth(dto.patientId);
     this.validatePatientCredentials(patient, dto.dob);
 
+    const device = await this.upsertDeviceForLogin(patient.id, dto);
+
     const payload: PatientJwtPayload = {
       sub: patient.id,
       patientId: patient.patientId,
       accountType: PATIENT_ACCOUNT_TYPE,
+      deviceId: device.id,
     };
 
     return {
       accessToken: this.jwtService.sign(payload),
       patient: toPatientPortalDto(patient),
+      device,
     };
   }
 
@@ -56,11 +75,97 @@ export class PatientAuthService {
     if (!patient?.patientId) {
       throw new NotFoundException('Patient not found');
     }
-    return { patient: toPatientPortalDto(patient) };
+
+    const device = user.deviceId
+      ? await this.prisma.patientDevice.findUnique({
+          where: { id: user.deviceId },
+          select: DEVICE_SELECT,
+        })
+      : null;
+
+    return {
+      patient: toPatientPortalDto(patient),
+      device,
+      deviceStatus: device?.status ?? null,
+    };
   }
 
   async logout(user: PatientJwtPayload) {
     this.assertPatientToken(user);
+    if (!user.deviceId) return;
+
+    const device = await this.prisma.patientDevice.findUnique({
+      where: { id: user.deviceId },
+      select: { id: true, patientId: true },
+    });
+    if (device?.patientId === user.sub) {
+      await this.prisma.patientDevice.delete({ where: { id: device.id } });
+    }
+  }
+
+  private async upsertDeviceForLogin(
+    patientId: string,
+    dto: PatientLoginDto,
+  ) {
+    const deviceKey = dto.deviceKey.trim();
+    if (!deviceKey) {
+      throw new BadRequestException('deviceKey is required');
+    }
+
+    const platform = dto.platform?.trim() || null;
+    const deviceLabel = dto.deviceLabel?.trim() || null;
+    const fcmToken = dto.fcmToken?.trim() || null;
+    const now = new Date();
+
+    const existing = await this.prisma.patientDevice.findUnique({
+      where: { deviceKey },
+    });
+
+    if (existing && existing.patientId !== patientId) {
+      throw new ConflictException({
+        message: 'This device is already registered to another patient.',
+        code: 'DEVICE_OWNED_BY_OTHER_PATIENT',
+      });
+    }
+
+    if (fcmToken) {
+      const tokenOwner = await this.prisma.patientDevice.findUnique({
+        where: { fcmToken },
+        select: { id: true, deviceKey: true },
+      });
+      if (tokenOwner && tokenOwner.deviceKey !== deviceKey) {
+        await this.prisma.patientDevice.update({
+          where: { id: tokenOwner.id },
+          data: { fcmToken: null },
+        });
+      }
+    }
+
+    if (existing) {
+      return this.prisma.patientDevice.update({
+        where: { id: existing.id },
+        data: {
+          platform,
+          deviceLabel,
+          ...(fcmToken ? { fcmToken } : {}),
+          lastSeenAt: now,
+        },
+        select: DEVICE_SELECT,
+      });
+    }
+
+    return this.prisma.patientDevice.create({
+      data: {
+        patientId,
+        deviceKey,
+        platform,
+        deviceLabel,
+        fcmToken,
+        status: PatientDeviceStatus.PENDING,
+        lastSeenAt: now,
+      },
+      select: DEVICE_SELECT,
+    });
   }
 
   private async findPatientForAuth(patientId: string) {

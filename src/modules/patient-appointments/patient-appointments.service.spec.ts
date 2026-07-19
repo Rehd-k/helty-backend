@@ -41,9 +41,18 @@ describe('PatientAppointmentsService', () => {
     notifyCancelled: jest.fn(),
   };
 
+  const family = {
+    resolveSubjectPatientId: jest
+      .fn()
+      .mockImplementation(async (user: PatientJwtPayload, forPatientId?: string) =>
+        forPatientId?.trim() || user.sub,
+      ),
+  };
+
   const service = new PatientAppointmentsService(
     prisma as unknown as PrismaService,
     notificationService as unknown as AppointmentNotificationService,
+    family as any,
   );
 
   const patientUser: PatientJwtPayload = {

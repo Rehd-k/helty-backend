@@ -51,7 +51,12 @@ export class PatientLabReportsController {
   getLabReport(
     @Request() req: { user: PatientJwtPayload },
     @Param('id') id: string,
+    @Query('forPatientId') forPatientId?: string,
   ) {
-    return this.patientLabReportsService.getLabReport(req.user, id);
+    return this.patientLabReportsService.getLabReport(
+      req.user,
+      id,
+      forPatientId,
+    );
   }
 }

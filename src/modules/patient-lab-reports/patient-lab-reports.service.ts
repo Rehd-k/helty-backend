@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { ListLabReportsQueryDto } from './dto/list-lab-reports-query.dto';
 import {
@@ -48,17 +49,24 @@ const LAB_ORDER_DETAIL_INCLUDE = {
 
 @Injectable()
 export class PatientLabReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly family: PatientFamilyService,
+  ) {}
 
   async listLabReports(
     user: PatientJwtPayload,
     query: ListLabReportsQueryDto,
   ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where = { patientId: user.sub };
+    const where = { patientId: subjectPatientId };
 
     const [orders, total] = await Promise.all([
       this.prisma.labOrder.findMany({
@@ -76,14 +84,23 @@ export class PatientLabReportsService {
       total,
       page,
       limit,
+      subjectPatientId,
     };
   }
 
-  async getLabReport(user: PatientJwtPayload, id: string) {
+  async getLabReport(
+    user: PatientJwtPayload,
+    id: string,
+    forPatientId?: string,
+  ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const order = await this.prisma.labOrder.findFirst({
       where: {
         id,
-        patientId: user.sub,
+        patientId: subjectPatientId,
       },
       include: LAB_ORDER_DETAIL_INCLUDE,
     });

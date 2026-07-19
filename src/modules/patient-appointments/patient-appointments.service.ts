@@ -11,6 +11,7 @@ import { AccountType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CLINICAL_SPECIALTY_CATALOG } from '../clinical-specialty/clinical-specialty-catalog';
 import { AppointmentNotificationService } from '../appointment/notification/appointment-notification.service';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import {
   buildAvailabilitySlots,
@@ -69,24 +70,29 @@ export class PatientAppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationService: AppointmentNotificationService,
+    private readonly family: PatientFamilyService,
   ) {}
 
   async getDashboard(
     user: PatientJwtPayload,
     query: AppointmentsDashboardQueryDto,
   ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const filter = query.status ?? APPOINTMENT_LIST_FILTER.UPCOMING;
     const now = new Date();
 
     if (filter === APPOINTMENT_LIST_FILTER.UPCOMING) {
       const [upcoming, consultationHistory] = await Promise.all([
         this.prisma.appointment.findMany({
-          where: buildAppointmentFilterWhere(user.sub, filter, now),
+          where: buildAppointmentFilterWhere(subjectPatientId, filter, now),
           orderBy: { date: 'asc' },
           include: APPOINTMENT_INCLUDE,
         }),
         this.prisma.encounter.findMany({
-          where: { patientId: user.sub, status: 'COMPLETED' },
+          where: { patientId: subjectPatientId, status: 'COMPLETED' },
           orderBy: { startTime: 'desc' },
           take: 2,
           include: ENCOUNTER_HISTORY_INCLUDE,
@@ -102,11 +108,12 @@ export class PatientAppointmentsService {
         nextAppointment: nextAppointment ?? null,
         upcomingAppointments: rest,
         consultationHistory: consultationHistory.map(toConsultationHistoryDto),
+        subjectPatientId,
       };
     }
 
     const appointments = await this.prisma.appointment.findMany({
-      where: buildAppointmentFilterWhere(user.sub, filter, now),
+      where: buildAppointmentFilterWhere(subjectPatientId, filter, now),
       orderBy: sortOrderForFilter(filter),
       include: APPOINTMENT_INCLUDE,
     });
@@ -117,6 +124,7 @@ export class PatientAppointmentsService {
         toAppointmentSummaryDto(row, now),
       ),
       consultationHistory: [],
+      subjectPatientId,
     };
   }
 
@@ -124,12 +132,16 @@ export class PatientAppointmentsService {
     user: PatientJwtPayload,
     query: ListAppointmentsQueryDto,
   ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const filter = query.status ?? APPOINTMENT_LIST_FILTER.UPCOMING;
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
     const now = new Date();
-    const where = buildAppointmentFilterWhere(user.sub, filter, now);
+    const where = buildAppointmentFilterWhere(subjectPatientId, filter, now);
 
     const [appointments, total] = await Promise.all([
       this.prisma.appointment.findMany({
@@ -147,11 +159,20 @@ export class PatientAppointmentsService {
       total,
       page,
       limit,
+      subjectPatientId,
     };
   }
 
-  async getAppointment(user: PatientJwtPayload, id: string) {
-    const appointment = await this.findOwnedAppointment(user.sub, id);
+  async getAppointment(
+    user: PatientJwtPayload,
+    id: string,
+    forPatientId?: string,
+  ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+    const appointment = await this.findOwnedAppointment(subjectPatientId, id);
     return toAppointmentDetailDto(appointment);
   }
 

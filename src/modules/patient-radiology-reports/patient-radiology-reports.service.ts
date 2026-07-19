@@ -8,6 +8,7 @@ import { RadiologyRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { RadiologyImageService } from '../radiology/radiology-image.service';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { ListRadiologyReportsQueryDto } from './dto/list-radiology-reports-query.dto';
 import {
@@ -68,6 +69,7 @@ export class PatientRadiologyReportsService {
     private readonly config: ConfigService,
     private readonly invoiceService: InvoiceService,
     private readonly radiologyImageService: RadiologyImageService,
+    private readonly family: PatientFamilyService,
   ) {}
 
   private getApiBaseUrl(): string {
@@ -105,10 +107,14 @@ export class PatientRadiologyReportsService {
     user: PatientJwtPayload,
     query: ListRadiologyReportsQueryDto,
   ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
-    const where = this.patientItemWhere(user.sub);
+    const where = this.patientItemWhere(subjectPatientId);
     const apiBaseUrl = this.getApiBaseUrl();
 
     const [items, total, statusRows, patient] = await Promise.all([
@@ -129,7 +135,7 @@ export class PatientRadiologyReportsService {
         select: { status: true },
       }),
       this.prisma.patient.findUnique({
-        where: { id: user.sub },
+        where: { id: subjectPatientId },
         select: {
           ...patientNameOnlySelect,
           dob: true,
@@ -152,7 +158,7 @@ export class PatientRadiologyReportsService {
 
     const accessByItem = await Promise.all(
       items.map((item) =>
-        this.canPatientAccessResults(user.sub, item.invoiceItem?.id),
+        this.canPatientAccessResults(subjectPatientId, item.invoiceItem?.id),
       ),
     );
 
@@ -167,6 +173,7 @@ export class PatientRadiologyReportsService {
       total,
       page,
       limit,
+      subjectPatientId,
       statistics: buildStatistics(
         total,
         pendingReviews,
@@ -175,13 +182,21 @@ export class PatientRadiologyReportsService {
     };
   }
 
-  async getRadiologyReport(user: PatientJwtPayload, id: string) {
+  async getRadiologyReport(
+    user: PatientJwtPayload,
+    id: string,
+    forPatientId?: string,
+  ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const apiBaseUrl = this.getApiBaseUrl();
 
     const item = await this.prisma.radiologyOrderItem.findFirst({
       where: {
         id,
-        ...this.patientItemWhere(user.sub),
+        ...this.patientItemWhere(subjectPatientId),
       },
       include: RADIOLOGY_ITEM_DETAIL_INCLUDE,
     });
@@ -191,7 +206,7 @@ export class PatientRadiologyReportsService {
     }
 
     const canAccessResults = await this.canPatientAccessResults(
-      user.sub,
+      subjectPatientId,
       item.invoiceItem?.id,
     );
 
@@ -202,11 +217,16 @@ export class PatientRadiologyReportsService {
     user: PatientJwtPayload,
     reportId: string,
     imageId: string,
+    forPatientId?: string,
   ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const item = await this.prisma.radiologyOrderItem.findFirst({
       where: {
         id: reportId,
-        ...this.patientItemWhere(user.sub),
+        ...this.patientItemWhere(subjectPatientId),
       },
       select: {
         id: true,
@@ -227,7 +247,7 @@ export class PatientRadiologyReportsService {
     }
 
     const canAccessResults = await this.canPatientAccessResults(
-      user.sub,
+      subjectPatientId,
       item.invoiceItemId,
     );
     if (!canAccessResults) {

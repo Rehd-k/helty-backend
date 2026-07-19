@@ -32,8 +32,14 @@ export class PatientMedicalRecordsController {
     status: 403,
     description: 'Staff token cannot access patient routes',
   })
-  getDashboard(@Request() req: { user: PatientJwtPayload }) {
-    return this.patientMedicalRecordsService.getDashboard(req.user);
+  getDashboard(
+    @Request() req: { user: PatientJwtPayload },
+    @Query('forPatientId') forPatientId?: string,
+  ) {
+    return this.patientMedicalRecordsService.getDashboard(
+      req.user,
+      forPatientId,
+    );
   }
 
   @Get('medical-records')
@@ -68,7 +74,12 @@ export class PatientMedicalRecordsController {
   getEncounter(
     @Request() req: { user: PatientJwtPayload },
     @Param('id') id: string,
+    @Query('forPatientId') forPatientId?: string,
   ) {
-    return this.patientMedicalRecordsService.getEncounter(req.user, id);
+    return this.patientMedicalRecordsService.getEncounter(
+      req.user,
+      id,
+      forPatientId,
+    );
   }
 }

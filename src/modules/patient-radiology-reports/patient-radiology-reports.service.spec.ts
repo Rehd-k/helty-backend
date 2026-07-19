@@ -47,11 +47,20 @@ describe('PatientRadiologyReportsService', () => {
     }),
   } as unknown as RadiologyImageService;
 
+  const family = {
+    resolveSubjectPatientId: jest
+      .fn()
+      .mockImplementation(async (user: PatientJwtPayload, forPatientId?: string) =>
+        forPatientId?.trim() || user.sub,
+      ),
+  };
+
   const service = new PatientRadiologyReportsService(
     prisma,
     config,
     invoiceService,
     radiologyImageService,
+    family as any,
   );
 
   const patientUser: PatientJwtPayload = {
@@ -151,6 +160,7 @@ describe('PatientRadiologyReportsService', () => {
       total: 2,
       page: 2,
       limit: 10,
+      subjectPatientId: 'patient-uuid-1',
       statistics: {
         totalScans: 2,
         pendingReviews: 1,

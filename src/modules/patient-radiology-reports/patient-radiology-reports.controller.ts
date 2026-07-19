@@ -61,8 +61,13 @@ export class PatientRadiologyReportsController {
   getRadiologyReport(
     @Request() req: { user: PatientJwtPayload },
     @Param('id') id: string,
+    @Query('forPatientId') forPatientId?: string,
   ) {
-    return this.patientRadiologyReportsService.getRadiologyReport(req.user, id);
+    return this.patientRadiologyReportsService.getRadiologyReport(
+      req.user,
+      id,
+      forPatientId,
+    );
   }
 
   @Get('radiology-reports/:reportId/images/:imageId/file')
@@ -78,6 +83,7 @@ export class PatientRadiologyReportsController {
     @Request() req: { user: PatientJwtPayload },
     @Param('reportId') reportId: string,
     @Param('imageId') imageId: string,
+    @Query('forPatientId') forPatientId: string | undefined,
     @Res() res: { setHeader: (k: string, v: string) => void; sendFile: (p: string) => void },
   ) {
     const { filePath, fileName, mimeType } =
@@ -85,6 +91,7 @@ export class PatientRadiologyReportsController {
         req.user,
         reportId,
         imageId,
+        forPatientId,
       );
     res.setHeader('Content-Type', mimeType || 'application/octet-stream');
     res.setHeader(

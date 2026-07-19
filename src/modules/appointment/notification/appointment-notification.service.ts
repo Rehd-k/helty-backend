@@ -10,6 +10,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { patientNameFieldsSelect } from '../../../common/utils/patient-display-name.util';
 import { MailService } from '../../mail/mail.service';
 import { SmsService } from '../../sms/sms.service';
+import { FcmService } from '../../fcm/fcm.service';
 import {
   AppointmentNotificationContext,
   PersistedNotificationAttempt,
@@ -21,6 +22,7 @@ import {
   formatPatientName,
   getLagosDateBucket,
   getLagosDayBounds,
+  getLagosDayBoundsOffset,
   isReminderEligibleStatus,
 } from './appointment-message.util';
 
@@ -32,6 +34,7 @@ export class AppointmentNotificationService {
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
     private readonly smsService: SmsService,
+    private readonly fcmService: FcmService,
     private readonly config: ConfigService,
   ) {}
 
@@ -66,7 +69,35 @@ export class AppointmentNotificationService {
   async sendDayOfReminders(referenceDate: Date = new Date()): Promise<number> {
     const { from, to } = getLagosDayBounds(referenceDate);
     const dateBucket = getLagosDateBucket(referenceDate);
+    return this.sendRemindersForWindow(
+      from,
+      to,
+      dateBucket,
+      'REMINDER_DAY_OF',
+      'Day-of',
+    );
+  }
 
+  async sendDayBeforeReminders(
+    referenceDate: Date = new Date(),
+  ): Promise<number> {
+    const { from, to, dateBucket } = getLagosDayBoundsOffset(referenceDate, 1);
+    return this.sendRemindersForWindow(
+      from,
+      to,
+      dateBucket,
+      'REMINDER_DAY_BEFORE',
+      'Day-before',
+    );
+  }
+
+  private async sendRemindersForWindow(
+    from: Date,
+    to: Date,
+    dateBucket: string,
+    kind: 'REMINDER_DAY_OF' | 'REMINDER_DAY_BEFORE',
+    label: string,
+  ): Promise<number> {
     const appointments = await this.prisma.appointment.findMany({
       where: {
         date: { gte: from, lte: to },
@@ -97,14 +128,14 @@ export class AppointmentNotificationService {
           email: appointment.patient.email,
           phoneNumber: appointment.patient.phoneNumber,
         },
-        'REMINDER_DAY_OF',
+        kind,
         { dateBucket },
       );
       sentCount += attempts.filter((a) => a.status === 'SENT').length;
     }
 
     this.logger.log(
-      `Day-of reminders processed dateBucket=${dateBucket} eligible=${eligible.length} sent=${sentCount}`,
+      `${label} reminders processed dateBucket=${dateBucket} eligible=${eligible.length} sent=${sentCount}`,
     );
     return sentCount;
   }
@@ -181,6 +212,20 @@ export class AppointmentNotificationService {
             messages.sms,
           ),
       },
+      {
+        channel: 'PUSH',
+        send: () =>
+          this.fcmService.sendToPatient(ctx.patientId, {
+            title: messages.pushTitle,
+            body: messages.pushBody,
+            data: {
+              type: 'APPOINTMENT',
+              kind,
+              appointmentId: ctx.appointmentId,
+              patientId: ctx.patientId,
+            },
+          }),
+      },
     ];
 
     const results: PersistedNotificationAttempt[] = [];
@@ -202,6 +247,8 @@ export class AppointmentNotificationService {
             subject: messages.subject,
             text: messages.text,
             sms: messages.sms,
+            pushTitle: messages.pushTitle,
+            pushBody: messages.pushBody,
           },
           send,
         });
@@ -215,7 +262,49 @@ export class AppointmentNotificationService {
       }
     }
 
+    await this.notifyLinkedParents(ctx, kind, messages);
+
     return results;
+  }
+
+  /**
+   * Fan-out PUSH notifications to approved parent devices when a child
+   * has an appointment event.
+   */
+  private async notifyLinkedParents(
+    ctx: AppointmentNotificationContext,
+    kind: AppointmentNotificationKind,
+    messages: { pushTitle: string; pushBody: string },
+  ): Promise<void> {
+    const parents = await this.prisma.patientFamilyLink.findMany({
+      where: { childPatientId: ctx.patientId },
+      select: { parentPatientId: true },
+    });
+    if (parents.length === 0) return;
+
+    for (const { parentPatientId } of parents) {
+      try {
+        await this.fcmService.sendToPatient(parentPatientId, {
+          title: messages.pushTitle,
+          body: messages.pushBody,
+          data: {
+            type: 'APPOINTMENT',
+            kind,
+            appointmentId: ctx.appointmentId,
+            patientId: ctx.patientId,
+            forPatientId: ctx.patientId,
+            subjectName: ctx.patientName,
+            isFamily: 'true',
+          },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Family push failed parent=${parentPatientId} appointment=${ctx.appointmentId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
   }
 
   private async sendAndPersist(params: {
@@ -253,7 +342,10 @@ export class AppointmentNotificationService {
         kind: params.kind,
         idempotencyKey: params.idempotencyKey,
         scheduledFor:
-          params.kind === 'REMINDER_DAY_OF' ? params.ctx.appointmentDate : null,
+          params.kind === 'REMINDER_DAY_OF' ||
+          params.kind === 'REMINDER_DAY_BEFORE'
+            ? params.ctx.appointmentDate
+            : null,
         sentAt: status === 'SENT' ? now : null,
         status,
         provider:

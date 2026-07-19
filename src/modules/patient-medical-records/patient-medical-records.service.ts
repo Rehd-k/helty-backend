@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { ListMedicalRecordsQueryDto } from './dto/list-medical-records-query.dto';
 import {
@@ -102,9 +103,16 @@ const ENCOUNTER_DETAIL_INCLUDE = {
 
 @Injectable()
 export class PatientMedicalRecordsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly family: PatientFamilyService,
+  ) {}
 
-  async getDashboard(user: PatientJwtPayload) {
+  async getDashboard(user: PatientJwtPayload, forPatientId?: string) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const [
       latestBloodGroupRecord,
       latestHeightWeight,
@@ -114,23 +122,23 @@ export class PatientMedicalRecordsService {
       recentLabResults,
     ] = await Promise.all([
       this.prisma.pregnancy.findFirst({
-        where: { patientId: user.sub, bloodGroup: { not: null } },
+        where: { patientId: subjectPatientId, bloodGroup: { not: null } },
         orderBy: { updatedAt: 'desc' },
         select: { bloodGroup: true },
       }),
       this.prisma.patientVitals.findFirst({
-        where: { patientId: user.sub },
+        where: { patientId: subjectPatientId },
         orderBy: { recordedAt: 'desc' },
         select: { height: true, weight: true },
       }),
-      this.findLatestHomeVitals(user.sub),
+      this.findLatestHomeVitals(subjectPatientId),
       this.prisma.patientAllergy.findMany({
-        where: { patientId: user.sub },
+        where: { patientId: subjectPatientId },
         orderBy: { createdAt: 'desc' },
         select: { allergen: true, severity: true },
       }),
       this.prisma.encounterDiagnosis.findMany({
-        where: { encounter: { patientId: user.sub } },
+        where: { encounter: { patientId: subjectPatientId } },
         orderBy: { createdAt: 'desc' },
         take: 2,
         include: {
@@ -149,7 +157,7 @@ export class PatientMedicalRecordsService {
         },
       }),
       this.prisma.labResult.findMany({
-        where: { orderItem: { order: { patientId: user.sub } } },
+        where: { orderItem: { order: { patientId: subjectPatientId } } },
         orderBy: { createdAt: 'desc' },
         take: 3,
         select: {
@@ -177,6 +185,7 @@ export class PatientMedicalRecordsService {
       recentDiagnoses: recentDiagnoses.map(toMedicalRecordRecentDiagnosisDto),
       immunizations: [],
       recentLabResults: recentLabResults.map(toMedicalRecordLabResultDto),
+      subjectPatientId,
     };
   }
 
@@ -184,11 +193,15 @@ export class PatientMedicalRecordsService {
     user: PatientJwtPayload,
     query: ListMedicalRecordsQueryDto,
   ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where = { patientId: user.sub };
+    const where = { patientId: subjectPatientId };
 
     const [encounters, total] = await Promise.all([
       this.prisma.encounter.findMany({
@@ -206,14 +219,23 @@ export class PatientMedicalRecordsService {
       total,
       page,
       limit,
+      subjectPatientId,
     };
   }
 
-  async getEncounter(user: PatientJwtPayload, id: string) {
+  async getEncounter(
+    user: PatientJwtPayload,
+    id: string,
+    forPatientId?: string,
+  ) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const encounter = await this.prisma.encounter.findFirst({
       where: {
         id,
-        patientId: user.sub,
+        patientId: subjectPatientId,
       },
       include: ENCOUNTER_DETAIL_INCLUDE,
     });

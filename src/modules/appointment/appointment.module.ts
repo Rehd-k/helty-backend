@@ -5,16 +5,12 @@ import { AppointmentController } from './appointment.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from '../mail/mail.module';
 import { SmsModule } from '../sms/sms.module';
+import { FcmModule } from '../fcm/fcm.module';
 import { AppointmentNotificationService } from './notification/appointment-notification.service';
 import { AppointmentReminderScheduler } from './notification/appointment-reminder.scheduler';
 
 @Module({
-  imports: [
-    PrismaModule,
-    ConfigModule,
-    MailModule,
-    SmsModule,
-  ],
+  imports: [PrismaModule, ConfigModule, MailModule, SmsModule, FcmModule],
   controllers: [AppointmentController],
   providers: [
     AppointmentService,

@@ -49,6 +49,9 @@ backup.json
 .env.production.local
 .env.local
 
+# Firebase service account (contains private key)
+firebase-service-account.json
+
 # temp directory
 .temp
 .tmp

@@ -1,8 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 export class ListLabReportsQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'View lab reports for a linked child (defaults to the logged-in patient)',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  forPatientId?: string;
+
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)

@@ -1,12 +1,21 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import type { AppointmentListFilter } from '../patient-appointments.constants';
 import {
   APPOINTMENT_LIST_FILTER,
 } from '../patient-appointments.constants';
 
 export class AppointmentsDashboardQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'View appointments for a linked child (defaults to the logged-in patient)',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  forPatientId?: string;
+
   @ApiPropertyOptional({
     enum: Object.values(APPOINTMENT_LIST_FILTER),
     default: APPOINTMENT_LIST_FILTER.UPCOMING,
@@ -17,6 +26,15 @@ export class AppointmentsDashboardQueryDto {
 }
 
 export class ListAppointmentsQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'View appointments for a linked child (defaults to the logged-in patient)',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  forPatientId?: string;
+
   @ApiPropertyOptional({
     enum: Object.values(APPOINTMENT_LIST_FILTER),
     default: APPOINTMENT_LIST_FILTER.UPCOMING,

@@ -30,6 +30,14 @@ describe('PatientMedicalRecordsService', () => {
 
   const service = new PatientMedicalRecordsService(
     prisma as unknown as PrismaService,
+    {
+      resolveSubjectPatientId: jest
+        .fn()
+        .mockImplementation(
+          async (user: PatientJwtPayload, forPatientId?: string) =>
+            forPatientId?.trim() || user.sub,
+        ),
+    } as any,
   );
 
   const patientUser: PatientJwtPayload = {
@@ -106,6 +114,7 @@ describe('PatientMedicalRecordsService', () => {
       total: 1,
       page: 2,
       limit: 10,
+      subjectPatientId: 'patient-uuid-1',
     });
   });
 
@@ -267,6 +276,7 @@ describe('PatientMedicalRecordsService', () => {
           status: 'NORMAL',
         },
       ],
+      subjectPatientId: 'patient-uuid-1',
     });
   });
 
@@ -288,6 +298,7 @@ describe('PatientMedicalRecordsService', () => {
       recentDiagnoses: [],
       immunizations: [],
       recentLabResults: [],
+      subjectPatientId: 'patient-uuid-1',
     });
   });
 

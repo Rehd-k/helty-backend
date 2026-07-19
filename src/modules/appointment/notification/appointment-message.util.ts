@@ -21,6 +21,19 @@ export function getLagosDayBounds(reference: Date = new Date()): {
   };
 }
 
+/** Calendar-day bounds in Lagos offset by `dayOffset` from `reference` (e.g. 1 = tomorrow). */
+export function getLagosDayBoundsOffset(
+  reference: Date = new Date(),
+  dayOffset: number,
+): { from: Date; to: Date; dateBucket: string } {
+  const day = getLagosDateBucket(reference);
+  const [y, m, d] = day.split('-').map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d + dayOffset, 12, 0, 0));
+  const dateBucket = getLagosDateBucket(shifted);
+  const bounds = getLagosDayBounds(shifted);
+  return { ...bounds, dateBucket };
+}
+
 export function formatAppointmentDateTime(
   date: Date,
   timezone = APPOINTMENT_REMINDER_TIMEZONE,
@@ -40,7 +53,7 @@ export function formatAppointmentDateTime(
 export function buildIdempotencyKey(params: {
   appointmentId: string;
   kind: AppointmentNotificationKind;
-  channel: 'EMAIL' | 'SMS';
+  channel: 'EMAIL' | 'SMS' | 'PUSH';
   dateBucket?: string;
   eventMarker?: string;
 }): string {
@@ -59,7 +72,7 @@ export function buildAppointmentMessages(params: {
   appointmentDate: Date;
   previousDate?: Date;
   hospitalName: string;
-}): { subject: string; text: string; sms: string } {
+}): { subject: string; text: string; sms: string; pushTitle: string; pushBody: string } {
   const when = formatAppointmentDateTime(params.appointmentDate);
   const name = params.patientName.trim() || 'Patient';
 
@@ -73,6 +86,8 @@ export function buildAppointmentMessages(params: {
           `Please arrive on time. Contact the hospital if you need to reschedule.\n\n` +
           `Thank you.`,
         sms: `${params.hospitalName}: Appointment confirmed for ${when}. Please arrive on time.`,
+        pushTitle: 'Appointment confirmed',
+        pushBody: `Your appointment at ${params.hospitalName} is scheduled for ${when}.`,
       };
     case 'RESCHEDULED': {
       const prev = params.previousDate
@@ -86,6 +101,8 @@ export function buildAppointmentMessages(params: {
           `Please contact the hospital if this time does not work for you.\n\n` +
           `Thank you.`,
         sms: `${params.hospitalName}: Appointment rescheduled to ${when}.`,
+        pushTitle: 'Appointment rescheduled',
+        pushBody: `Your appointment at ${params.hospitalName} was moved to ${when}.`,
       };
     }
     case 'CANCELLED':
@@ -97,6 +114,8 @@ export function buildAppointmentMessages(params: {
           `Contact the hospital to book a new appointment if needed.\n\n` +
           `Thank you.`,
         sms: `${params.hospitalName}: Your appointment on ${when} has been cancelled.`,
+        pushTitle: 'Appointment cancelled',
+        pushBody: `Your appointment at ${params.hospitalName} on ${when} has been cancelled.`,
       };
     case 'REMINDER_DAY_OF':
       return {
@@ -107,12 +126,28 @@ export function buildAppointmentMessages(params: {
           `Please arrive on time.\n\n` +
           `Thank you.`,
         sms: `${params.hospitalName}: Reminder – you have an appointment today at ${when}.`,
+        pushTitle: 'Appointment today',
+        pushBody: `Reminder: your appointment at ${params.hospitalName} is today at ${when}.`,
+      };
+    case 'REMINDER_DAY_BEFORE':
+      return {
+        subject: `Appointment reminder – tomorrow at ${params.hospitalName}`,
+        text:
+          `Dear ${name},\n\n` +
+          `This is a reminder that you have an appointment tomorrow at ${params.hospitalName} on ${when}.\n\n` +
+          `Please arrive on time.\n\n` +
+          `Thank you.`,
+        sms: `${params.hospitalName}: Reminder – you have an appointment tomorrow at ${when}.`,
+        pushTitle: 'Appointment tomorrow',
+        pushBody: `Reminder: your appointment at ${params.hospitalName} is tomorrow at ${when}.`,
       };
     default:
       return {
         subject: `Appointment update – ${params.hospitalName}`,
         text: `Dear ${name},\n\nYou have an appointment update at ${params.hospitalName} on ${when}.`,
         sms: `${params.hospitalName}: Appointment update for ${when}.`,
+        pushTitle: 'Appointment update',
+        pushBody: `You have an appointment update at ${params.hospitalName} on ${when}.`,
       };
   }
 }
