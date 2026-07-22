@@ -35,10 +35,18 @@ export class CreateMedicationOrderDto {
   @IsNotEmpty({ message: 'doctorId is required' })
   doctorId: string;
 
-  @ApiProperty({ description: 'Encounter UUID' })
+  @ApiPropertyOptional({ description: 'Encounter UUID' })
   @IsUUID()
-  @IsNotEmpty({ message: 'encounterId is required' })
-  encounterId: string;
+  @IsOptional()
+  encounterId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Pregnancy UUID — resolves encounterId from the pregnancy antenatal encounter when encounterId is omitted.',
+  })
+  @IsUUID()
+  @IsOptional()
+  pregnancyId?: string;
 
   @ApiPropertyOptional({ description: 'Admission UUID for inpatient orders' })
   @IsUUID()

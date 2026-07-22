@@ -3,9 +3,10 @@ import { MedicationRequestService } from './medication-request.service';
 import { MedicationRequestController } from './medication-request.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { InvoiceModule } from '../invoice/invoice.module';
+import { ClinicalPackageModule } from '../clinical-package/clinical-package.module';
 
 @Module({
-  imports: [PrismaModule, InvoiceModule],
+  imports: [PrismaModule, InvoiceModule, ClinicalPackageModule],
   controllers: [MedicationRequestController],
   providers: [MedicationRequestService],
   exports: [MedicationRequestService],

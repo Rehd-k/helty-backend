@@ -72,6 +72,14 @@ export class CreateRadiologyOrderItemDto {
   @IsUUID()
   @IsOptional()
   serviceId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'When true with a package-covered serviceId, bills at zero via the default antenatal package.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  useAntenatalPackage?: boolean;
 }
 
 export class CreateRadiologyRequestDto {
@@ -84,6 +92,14 @@ export class CreateRadiologyRequestDto {
   @IsUUID()
   @IsOptional()
   encounterId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Pregnancy UUID — resolves encounterId from the pregnancy antenatal encounter when encounterId is omitted.',
+  })
+  @IsUUID()
+  @IsOptional()
+  pregnancyId?: string;
 
   @ApiProperty({ description: 'Staff UUID of the ordering doctor' })
   @IsUUID()

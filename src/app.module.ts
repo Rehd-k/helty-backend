@@ -43,6 +43,7 @@ import { LabRequestModule } from './modules/lab-request/lab-request.module';
 import { PharmacyModule } from './modules/pharmacy/pharmacy.module';
 import { WardRoundNotesModule } from './modules/ward-round-notes/ward-round-notes.module';
 import { ObstetricsModule } from './modules/obstetrics/obstetrics.module';
+import { ClinicalPackageModule } from './modules/clinical-package/clinical-package.module';
 import { LabModule } from './modules/lab/lab.module';
 import { RedisModule } from './redis/redis.module';
 import { ChatModule } from './modules/chat/chat.module';
@@ -131,6 +132,7 @@ import { FcmModule } from './modules/fcm/fcm.module';
     PharmacyModule,
     WardRoundNotesModule,
     ObstetricsModule,
+    ClinicalPackageModule,
     LabModule,
     ChatModule,
     RadiologyModule,

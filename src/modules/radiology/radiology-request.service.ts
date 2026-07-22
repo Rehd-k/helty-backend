@@ -17,6 +17,8 @@ import {
   resolveOrderingDoctorId,
 } from '../encounter/encounter-inpatient-edit.util';
 import { syncRadiologyOrderStatusAfterItemChange } from './radiology-order-status.util';
+import { PregnancyClinicalContextService } from '../obstetrics/pregnancy-clinical-context.service';
+import { ClinicalPackageService } from '../clinical-package/clinical-package.service';
 
 const RADIOLOGY_ORDER_ITEM_DETAIL_INCLUDE = {
   schedule: {
@@ -58,9 +60,21 @@ export class RadiologyRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
+    private readonly pregnancyClinicalContext: PregnancyClinicalContextService,
+    private readonly clinicalPackageService: ClinicalPackageService,
   ) {}
 
   async create(dto: CreateRadiologyRequestDto, actingStaffId: string) {
+    let encounterId = dto.encounterId;
+    let pregnancyId = dto.pregnancyId;
+    if (dto.pregnancyId) {
+      const ctx = await this.pregnancyClinicalContext.resolve(dto.pregnancyId, {
+        patientId: dto.patientId,
+      });
+      encounterId = encounterId ?? ctx.encounterId;
+      pregnancyId = ctx.pregnancyId;
+    }
+
     const patient = await this.prisma.patient.findUnique({
       where: { id: dto.patientId },
     });
@@ -71,9 +85,9 @@ export class RadiologyRequestService {
       admissionId: string | null;
       admission?: { status: AdmissionStatus } | null;
     } | null = null;
-    if (dto.encounterId) {
+    if (encounterId) {
       const encounter = await this.prisma.encounter.findUnique({
-        where: { id: dto.encounterId },
+        where: { id: encounterId },
         select: {
           patientId: true,
           admissionId: true,
@@ -81,9 +95,7 @@ export class RadiologyRequestService {
         },
       });
       if (!encounter) {
-        throw new NotFoundException(
-          `Encounter "${dto.encounterId}" not found.`,
-        );
+        throw new NotFoundException(`Encounter "${encounterId}" not found.`);
       }
       if (encounter.patientId !== dto.patientId) {
         throw new BadRequestException(
@@ -155,7 +167,7 @@ export class RadiologyRequestService {
       let encounterBilled = false;
 
       if (
-        dto.encounterId &&
+        encounterId &&
         item.serviceId &&
         !item.invoiceId &&
         !item.invoiceItemId
@@ -165,13 +177,29 @@ export class RadiologyRequestService {
           item.serviceId,
           'radiology',
         );
-        const { invoice, invoiceItemId } =
-          await this.invoiceService.createWithServiceItem({
-            patientId: dto.patientId,
-            encounterId: dto.encounterId,
-            staffId: requestedById,
-            serviceId: item.serviceId,
-          });
+        const packageItem =
+          item.useAntenatalPackage !== false
+            ? await this.clinicalPackageService.resolveAntenatalPackageItemForService(
+                dto.patientId,
+                item.serviceId,
+              )
+            : null;
+        const billing =
+          packageItem != null
+            ? await this.invoiceService.createAntenatalPackageServiceItem({
+                patientId: dto.patientId,
+                encounterId,
+                staffId: requestedById,
+                serviceId: item.serviceId,
+                clinicalPackageItemId: packageItem.packageItemId,
+              })
+            : await this.invoiceService.createWithServiceItem({
+                patientId: dto.patientId,
+                encounterId,
+                staffId: requestedById,
+                serviceId: item.serviceId,
+              });
+        const { invoice, invoiceItemId } = billing;
         resolved = {
           ...resolved,
           invoiceId: invoice.id,
@@ -219,7 +247,8 @@ export class RadiologyRequestService {
       return tx.radiologyOrder.create({
         data: {
           patientId: dto.patientId,
-          encounterId: dto.encounterId ?? undefined,
+          encounterId: encounterId ?? undefined,
+          pregnancyId: pregnancyId ?? undefined,
           requestedById,
           departmentId: dto.departmentId ?? undefined,
           items: {

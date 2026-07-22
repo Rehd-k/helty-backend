@@ -30,11 +30,24 @@ describe('LabRequestService', () => {
     },
   };
 
+  const pregnancyClinicalContext = {
+    resolve: jest.fn(),
+  };
+
+  const clinicalPackageService = {
+    resolveAntenatalPackageItemForService: jest.fn().mockResolvedValue(null),
+  };
+
   let service: LabRequestService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new LabRequestService(prisma as any, invoiceService as any);
+    service = new LabRequestService(
+      prisma as any,
+      invoiceService as any,
+      pregnancyClinicalContext as any,
+      clinicalPackageService as any,
+    );
   });
 
   it('creates billed lab request without checking active admission', async () => {

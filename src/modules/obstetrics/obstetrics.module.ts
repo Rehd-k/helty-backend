@@ -14,6 +14,8 @@ import { PartogramService } from './partogram.service';
 import { BabyService } from './baby.service';
 import { PostnatalVisitService } from './postnatal-visit.service';
 import { GynaeProcedureService } from './gynae-procedure.service';
+import { PregnancyClinicalContextService } from './pregnancy-clinical-context.service';
+import { PregnancyClinicalService } from './pregnancy-clinical.service';
 
 @Module({
   imports: [PrismaModule],
@@ -34,6 +36,8 @@ import { GynaeProcedureService } from './gynae-procedure.service';
     BabyService,
     PostnatalVisitService,
     GynaeProcedureService,
+    PregnancyClinicalContextService,
+    PregnancyClinicalService,
   ],
   exports: [
     PregnancyService,
@@ -43,6 +47,8 @@ import { GynaeProcedureService } from './gynae-procedure.service';
     BabyService,
     PostnatalVisitService,
     GynaeProcedureService,
+    PregnancyClinicalContextService,
+    PregnancyClinicalService,
   ],
 })
 export class ObstetricsModule {}

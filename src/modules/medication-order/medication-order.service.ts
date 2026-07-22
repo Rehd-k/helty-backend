@@ -14,6 +14,7 @@ import {
 import { BeyondDurationConsentDto } from './dto/beyond-duration-consent.dto';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
 import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
+import { PregnancyClinicalContextService } from '../obstetrics/pregnancy-clinical-context.service';
 
 @Injectable()
 export class MedicationOrderService {
@@ -21,11 +22,30 @@ export class MedicationOrderService {
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
     private readonly medicationScheduleService: MedicationScheduleService,
+    private readonly pregnancyClinicalContext: PregnancyClinicalContextService,
   ) {}
 
   async create(dto: CreateMedicationOrderDto, actingStaffId: string) {
+    if (!dto.encounterId && !dto.pregnancyId) {
+      throw new BadRequestException(
+        'Either encounterId or pregnancyId is required.',
+      );
+    }
+    let encounterId = dto.encounterId;
+    let pregnancyId = dto.pregnancyId;
+    if (dto.pregnancyId) {
+      const ctx = await this.pregnancyClinicalContext.resolve(dto.pregnancyId, {
+        patientId: dto.patientId,
+      });
+      encounterId = encounterId ?? ctx.encounterId;
+      pregnancyId = ctx.pregnancyId;
+    }
+    if (!encounterId) {
+      throw new BadRequestException('encounterId could not be resolved.');
+    }
+
     const encounter = await this.loadEncounterForPatient(
-      dto.encounterId,
+      encounterId,
       dto.patientId,
     );
     const doctorId = resolveOrderingDoctorId(
@@ -42,7 +62,7 @@ export class MedicationOrderService {
     if (dto.admissionId) {
       await this.validateAdmission(
         dto.admissionId,
-        dto.encounterId,
+        encounterId,
         dto.patientId,
       );
     }
@@ -72,8 +92,9 @@ export class MedicationOrderService {
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.medicationOrder.create({
         data: {
-          encounterId: dto.encounterId,
+          encounterId,
           admissionId: dto.admissionId,
+          pregnancyId: pregnancyId ?? null,
           drugId: dto.drugId,
           drugName: drug.genericName,
           prescribedDrugId: dto.drugId,

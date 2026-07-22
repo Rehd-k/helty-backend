@@ -17,6 +17,7 @@ import { AccountTypes } from '../../common/decorators';
 import { CLINICAL_READ_ACCESS } from '../../common/constants/clinical-access.constants';
 import { OBSTETRICS_NURSING_WRITE_ACCESS } from './obstetrics.constants';
 import { PregnancyService } from './pregnancy.service';
+import { PregnancyClinicalService } from './pregnancy-clinical.service';
 import {
   CreatePregnancyDto,
   UpdatePregnancyDto,
@@ -27,7 +28,10 @@ import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 @Controller('obstetrics/pregnancies')
 @UseGuards(JwtAuthGuard, AccessGuard)
 export class PregnancyController {
-  constructor(private readonly pregnancyService: PregnancyService) {}
+  constructor(
+    private readonly pregnancyService: PregnancyService,
+    private readonly pregnancyClinicalService: PregnancyClinicalService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -42,6 +46,24 @@ export class PregnancyController {
   @ApiOperation({ summary: 'List pregnancies (optional: patientId, status)' })
   findAll(@Query() query: ListPregnanciesQueryDto) {
     return this.pregnancyService.findAll(query);
+  }
+
+  @Get(':id/clinical-orders')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
+  @ApiOperation({
+    summary: 'Medication, lab, and radiology orders for a pregnancy',
+  })
+  getClinicalOrders(@Param('id') id: string) {
+    return this.pregnancyClinicalService.getClinicalOrders(id);
+  }
+
+  @Get(':id/clinical-results')
+  @AccountTypes(...CLINICAL_READ_ACCESS)
+  @ApiOperation({
+    summary: 'Lab and radiology results scoped to a pregnancy',
+  })
+  getClinicalResults(@Param('id') id: string) {
+    return this.pregnancyClinicalService.getClinicalResults(id);
   }
 
   @Get(':id')

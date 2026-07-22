@@ -14,15 +14,37 @@ import {
 import { parseDateRange } from '../../common/utils/date-range';
 import { labRequestWithBillingInclude } from './lab-request-includes';
 import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
+import { PregnancyClinicalContextService } from '../obstetrics/pregnancy-clinical-context.service';
+import { ClinicalPackageService } from '../clinical-package/clinical-package.service';
 
 @Injectable()
 export class LabRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
+    private readonly pregnancyClinicalContext: PregnancyClinicalContextService,
+    private readonly clinicalPackageService: ClinicalPackageService,
   ) {}
 
   async create(dto: CreateLabRequestDto, actingStaffId: string) {
+    if (!dto.encounterId && !dto.pregnancyId) {
+      throw new BadRequestException(
+        'Either encounterId or pregnancyId is required.',
+      );
+    }
+    let encounterId = dto.encounterId;
+    let pregnancyId = dto.pregnancyId;
+    if (dto.pregnancyId) {
+      const ctx = await this.pregnancyClinicalContext.resolve(dto.pregnancyId, {
+        patientId: dto.patientId,
+      });
+      encounterId = encounterId ?? ctx.encounterId;
+      pregnancyId = ctx.pregnancyId;
+    }
+    if (!encounterId) {
+      throw new BadRequestException('encounterId could not be resolved.');
+    }
+
     const encounter = await this.prisma.encounter.findUnique({
       where: { id: dto.encounterId },
       select: {
@@ -45,11 +67,12 @@ export class LabRequestService {
     );
     const labRequest = await this.prisma.labRequest.create({
       data: {
-        encounterId: dto.encounterId,
+        encounterId,
         patientId: dto.patientId,
         requestedByDoctorId,
         testType: dto.testType,
         notes: dto.notes,
+        pregnancyId: pregnancyId ?? null,
       },
     });
     if (dto.serviceId) {
@@ -57,13 +80,29 @@ export class LabRequestService {
         dto.serviceId,
         'lab',
       );
-      const { invoice, invoiceItemId } =
-        await this.invoiceService.createWithServiceItem({
-          patientId: dto.patientId,
-          encounterId: dto.encounterId,
-          staffId: requestedByDoctorId,
-          serviceId: dto.serviceId,
-        });
+      const packageItem =
+        dto.useAntenatalPackage !== false
+          ? await this.clinicalPackageService.resolveAntenatalPackageItemForService(
+              dto.patientId,
+              dto.serviceId,
+            )
+          : null;
+      const billing =
+        packageItem != null
+          ? await this.invoiceService.createAntenatalPackageServiceItem({
+              patientId: dto.patientId,
+              encounterId,
+              staffId: requestedByDoctorId,
+              serviceId: dto.serviceId,
+              clinicalPackageItemId: packageItem.packageItemId,
+            })
+          : await this.invoiceService.createWithServiceItem({
+              patientId: dto.patientId,
+              encounterId,
+              staffId: requestedByDoctorId,
+              serviceId: dto.serviceId,
+            });
+      const { invoice, invoiceItemId } = billing;
       return this.prisma.labRequest.update({
         where: { id: labRequest.id },
         data: { invoiceId: invoice.id, invoiceItemId },

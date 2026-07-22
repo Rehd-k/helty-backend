@@ -604,6 +604,7 @@ model Drug {
   invoiceDrugReturns      InvoiceDrugReturn[]
   drugPrices              DrugPrice[]
   dispenseBatchAllocations DispenseBatchAllocation[]
+  clinicalServicePackageItems ClinicalServicePackageItem[]
 
   @@index([manufacturerId])
   @@index([isControlled])
@@ -1336,6 +1337,50 @@ model Service {
   surgeryRequests  SurgeryRequest[]
   waitingPatients  WaitingPatient[]
   hmoServicePrices HmoServicePrice[]
+  clinicalServicePackageItems ClinicalServicePackageItem[]
+}
+
+// ─── Clinical service packages (e.g. default antenatal bundle) ───────────────
+
+model ClinicalServicePackage {
+  id                  String   @id @default(uuid())
+  name                String
+  description         String?
+  isActive            Boolean  @default(true)
+  isDefaultAntenatal  Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  createdBy   Staff   @relation("ClinicalServicePackageCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("ClinicalServicePackageUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  items ClinicalServicePackageItem[]
+
+  @@index([isActive])
+  @@index([isDefaultAntenatal])
+}
+
+model ClinicalServicePackageItem {
+  id        String  @id @default(uuid())
+  package   ClinicalServicePackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  packageId String
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceId String?
+  drug      Drug?    @relation(fields: [drugId], references: [id], onDelete: SetNull)
+  drugId    String?
+  sortOrder Int      @default(0)
+  notes     String?
+
+  invoiceItems InvoiceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([packageId])
+  @@index([serviceId])
+  @@index([drugId])
 }
 
 // ─── HMO (Health Maintenance Organization) ───────────────────────────────────
@@ -1499,8 +1544,11 @@ model InvoiceItem {
   coverages                  InvoiceCoverage[]
   refundRequests             InvoiceItemRefundRequest[]
   refunds                    InvoiceRefund[]
+  clinicalPackageItem        ClinicalServicePackageItem? @relation(fields: [clinicalPackageItemId], references: [id], onDelete: SetNull)
+  clinicalPackageItemId      String?
 
   @@index([invoiceId])
+  @@index([clinicalPackageItemId])
   @@index([createdById])
   @@index([consumableId])
   @@index([storeLocationId])
@@ -2427,6 +2475,8 @@ model Staff {
   wardRoundNotes                      WardRoundNote[]
   pregnanciesCreated                  Pregnancy[]                 @relation("PregnancyCreatedBy")
   pregnanciesUpdated                  Pregnancy[]                 @relation("PregnancyUpdatedBy")
+  clinicalServicePackagesCreated      ClinicalServicePackage[]    @relation("ClinicalServicePackageCreatedBy")
+  clinicalServicePackagesUpdated      ClinicalServicePackage[]    @relation("ClinicalServicePackageUpdatedBy")
   antenatalVisitsRecorded             AntenatalVisit[]
   labourDeliveriesDeliveredBy         LabourDelivery[]
   partogramEntriesRecorded            PartogramEntry[]
@@ -2797,6 +2847,7 @@ model Encounter {
   invoices      Invoice[]
   editHistory   EncounterEditHistory[]
   patientVitals PatientVitals[]
+  pregnancy     Pregnancy?
 }
 
 /// Snapshot of full clinical state immediately before a post-completion edit.
@@ -2927,10 +2978,13 @@ model LabRequest {
   invoiceId           String?
   invoiceItem         InvoiceItem?     @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
   invoiceItemId       String?          @unique
+  pregnancy           Pregnancy?       @relation(fields: [pregnancyId], references: [id], onDelete: SetNull)
+  pregnancyId         String?
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
 
   @@index([invoiceId])
+  @@index([pregnancyId])
 }
 
 // InsuranceClaim: insurance coverage applied to an invoice
@@ -3164,6 +3218,8 @@ model MedicationOrder {
   medicationRequests MedicationRequest[]
   doseSchedule      MedicationOrderSchedule?
   alertLogs         AlertLog[]
+  pregnancy         Pregnancy?                 @relation(fields: [pregnancyId], references: [id], onDelete: SetNull)
+  pregnancyId       String?
 
   @@index([encounterId])
   @@index([admissionId])
@@ -3171,6 +3227,7 @@ model MedicationOrder {
   @@index([invoiceItemId])
   @@index([prescribedDrugId])
   @@index([substitutedByPharmacistId])
+  @@index([pregnancyId])
 }
 
 model MedicationOrderSchedule {
@@ -4085,11 +4142,18 @@ model Pregnancy {
   updatedBy   Staff?  @relation("PregnancyUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
 
+  encounter   Encounter? @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  encounterId String?    @unique
+
   antenatalVisits  AntenatalVisit[]
   labourDeliveries LabourDelivery[] @relation("PregnancyLabourDeliveries")
+  labRequests      LabRequest[]
+  medicationOrders MedicationOrder[]
+  radiologyOrders  RadiologyOrder[]
 
   @@index([patientId])
   @@index([status])
+  @@index([encounterId])
 }
 
 model AntenatalVisit {
@@ -4443,6 +4507,8 @@ model RadiologyOrder {
   status        RadiologyRequestStatus @default(PENDING)
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
+  pregnancy     Pregnancy?             @relation(fields: [pregnancyId], references: [id], onDelete: SetNull)
+  pregnancyId   String?
 
   items RadiologyOrderItem[]
 
@@ -4450,6 +4516,7 @@ model RadiologyOrder {
   @@index([status])
   @@index([requestedById])
   @@index([createdAt])
+  @@index([pregnancyId])
 }
 
 model RadiologyOrderItem {

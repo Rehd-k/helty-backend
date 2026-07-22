@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -31,7 +31,14 @@ export class AntenatalVisitService {
           `Encounter "${dto.encounterId}" not found.`,
         );
       }
+      if (pregnancy.encounterId && dto.encounterId !== pregnancy.encounterId) {
+        throw new BadRequestException(
+          'Antenatal visit encounter must match the pregnancy antenatal encounter.',
+        );
+      }
     }
+
+    const encounterId = dto.encounterId ?? pregnancy.encounterId ?? null;
 
     return this.prisma.antenatalVisit.create({
       data: {
@@ -53,7 +60,7 @@ export class AntenatalVisitService {
         ultrasoundFindings: dto.ultrasoundFindings ?? null,
         labResultsJson: dto.labResultsJson ?? Prisma.DbNull,
         staffId: dto.staffId,
-        encounterId: dto.encounterId ?? null,
+        encounterId,
       },
       include: {
         pregnancy: { select: { id: true, patientId: true } },

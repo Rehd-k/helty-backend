@@ -7,6 +7,11 @@ import {
 } from './dto/create-pregnancy.dto';
 import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import {
+  closeAntenatalEncounterForPregnancy,
+  createAntenatalEncounterForPregnancy,
+  isTerminalPregnancyStatus,
+} from './pregnancy-encounter.util';
 
 @Injectable()
 export class PregnancyService {
@@ -19,37 +24,51 @@ export class PregnancyService {
     if (!patient) {
       throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
     }
-    return this.prisma.pregnancy.create({
-      data: {
+    const status = dto.status ?? PregnancyStatus.ONGOING;
+    return this.prisma.$transaction(async (tx) => {
+      const encounter = await createAntenatalEncounterForPregnancy(tx, {
         patientId: patient.id,
-        gravida: dto.gravida,
-        para: dto.para,
-        lmp: new Date(dto.lmp),
-        edd: new Date(dto.edd),
-        bookingDate: dto.bookingDate ? new Date(dto.bookingDate) : null,
-        status: dto.status ?? 'ONGOING',
-        outcome: dto.outcome ?? null,
-        respiratoryRate: dto.respiratoryRate ?? null,
-        heartRate: dto.heartRate ?? null,
-        systolicBP: dto.systolicBP ?? null,
-        diastolicBP: dto.diastolicBP ?? null,
-        spo2: dto.spo2 ?? null,
-        genotype: dto.genotype ?? null,
-        bloodGroup: dto.bloodGroup ?? null,
-        pcv: dto.pcv ?? null,
-        hcv: dto.hcv ?? null,
-        hbsAg: dto.hbsAg ?? null,
-        vdrl: dto.vdrl ?? null,
-        hiv12: dto.hiv12 ?? null,
-        urinalysisProtein: dto.urinalysisProtein ?? null,
-        urinalysisGlucose: dto.urinalysisGlucose ?? null,
-        ttImmunization: dto.ttImmunization ?? null,
+        doctorId: createdById,
         createdById,
-        updatedById: createdById,
-      },
-      include: {
-        patient: { select: patientNameFieldsSelect },
-      },
+      });
+      const pregnancy = await tx.pregnancy.create({
+        data: {
+          patientId: patient.id,
+          gravida: dto.gravida,
+          para: dto.para,
+          lmp: new Date(dto.lmp),
+          edd: new Date(dto.edd),
+          bookingDate: dto.bookingDate ? new Date(dto.bookingDate) : null,
+          status,
+          outcome: dto.outcome ?? null,
+          respiratoryRate: dto.respiratoryRate ?? null,
+          heartRate: dto.heartRate ?? null,
+          systolicBP: dto.systolicBP ?? null,
+          diastolicBP: dto.diastolicBP ?? null,
+          spo2: dto.spo2 ?? null,
+          genotype: dto.genotype ?? null,
+          bloodGroup: dto.bloodGroup ?? null,
+          pcv: dto.pcv ?? null,
+          hcv: dto.hcv ?? null,
+          hbsAg: dto.hbsAg ?? null,
+          vdrl: dto.vdrl ?? null,
+          hiv12: dto.hiv12 ?? null,
+          urinalysisProtein: dto.urinalysisProtein ?? null,
+          urinalysisGlucose: dto.urinalysisGlucose ?? null,
+          ttImmunization: dto.ttImmunization ?? null,
+          encounterId: encounter.id,
+          createdById,
+          updatedById: createdById,
+        },
+        include: {
+          patient: { select: patientNameFieldsSelect },
+          encounter: { select: { id: true, status: true, visitType: true } },
+        },
+      });
+      if (isTerminalPregnancyStatus(status)) {
+        await closeAntenatalEncounterForPregnancy(tx, pregnancy.id);
+      }
+      return pregnancy;
     });
   }
 
@@ -81,7 +100,7 @@ export class PregnancyService {
       where: { id },
       include: {
         patient: true,
-
+        encounter: { select: { id: true, status: true, visitType: true } },
         antenatalVisits: { orderBy: { visitDate: 'desc' }, take: 10 },
         labourDeliveries: true,
       },
@@ -93,47 +112,59 @@ export class PregnancyService {
   }
 
   async update(id: string, dto: UpdatePregnancyDto, staffId: string) {
-    await this.findOne(id);
-    return this.prisma.pregnancy.update({
-      where: { id },
-      data: {
-        ...(dto.gravida !== undefined && { gravida: dto.gravida }),
-        ...(dto.para !== undefined && { para: dto.para }),
-        ...(dto.lmp !== undefined && { lmp: new Date(dto.lmp) }),
-        ...(dto.edd !== undefined && { edd: new Date(dto.edd) }),
-        ...(dto.bookingDate !== undefined && {
-          bookingDate: dto.bookingDate ? new Date(dto.bookingDate) : null,
-        }),
-        ...(dto.status !== undefined && { status: dto.status }),
-        ...(dto.outcome !== undefined && { outcome: dto.outcome }),
-        ...(dto.respiratoryRate !== undefined && {
-          respiratoryRate: dto.respiratoryRate,
-        }),
-        ...(dto.heartRate !== undefined && { heartRate: dto.heartRate }),
-        ...(dto.systolicBP !== undefined && { systolicBP: dto.systolicBP }),
-        ...(dto.diastolicBP !== undefined && { diastolicBP: dto.diastolicBP }),
-        ...(dto.spo2 !== undefined && { spo2: dto.spo2 }),
-        ...(dto.genotype !== undefined && { genotype: dto.genotype }),
-        ...(dto.bloodGroup !== undefined && { bloodGroup: dto.bloodGroup }),
-        ...(dto.pcv !== undefined && { pcv: dto.pcv }),
-        ...(dto.hcv !== undefined && { hcv: dto.hcv }),
-        ...(dto.hbsAg !== undefined && { hbsAg: dto.hbsAg }),
-        ...(dto.vdrl !== undefined && { vdrl: dto.vdrl }),
-        ...(dto.hiv12 !== undefined && { hiv12: dto.hiv12 }),
-        ...(dto.urinalysisProtein !== undefined && {
-          urinalysisProtein: dto.urinalysisProtein,
-        }),
-        ...(dto.urinalysisGlucose !== undefined && {
-          urinalysisGlucose: dto.urinalysisGlucose,
-        }),
-        ...(dto.ttImmunization !== undefined && {
-          ttImmunization: dto.ttImmunization,
-        }),
-        updatedById: staffId,
-      },
-      include: {
-        patient: { select: patientNameFieldsSelect },
-      },
+    const existing = await this.findOne(id);
+    const closing =
+      dto.status !== undefined &&
+      isTerminalPregnancyStatus(dto.status) &&
+      existing.status === PregnancyStatus.ONGOING;
+
+    return this.prisma.$transaction(async (tx) => {
+      const pregnancy = await tx.pregnancy.update({
+        where: { id },
+        data: {
+          ...(dto.gravida !== undefined && { gravida: dto.gravida }),
+          ...(dto.para !== undefined && { para: dto.para }),
+          ...(dto.lmp !== undefined && { lmp: new Date(dto.lmp) }),
+          ...(dto.edd !== undefined && { edd: new Date(dto.edd) }),
+          ...(dto.bookingDate !== undefined && {
+            bookingDate: dto.bookingDate ? new Date(dto.bookingDate) : null,
+          }),
+          ...(dto.status !== undefined && { status: dto.status }),
+          ...(dto.outcome !== undefined && { outcome: dto.outcome }),
+          ...(dto.respiratoryRate !== undefined && {
+            respiratoryRate: dto.respiratoryRate,
+          }),
+          ...(dto.heartRate !== undefined && { heartRate: dto.heartRate }),
+          ...(dto.systolicBP !== undefined && { systolicBP: dto.systolicBP }),
+          ...(dto.diastolicBP !== undefined && { diastolicBP: dto.diastolicBP }),
+          ...(dto.spo2 !== undefined && { spo2: dto.spo2 }),
+          ...(dto.genotype !== undefined && { genotype: dto.genotype }),
+          ...(dto.bloodGroup !== undefined && { bloodGroup: dto.bloodGroup }),
+          ...(dto.pcv !== undefined && { pcv: dto.pcv }),
+          ...(dto.hcv !== undefined && { hcv: dto.hcv }),
+          ...(dto.hbsAg !== undefined && { hbsAg: dto.hbsAg }),
+          ...(dto.vdrl !== undefined && { vdrl: dto.vdrl }),
+          ...(dto.hiv12 !== undefined && { hiv12: dto.hiv12 }),
+          ...(dto.urinalysisProtein !== undefined && {
+            urinalysisProtein: dto.urinalysisProtein,
+          }),
+          ...(dto.urinalysisGlucose !== undefined && {
+            urinalysisGlucose: dto.urinalysisGlucose,
+          }),
+          ...(dto.ttImmunization !== undefined && {
+            ttImmunization: dto.ttImmunization,
+          }),
+          updatedById: staffId,
+        },
+        include: {
+          patient: { select: patientNameFieldsSelect },
+          encounter: { select: { id: true, status: true, visitType: true } },
+        },
+      });
+      if (closing) {
+        await closeAntenatalEncounterForPregnancy(tx, id);
+      }
+      return pregnancy;
     });
   }
 }

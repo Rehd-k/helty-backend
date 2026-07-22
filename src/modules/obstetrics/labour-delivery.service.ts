@@ -9,6 +9,11 @@ import {
   UpdateLabourDeliveryDto,
 } from './dto/create-labour-delivery.dto';
 
+import { PregnancyStatus } from '@prisma/client';
+import {
+  closeAntenatalEncounterForPregnancy,
+} from './pregnancy-encounter.util';
+
 @Injectable()
 export class LabourDeliveryService {
   constructor(private readonly prisma: PrismaService) {}
@@ -45,25 +50,37 @@ export class LabourDeliveryService {
       }
     }
 
-    return this.prisma.labourDelivery.create({
-      data: {
-        pregnancyId: dto.pregnancyId,
-        admissionId: dto.admissionId ?? null,
-        deliveryDateTime: new Date(dto.deliveryDateTime),
-        mode: dto.mode,
-        outcome: dto.outcome,
-        bloodLossMl: dto.bloodLossMl ?? null,
-        placentaComplete: dto.placentaComplete ?? null,
-        episiotomy: dto.episiotomy ?? null,
-        perinealTearGrade: dto.perinealTearGrade ?? null,
-        notes: dto.notes ?? null,
-        deliveredById: dto.deliveredById,
-      },
-      include: {
-        pregnancy: { include: { patient: true } },
-        admission: true,
-        deliveredBy: { select: { id: true, firstName: true, lastName: true } },
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const delivery = await tx.labourDelivery.create({
+        data: {
+          pregnancyId: dto.pregnancyId,
+          admissionId: dto.admissionId ?? null,
+          deliveryDateTime: new Date(dto.deliveryDateTime),
+          mode: dto.mode,
+          outcome: dto.outcome,
+          bloodLossMl: dto.bloodLossMl ?? null,
+          placentaComplete: dto.placentaComplete ?? null,
+          episiotomy: dto.episiotomy ?? null,
+          perinealTearGrade: dto.perinealTearGrade ?? null,
+          notes: dto.notes ?? null,
+          deliveredById: dto.deliveredById,
+        },
+        include: {
+          pregnancy: { include: { patient: true } },
+          admission: true,
+          deliveredBy: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+
+      if (pregnancy.status === PregnancyStatus.ONGOING) {
+        await tx.pregnancy.update({
+          where: { id: dto.pregnancyId },
+          data: { status: PregnancyStatus.DELIVERED },
+        });
+        await closeAntenatalEncounterForPregnancy(tx, dto.pregnancyId);
+      }
+
+      return delivery;
     });
   }
 

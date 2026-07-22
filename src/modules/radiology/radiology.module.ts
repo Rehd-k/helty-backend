@@ -21,9 +21,11 @@ import { RadiologyMachineController } from './radiology-machine.controller';
 import { RadiologyMachineService } from './radiology-machine.service';
 import { RadiologyInvestigationsController } from './radiology-investigations/radiology-investigations.controller';
 import { RadiologyInvestigationsService } from './radiology-investigations/radiology-investigations.service';
+import { ObstetricsModule } from '../obstetrics/obstetrics.module';
+import { ClinicalPackageModule } from '../clinical-package/clinical-package.module';
 
 @Module({
-  imports: [PrismaModule, InvoiceModule],
+  imports: [PrismaModule, InvoiceModule, ObstetricsModule, ClinicalPackageModule],
   controllers: [
     RadiologyRequestController,
     RadiologyOrderItemController,

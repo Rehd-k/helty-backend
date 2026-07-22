@@ -405,6 +405,10 @@ export class InvoiceService {
       );
     }
 
+    if (item.clinicalPackageItemId) {
+      return;
+    }
+
     if (item.serviceId !== params.serviceId) {
       throw invoiceLinkException(
         'INVOICE_ITEM_SERVICE_MISMATCH',
@@ -3943,6 +3947,139 @@ export class InvoiceService {
       },
       include: encounterInclude,
     });
+  }
+
+  /**
+   * Antenatal package-covered service line (0 cost). Invoice is marked PAID so
+   * outpatient lab/radiology workflows can proceed without counter payment.
+   */
+  async createAntenatalPackageServiceItem(params: {
+    patientId: string;
+    encounterId: string;
+    staffId: string;
+    serviceId: string;
+    clinicalPackageItemId: string;
+    quantity?: number;
+  }) {
+    const packageItem = await this.prisma.clinicalServicePackageItem.findUnique({
+      where: { id: params.clinicalPackageItemId },
+      include: {
+        package: { select: { isActive: true, isDefaultAntenatal: true } },
+      },
+    });
+    if (!packageItem?.package.isActive || !packageItem.package.isDefaultAntenatal) {
+      throw new BadRequestException('Invalid antenatal package item.');
+    }
+    if (packageItem.serviceId !== params.serviceId) {
+      throw new BadRequestException(
+        'Service does not match the antenatal package item.',
+      );
+    }
+    const service = await this.prisma.service.findUnique({
+      where: { id: params.serviceId },
+    });
+    if (!service) {
+      throw new NotFoundException(`Service ${params.serviceId} not found`);
+    }
+    const quantity = params.quantity ?? 1;
+    const lineCreator = await this.resolveOptionalInvoiceItemCreator(
+      params.staffId,
+    );
+
+    const include = {
+      patient: {
+        select: patientNameFieldsSelect,
+      },
+      invoiceItems: {
+        include: {
+          service: { select: { id: true, name: true, cost: true } },
+          createdBy: { select: InvoiceService.invoiceItemCreatedBySelect },
+        },
+      },
+    } satisfies Prisma.InvoiceInclude;
+
+    const invoice = await this.prisma.invoice.create({
+      data: {
+        invoiceID: generateInvoiceHumanId(),
+        patientId: params.patientId,
+        encounterId: params.encounterId,
+        status: InvoiceStatus.PAID,
+        createdById: params.staffId,
+        staffId: params.staffId,
+        invoiceItems: {
+          create: {
+            serviceId: params.serviceId,
+            quantity,
+            unitPrice: 0,
+            amountPaid: 0,
+            clinicalPackageItemId: params.clinicalPackageItemId,
+            ...lineCreator,
+          },
+        },
+      },
+      include,
+    });
+    const invoiceItemId = invoice.invoiceItems[0]?.id;
+    if (!invoiceItemId) {
+      throw new BadRequestException('Invoice was created without a line item.');
+    }
+    return { invoice, invoiceItemId };
+  }
+
+  async createAntenatalPackageDrugItem(params: {
+    patientId: string;
+    encounterId: string;
+    staffId: string;
+    drugId: string;
+    clinicalPackageItemId: string;
+    quantity?: number;
+  }) {
+    const packageItem = await this.prisma.clinicalServicePackageItem.findUnique({
+      where: { id: params.clinicalPackageItemId },
+      include: {
+        package: { select: { isActive: true, isDefaultAntenatal: true } },
+      },
+    });
+    if (!packageItem?.package.isActive || !packageItem.package.isDefaultAntenatal) {
+      throw new BadRequestException('Invalid antenatal package item.');
+    }
+    if (packageItem.drugId !== params.drugId) {
+      throw new BadRequestException(
+        'Drug does not match the antenatal package item.',
+      );
+    }
+    const quantity = params.quantity ?? 1;
+    const lineCreator = await this.resolveOptionalInvoiceItemCreator(
+      params.staffId,
+    );
+    const invoice = await this.prisma.invoice.create({
+      data: {
+        invoiceID: generateInvoiceHumanId(),
+        patientId: params.patientId,
+        encounterId: params.encounterId,
+        status: InvoiceStatus.PAID,
+        createdById: params.staffId,
+        staffId: params.staffId,
+        invoiceItems: {
+          create: {
+            drugId: params.drugId,
+            quantity,
+            unitPrice: 0,
+            amountPaid: 0,
+            clinicalPackageItemId: params.clinicalPackageItemId,
+            ...lineCreator,
+          },
+        },
+      },
+      include: {
+        invoiceItems: true,
+      },
+    });
+    const invoiceItemId = invoice.invoiceItems[0]?.id;
+    if (!invoiceItemId) {
+      throw new BadRequestException('Invoice was created without a line item.');
+    }
+    return { invoice, invoiceItemId };
   }
 
   /**

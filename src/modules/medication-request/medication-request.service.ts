@@ -22,6 +22,7 @@ import { patientNameFieldsSelect } from '../../common/utils/patient-display-name
 import { medicationRequestWithDetailsInclude } from './medication-request-includes';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
 import { loadDrugWithLatestCost } from '../pharmacy/drug-pricing-batch.util';
+import { ClinicalPackageService } from '../clinical-package/clinical-package.service';
 
 const REQUESTABLE_ORDER_STATUSES = [
   'Prescribed',
@@ -46,6 +47,7 @@ export class MedicationRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
+    private readonly clinicalPackageService: ClinicalPackageService,
   ) {}
 
   private asDecimal(value: number | string | Prisma.Decimal) {
@@ -561,16 +563,43 @@ export class MedicationRequestService {
         const drugId = request.medicationOrder.drugId!;
         const drug = await loadDrugWithLatestCost(tx, drugId);
 
-        const invoiceItem = await this.invoiceService.addDrugItem(
-          {
-            invoiceId: invoice.id,
+        const packageItem =
+          await this.clinicalPackageService.resolveAntenatalPackageItemForDrug(
+            encounter.patientId,
             drugId,
-            quantity: request.requestedQuantity,
-            createdByStaffId: dto.billedByStaffId,
-            preloadedDrug: drug,
-          },
-          tx,
-        );
+          );
+
+        let invoiceItem;
+        if (packageItem) {
+          const billed = await this.invoiceService.createAntenatalPackageDrugItem(
+            {
+              patientId: encounter.patientId,
+              encounterId: dto.encounterId,
+              staffId: dto.billedByStaffId,
+              drugId,
+              clinicalPackageItemId: packageItem.packageItemId,
+              quantity: request.requestedQuantity,
+            },
+          );
+          invoiceItem = await tx.invoiceItem.findUniqueOrThrow({
+            where: { id: billed.invoiceItemId },
+            include: {
+              drug: { select: { id: true, genericName: true } },
+              invoice: { select: { id: true, status: true, patientId: true } },
+            },
+          });
+        } else {
+          invoiceItem = await this.invoiceService.addDrugItem(
+            {
+              invoiceId: invoice.id,
+              drugId,
+              quantity: request.requestedQuantity,
+              createdByStaffId: dto.billedByStaffId,
+              preloadedDrug: drug,
+            },
+            tx,
+          );
+        }
 
         const billed = await tx.medicationRequest.update({
           where: { id: request.id },
