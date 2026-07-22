@@ -483,6 +483,7 @@ export class AccountsReportsService {
             id: patient.id,
             patientId: patient.patientId,
             displayName: formatPatientDisplayName(patient),
+            avatarUrl: patient.avatarUrl ?? null,
             phoneNumber: patient.phoneNumber,
           },
           invoice: {

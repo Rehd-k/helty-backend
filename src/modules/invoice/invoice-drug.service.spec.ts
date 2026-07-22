@@ -197,7 +197,8 @@ describe('InvoiceDrugService', () => {
         }),
     };
 
-    const service = createDrugService(prisma);
+    const recalculateInvoiceTotals = jest.fn().mockResolvedValue({});
+    const service = createDrugService(prisma, { recalculateInvoiceTotals });
     const result = await service.returnDrugInvoiceItem(
       'inv-1',
       'item-1',
@@ -212,6 +213,10 @@ describe('InvoiceDrugService', () => {
       where: { id: 'item-1' },
       data: { quantity: 3 },
     });
+    expect(recalculateInvoiceTotals).toHaveBeenCalledWith(
+      'inv-1',
+      expect.anything(),
+    );
   });
 
   it('returnDrugInvoiceItem throws when no dispensary location matches', async () => {
@@ -387,6 +392,9 @@ describe('InvoiceDrugService', () => {
       createdAt: new Date(),
     };
     let updateData: Record<string, unknown> = {};
+    const recalculateInvoiceTotals = jest.fn().mockResolvedValue({
+      status: InvoiceStatus.PAID,
+    });
     const prisma: any = {
       invoiceItem: {
         count: jest.fn().mockResolvedValue(1),
@@ -446,27 +454,11 @@ describe('InvoiceDrugService', () => {
             prescriptionRefillRequest: {
               findFirst: jest.fn().mockResolvedValue(null),
             },
-            invoice: {
-              findUnique: jest.fn().mockResolvedValue({
-                id: 'inv-1',
-                amountPaid: new Prisma.Decimal(0),
-                invoiceItems: [
-                  {
-                    id: 'item-1',
-                    quantity: 2,
-                    unitPrice: new Prisma.Decimal(10),
-                    isRecurringDaily: false,
-                    usageSegments: [],
-                  },
-                ],
-              }),
-              update: jest.fn().mockResolvedValue({}),
-            },
           };
           return cb(tx);
         }),
     };
-    const service = createDrugService(prisma);
+    const service = createDrugService(prisma, { recalculateInvoiceTotals });
 
     await service.updateDrugInvoiceItem(
       'inv-1',
@@ -482,10 +474,17 @@ describe('InvoiceDrugService', () => {
       dispensaryLocationId: 'loc-1',
     });
     expect(updateData.dispensedAt).toBeInstanceOf(Date);
+    expect(recalculateInvoiceTotals).toHaveBeenCalledWith(
+      'inv-1',
+      expect.anything(),
+    );
   });
 
   it('updateDrugInvoiceItem delegates stock deduction to DrugStockService on settle', async () => {
     const applyFifoOut = jest.fn().mockResolvedValue(undefined);
+    const recalculateInvoiceTotals = jest.fn().mockResolvedValue({
+      status: InvoiceStatus.PAID,
+    });
     const prisma: any = {
       invoiceItem: {
         count: jest.fn().mockResolvedValue(1),
@@ -529,19 +528,15 @@ describe('InvoiceDrugService', () => {
             prescriptionRefillRequest: {
               findFirst: jest.fn().mockResolvedValue(null),
             },
-            invoice: {
-              findUnique: jest.fn().mockResolvedValue({
-                id: 'inv-1',
-                amountPaid: new Prisma.Decimal(0),
-                invoiceItems: [],
-              }),
-              update: jest.fn().mockResolvedValue({}),
-            },
           };
           return cb(tx);
         }),
     };
-    const service = createDrugService(prisma, {}, { applyFifoOut });
+    const service = createDrugService(
+      prisma,
+      { recalculateInvoiceTotals },
+      { applyFifoOut },
+    );
 
     await service.updateDrugInvoiceItem(
       'inv-1',
@@ -563,6 +558,79 @@ describe('InvoiceDrugService', () => {
           payerType: 'Cash',
         }),
       }),
+    );
+    expect(recalculateInvoiceTotals).toHaveBeenCalledWith(
+      'inv-1',
+      expect.anything(),
+    );
+  });
+
+  it('updateDrugInvoiceItem uses coverage-aware recalculate after HMO-covered settle', async () => {
+    const recalculateInvoiceTotals = jest.fn().mockResolvedValue({
+      status: InvoiceStatus.PAID,
+    });
+    const prisma: any = {
+      invoiceItem: {
+        count: jest.fn().mockResolvedValue(1),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'item-1',
+          invoiceId: 'inv-1',
+          drugId: 'drug-1',
+          quantity: 1,
+          settled: false,
+          unitPrice: new Prisma.Decimal(50),
+        }),
+      },
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'inv-1',
+          patientId: 'pat-1',
+          status: InvoiceStatus.PAID,
+          encounterId: null,
+          // Fully HMO-covered: cash amountPaid remains 0
+          amountPaid: new Prisma.Decimal(0),
+        }),
+      },
+      pharmacyLocation: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'loc-1' }),
+      },
+      $transaction: jest
+        .fn()
+        .mockImplementation(async (cb: (tx: any) => unknown) => {
+          const tx = {
+            invoiceItem: {
+              update: jest.fn().mockResolvedValue({ id: 'item-1', settled: true }),
+            },
+            medicationRequest: {
+              findFirst: jest.fn().mockResolvedValue(null),
+              update: jest.fn(),
+              count: jest.fn(),
+            },
+            medicationOrder: {
+              findFirst: jest.fn().mockResolvedValue(null),
+              updateMany: jest.fn(),
+            },
+            prescriptionRefillRequest: {
+              findFirst: jest.fn().mockResolvedValue(null),
+            },
+          };
+          return cb(tx);
+        }),
+    };
+    const service = createDrugService(prisma, { recalculateInvoiceTotals });
+
+    await service.updateDrugInvoiceItem(
+      'inv-1',
+      'item-1',
+      { settled: true },
+      'loc-1',
+      'staff-1',
+    );
+
+    // Must delegate to InvoiceService so coveredAmount keeps status PAID for sibling lines
+    expect(recalculateInvoiceTotals).toHaveBeenCalledWith(
+      'inv-1',
+      expect.anything(),
     );
   });
 

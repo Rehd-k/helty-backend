@@ -3582,6 +3582,7 @@ export class InvoiceService {
             firstName: nameFields.firstName,
             otherName: nameFields.otherName,
             surname: nameFields.surname,
+            avatarUrl: nameFields.avatarUrl,
           },
           invoiceItems: inv.invoiceItems.map((it) => {
             const cb = it.createdBy;

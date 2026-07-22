@@ -10,7 +10,7 @@ import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { PatientStatus, Prisma } from '@prisma/client';
 import { endOfDay, startOfDay } from '../../common/utils/date-range';
 import { generateHumanReadableId } from '../../common/utils/human-readable-id.util';
-import { patientNameOnlySelect } from '../../common/utils/patient-display-name.util';
+import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 
 @Injectable()
 export class PatientService {
@@ -670,8 +670,7 @@ export class PatientService {
     return this.prisma.patient.findUnique({
       where: { id: patientId },
       select: {
-        patientId: true,
-        ...patientNameOnlySelect,
+        ...patientNameFieldsSelect,
         appointments: true,
         admissions: true,
         medicalHistories: true,

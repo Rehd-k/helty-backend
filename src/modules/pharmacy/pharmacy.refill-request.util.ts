@@ -20,6 +20,7 @@ export function toPharmacyRefillRequestDto(row: PharmacyRefillRequestRow) {
       otherName: row.patient.otherName,
       firstName: row.patient.firstName,
       displayName: formatPatientDisplayName(row.patient),
+      avatarUrl: row.patient.avatarUrl ?? null,
     },
     prescription: {
       id: row.prescription.id,

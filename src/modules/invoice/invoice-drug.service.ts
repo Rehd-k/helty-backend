@@ -97,48 +97,6 @@ export class InvoiceDrugService {
     return totalDays;
   }
 
-  async recalculateInvoiceTotals(
-    invoiceId: string,
-    tx: Prisma.TransactionClient = this.prisma,
-    now: Date = new Date(),
-  ) {
-    const invoice = await tx.invoice.findUnique({
-      where: { id: invoiceId },
-      include: {
-        invoiceItems: {
-          include: {
-            usageSegments: {
-              orderBy: { startAt: 'asc' },
-            },
-          },
-        },
-      },
-    });
-    if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
-
-    const totalAmount = invoice.invoiceItems.reduce((sum, item) => {
-      const unitPrice = this.asDecimal(item.unitPrice);
-      if (item.isRecurringDaily) {
-        const totalDays = this.computeRecurringDays(item.usageSegments, now);
-        return sum.add(unitPrice.mul(totalDays));
-      }
-      return sum.add(unitPrice.mul(item.quantity));
-    }, new Prisma.Decimal(0));
-
-    const amountPaid = this.asDecimal(invoice.amountPaid);
-    let status: InvoiceStatus = InvoiceStatus.PENDING;
-    if (totalAmount.gt(0) && amountPaid.gte(totalAmount)) {
-      status = InvoiceStatus.PAID;
-    } else if (amountPaid.gt(0)) {
-      status = InvoiceStatus.PARTIALLY_PAID;
-    }
-
-    return tx.invoice.update({
-      where: { id: invoiceId },
-      data: { totalAmount, status },
-    });
-  }
-
   private static readonly medicationOrderPrescriptionSelect = {
     dose: true,
     frequency: true,
@@ -341,7 +299,7 @@ export class InvoiceDrugService {
     if (!hasDrugs) {
       throw new NotFoundException(`Invoice ${id} does not contain drug items`);
     }
-    await this.recalculateInvoiceTotals(id);
+    await this.invoiceService.recalculateInvoiceTotals(id);
     const invoice = await this.prisma.invoice.findUnique({
       where: { id },
       include: {
@@ -696,7 +654,7 @@ export class InvoiceDrugService {
           }
         }
 
-        await this.recalculateInvoiceTotals(invoiceId, tx);
+        await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
         return updatedItem;
       });
     } catch (error) {
@@ -730,7 +688,7 @@ export class InvoiceDrugService {
     const deleted = await this.prisma.invoiceItem.delete({
       where: { id: itemId },
     });
-    await this.recalculateInvoiceTotals(invoiceId);
+    await this.invoiceService.recalculateInvoiceTotals(invoiceId);
     return deleted;
   }
 
@@ -842,7 +800,7 @@ export class InvoiceDrugService {
           });
         }
 
-        await this.recalculateInvoiceTotals(invoiceId, tx);
+        await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
         return updatedItem;
       });
     } catch (error) {
@@ -1057,7 +1015,7 @@ export class InvoiceDrugService {
           });
         }
 
-        await this.recalculateInvoiceTotals(invoiceId, tx);
+        await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
 
         await tx.invoiceAuditLog.create({
           data: {

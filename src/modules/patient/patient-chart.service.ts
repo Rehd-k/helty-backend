@@ -66,6 +66,7 @@ export class PatientChartService {
         phoneNumber: true,
         email: true,
         status: true,
+        avatarUrl: true,
         ward: { select: { id: true, name: true } },
         hmoProvider: { select: { id: true, name: true, code: true } },
       },

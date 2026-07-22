@@ -104,6 +104,7 @@ export class FrontdeskPatientDeviceService {
         id: patient.id,
         patientId: patient.patientId,
         displayName: formatPatientDisplayName(patient),
+        avatarUrl: patient.avatarUrl ?? null,
       },
       data: devices.map((row) => this.toDeviceDto(row)),
     };
@@ -215,6 +216,7 @@ export class FrontdeskPatientDeviceService {
         id: row.patient.id,
         patientId: row.patient.patientId,
         displayName: formatPatientDisplayName(row.patient),
+        avatarUrl: row.patient.avatarUrl ?? null,
         phoneNumber: row.patient.phoneNumber ?? null,
       },
       approvedBy: row.approvedBy

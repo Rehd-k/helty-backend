@@ -22,6 +22,7 @@ export enum Title {
   PROF = 'Prof',
   CHIEF = 'Chief',
   HON = 'Hon',
+  MASTER = 'Master',
 }
 
 export enum Gender {
