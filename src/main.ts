@@ -46,6 +46,19 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  await app.listen(process.env.PORT ?? 4000);
+  // Large .exe uploads over slow links can exceed Node's default 5-minute
+  // requestTimeout; that closes the socket and the browser shows "Network error".
+  const server = await app.listen(process.env.PORT ?? 4000);
+  const uploadTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS) || 0;
+  server.setTimeout(uploadTimeoutMs);
+  // Node 18+: IncomingMessage requestTimeout defaults to 300_000 ms.
+  if (typeof (server as { requestTimeout?: number }).requestTimeout === 'number') {
+    (server as { requestTimeout: number }).requestTimeout = uploadTimeoutMs;
+  }
+  if (typeof (server as { headersTimeout?: number }).headersTimeout === 'number') {
+    // Must stay >= requestTimeout when requestTimeout is non-zero.
+    (server as { headersTimeout: number }).headersTimeout =
+      uploadTimeoutMs === 0 ? 0 : Math.max(uploadTimeoutMs + 60_000, 120_000);
+  }
 }
 bootstrap();

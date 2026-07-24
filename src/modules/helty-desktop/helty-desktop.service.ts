@@ -16,6 +16,24 @@ import type { Response } from 'express';
 
 const UPLOAD_ROOT = path.join(process.cwd(), 'uploads', 'helty-desktop');
 const TMP_DIR = path.join(UPLOAD_ROOT, 'tmp');
+const SESSIONS_DIR = path.join(TMP_DIR, 'sessions');
+const MAX_FILE_BYTES = 500 * 1024 * 1024;
+const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
+const MAX_CHUNK_SIZE = 8 * 1024 * 1024;
+
+type ChunkedUploadKind = 'release' | 'asset';
+
+type ChunkedUploadMeta = {
+  uploadId: string;
+  kind: ChunkedUploadKind;
+  version?: string;
+  name?: string;
+  description?: string | null;
+  totalBytes: number;
+  chunkSize: number;
+  totalChunks: number;
+  createdAt: string;
+};
 
 @Injectable()
 export class HeltyDesktopService {
@@ -28,6 +46,272 @@ export class HeltyDesktopService {
     return (
       this.config.get<string>('HELITY_DESKTOP_UPLOAD_PASSWORD') ?? 'vesselinc'
     );
+  }
+
+  private sessionDir(uploadId: string): string {
+    return path.join(SESSIONS_DIR, uploadId);
+  }
+
+  private metaPath(uploadId: string): string {
+    return path.join(this.sessionDir(uploadId), 'meta.json');
+  }
+
+  private chunkPath(uploadId: string, index: number): string {
+    return path.join(
+      this.sessionDir(uploadId),
+      `chunk-${String(index).padStart(5, '0')}`,
+    );
+  }
+
+  private async readSessionMeta(uploadId: string): Promise<ChunkedUploadMeta> {
+    const id = uploadId.trim();
+    if (!/^[a-zA-Z0-9_-]{8,64}$/.test(id)) {
+      throw new BadRequestException('Invalid uploadId');
+    }
+    try {
+      const raw = await fsp.readFile(this.metaPath(id), 'utf8');
+      return JSON.parse(raw) as ChunkedUploadMeta;
+    } catch {
+      throw new NotFoundException('Upload session not found');
+    }
+  }
+
+  private async writeSessionMeta(meta: ChunkedUploadMeta): Promise<void> {
+    await fsp.mkdir(this.sessionDir(meta.uploadId), { recursive: true });
+    await fsp.writeFile(
+      this.metaPath(meta.uploadId),
+      JSON.stringify(meta, null, 2),
+      'utf8',
+    );
+  }
+
+  private async removeSession(uploadId: string): Promise<void> {
+    await fsp
+      .rm(this.sessionDir(uploadId), { recursive: true, force: true })
+      .catch(() => undefined);
+  }
+
+  private async listReceivedChunks(uploadId: string): Promise<number[]> {
+    let entries: string[];
+    try {
+      entries = await fsp.readdir(this.sessionDir(uploadId));
+    } catch {
+      return [];
+    }
+    const indexes: number[] = [];
+    for (const name of entries) {
+      const m = /^chunk-(\d{5})$/.exec(name);
+      if (m) indexes.push(Number(m[1]));
+    }
+    return indexes.sort((a, b) => a - b);
+  }
+
+  async initChunkedUpload(input: {
+    kind: ChunkedUploadKind;
+    version?: string;
+    name?: string;
+    description?: string;
+    totalBytes: number;
+    chunkSize: number;
+  }): Promise<{
+    uploadId: string;
+    chunkSize: number;
+    totalChunks: number;
+    totalBytes: number;
+  }> {
+    if (!Number.isFinite(input.totalBytes) || input.totalBytes < 1) {
+      throw new BadRequestException('totalBytes must be a positive number');
+    }
+    if (input.totalBytes > MAX_FILE_BYTES) {
+      throw new BadRequestException(
+        `File exceeds max size of ${MAX_FILE_BYTES} bytes`,
+      );
+    }
+
+    if (input.kind === 'release') {
+      this.sanitizeVersionForFileName(input.version ?? '');
+    } else {
+      this.sanitizeExternalExecutableName(input.name ?? '');
+    }
+
+    const chunkSize = Math.min(
+      MAX_CHUNK_SIZE,
+      Math.max(256 * 1024, Math.floor(input.chunkSize) || DEFAULT_CHUNK_SIZE),
+    );
+    const totalChunks = Math.ceil(input.totalBytes / chunkSize);
+    const uploadId = `${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+
+    const meta: ChunkedUploadMeta = {
+      uploadId,
+      kind: input.kind,
+      version: input.kind === 'release' ? input.version?.trim() : undefined,
+      name: input.kind === 'asset' ? input.name?.trim() : undefined,
+      description:
+        input.kind === 'asset' &&
+        typeof input.description === 'string' &&
+        input.description.trim().length
+          ? input.description.trim()
+          : null,
+      totalBytes: input.totalBytes,
+      chunkSize,
+      totalChunks,
+      createdAt: new Date().toISOString(),
+    };
+
+    await this.writeSessionMeta(meta);
+    return {
+      uploadId,
+      chunkSize,
+      totalChunks,
+      totalBytes: input.totalBytes,
+    };
+  }
+
+  async getChunkedUploadStatus(uploadId: string): Promise<{
+    uploadId: string;
+    kind: ChunkedUploadKind;
+    totalBytes: number;
+    chunkSize: number;
+    totalChunks: number;
+    receivedChunks: number[];
+  }> {
+    const meta = await this.readSessionMeta(uploadId);
+    const receivedChunks = await this.listReceivedChunks(meta.uploadId);
+    return {
+      uploadId: meta.uploadId,
+      kind: meta.kind,
+      totalBytes: meta.totalBytes,
+      chunkSize: meta.chunkSize,
+      totalChunks: meta.totalChunks,
+      receivedChunks,
+    };
+  }
+
+  async saveChunk(
+    uploadId: string,
+    index: number,
+    tempFilePath: string,
+  ): Promise<{ index: number; received: number; totalChunks: number }> {
+    const meta = await this.readSessionMeta(uploadId);
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= meta.totalChunks
+    ) {
+      await fsp.unlink(tempFilePath).catch(() => undefined);
+      throw new BadRequestException(
+        `chunk index must be 0..${meta.totalChunks - 1}`,
+      );
+    }
+
+    let size = 0;
+    try {
+      size = (await fsp.stat(tempFilePath)).size;
+    } catch {
+      throw new BadRequestException('chunk file missing');
+    }
+
+    const expected =
+      index === meta.totalChunks - 1
+        ? meta.totalBytes - meta.chunkSize * (meta.totalChunks - 1)
+        : meta.chunkSize;
+    if (size !== expected) {
+      await fsp.unlink(tempFilePath).catch(() => undefined);
+      throw new BadRequestException(
+        `chunk ${index} size mismatch (got ${size}, expected ${expected})`,
+      );
+    }
+
+    const dest = this.chunkPath(meta.uploadId, index);
+    try {
+      await fsp.rename(tempFilePath, dest);
+    } catch {
+      await fsp.copyFile(tempFilePath, dest);
+      await fsp.unlink(tempFilePath).catch(() => undefined);
+    }
+
+    const received = (await this.listReceivedChunks(meta.uploadId)).length;
+    return { index, received, totalChunks: meta.totalChunks };
+  }
+
+  private async assembleSessionFile(meta: ChunkedUploadMeta): Promise<string> {
+    const received = await this.listReceivedChunks(meta.uploadId);
+    if (received.length !== meta.totalChunks) {
+      throw new BadRequestException(
+        `Upload incomplete: ${received.length}/${meta.totalChunks} chunks`,
+      );
+    }
+    for (let i = 0; i < meta.totalChunks; i++) {
+      if (received[i] !== i) {
+        throw new BadRequestException(`Missing chunk ${i}`);
+      }
+    }
+
+    await fsp.mkdir(TMP_DIR, { recursive: true });
+    const assembled = path.join(TMP_DIR, `${meta.uploadId}.assembled`);
+    await fsp.unlink(assembled).catch(() => undefined);
+
+    const out = await fsp.open(assembled, 'w');
+    try {
+      for (let i = 0; i < meta.totalChunks; i++) {
+        const data = await fsp.readFile(this.chunkPath(meta.uploadId, i));
+        await out.write(data);
+      }
+    } catch (e) {
+      await out.close().catch(() => undefined);
+      await fsp.unlink(assembled).catch(() => undefined);
+      throw e;
+    }
+    await out.close();
+
+    const assembledSize = (await fsp.stat(assembled)).size;
+    if (assembledSize !== meta.totalBytes) {
+      await fsp.unlink(assembled).catch(() => undefined);
+      throw new BadRequestException(
+        `Assembled size mismatch (got ${assembledSize}, expected ${meta.totalBytes})`,
+      );
+    }
+    return assembled;
+  }
+
+  async completeChunkedRelease(uploadId: string): Promise<{
+    id: string;
+    version: string;
+    fileName: string;
+  }> {
+    const meta = await this.readSessionMeta(uploadId);
+    if (meta.kind !== 'release' || !meta.version) {
+      throw new BadRequestException('Upload session is not a release upload');
+    }
+    const assembled = await this.assembleSessionFile(meta);
+    try {
+      return await this.createReleaseFromUpload(meta.version, assembled);
+    } finally {
+      await this.removeSession(meta.uploadId);
+    }
+  }
+
+  async completeChunkedAsset(uploadId: string): Promise<{
+    id: string;
+    fileName: string;
+    description: string | null;
+  }> {
+    const meta = await this.readSessionMeta(uploadId);
+    if (meta.kind !== 'asset' || !meta.name) {
+      throw new BadRequestException('Upload session is not an asset upload');
+    }
+    const assembled = await this.assembleSessionFile(meta);
+    try {
+      return await this.createExternalExecutableFromUpload(
+        meta.name,
+        meta.description ?? undefined,
+        assembled,
+      );
+    } finally {
+      await this.removeSession(meta.uploadId);
+    }
   }
 
   assertUploadPassword(bodyPassword?: string, headerPassword?: string): void {

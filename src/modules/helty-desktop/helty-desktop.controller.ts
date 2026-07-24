@@ -26,9 +26,11 @@ import { HeltyDesktopService } from './helty-desktop.service';
 import { UploadHeltyDesktopDto } from './dto/upload-helty-desktop.dto';
 import { DeleteHeltyDesktopDto } from './dto/delete-helty-desktop.dto';
 import { UploadHeltyDesktopExternalExecutableDto } from './dto/upload-helty-desktop-external-executable.dto';
+import { InitChunkedUploadDto } from './dto/init-chunked-upload.dto';
 
 const TMP_DIR = path.join(process.cwd(), 'uploads', 'helty-desktop', 'tmp');
 const MAX_FILE_BYTES = 500 * 1024 * 1024;
+const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
 
 const uploadInterceptor = FileInterceptor('file', {
   storage: diskStorage({
@@ -51,6 +53,19 @@ const uploadInterceptor = FileInterceptor('file', {
     }
     cb(null, true);
   },
+});
+
+const chunkInterceptor = FileInterceptor('chunk', {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      fs.mkdirSync(TMP_DIR, { recursive: true });
+      cb(null, TMP_DIR);
+    },
+    filename: (_req, _file, cb) => {
+      cb(null, `${generateSafeNanoid()}.chunk`);
+    },
+  }),
+  limits: { fileSize: MAX_CHUNK_BYTES },
 });
 
 function publicBaseUrl(req: Request): string {
@@ -237,6 +252,77 @@ export class HeltyDesktopController {
   }
 
   @Public()
+  @Post('upload/init')
+  @ApiOperation({
+    summary:
+      'Start a chunked upload session (recommended for large .exe over slow networks)',
+  })
+  async initChunkedUpload(
+    @Body() body: InitChunkedUploadDto,
+    @Headers('x-helty-upload-password') headerPassword?: string,
+  ) {
+    this.heltyDesktop.assertUploadPassword(body?.password, headerPassword);
+    return this.heltyDesktop.initChunkedUpload({
+      kind: body.kind,
+      version: body.version,
+      name: body.name,
+      description: body.description,
+      totalBytes: body.totalBytes,
+      chunkSize: body.chunkSize,
+    });
+  }
+
+  @Public()
+  @Get('upload/:uploadId/status')
+  @ApiOperation({ summary: 'Chunked upload progress (which chunks arrived)' })
+  chunkedUploadStatus(@Param('uploadId') uploadId: string) {
+    return this.heltyDesktop.getChunkedUploadStatus(uploadId);
+  }
+
+  @Public()
+  @Post('upload/:uploadId/chunk/:index')
+  @UseInterceptors(chunkInterceptor)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['chunk'],
+      properties: {
+        chunk: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Upload one chunk (retries are safe)' })
+  async uploadChunk(
+    @Param('uploadId') uploadId: string,
+    @Param('index') indexRaw: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file?.path) {
+      throw new BadRequestException('chunk is required');
+    }
+    const index = Number(indexRaw);
+    if (!Number.isInteger(index)) {
+      throw new BadRequestException('index must be an integer');
+    }
+    return this.heltyDesktop.saveChunk(uploadId, index, file.path);
+  }
+
+  @Public()
+  @Post('upload/:uploadId/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Assemble chunks and publish release or asset',
+  })
+  async completeChunkedUpload(@Param('uploadId') uploadId: string) {
+    const status = await this.heltyDesktop.getChunkedUploadStatus(uploadId);
+    if (status.kind === 'release') {
+      return this.heltyDesktop.completeChunkedRelease(uploadId);
+    }
+    return this.heltyDesktop.completeChunkedAsset(uploadId);
+  }
+
+  @Public()
   @Post('upload')
   @UseInterceptors(uploadInterceptor)
   @ApiConsumes('multipart/form-data')
@@ -251,7 +337,10 @@ export class HeltyDesktopController {
       },
     },
   })
-  @ApiOperation({ summary: 'Upload a new Windows .exe (password-protected)' })
+  @ApiOperation({
+    summary:
+      'Upload a new Windows .exe in one request (fine on LAN; prefer chunked upload on slow links)',
+  })
   async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: UploadHeltyDesktopDto,
@@ -362,7 +451,7 @@ const UPLOAD_HTML = `<!DOCTYPE html>
 <body>
   <div class="shell">
     <h1>Helty Desktop — Upload</h1>
-    <p class="sub">Publish a new Windows build. File is stored as <code>helty{version}.exe</code>.</p>
+    <p class="sub">Publish a new Windows build. Large files upload in chunks with automatic retries (works on slow networks). Stored as <code>helty{version}.exe</code>.</p>
     <form id="f">
       <label for="version">Version</label>
       <input id="version" name="version" type="text" placeholder="e.g. 1.4.0" required autocomplete="off" />
@@ -376,59 +465,99 @@ const UPLOAD_HTML = `<!DOCTYPE html>
     <div class="status" id="status"></div>
   </div>
   <script>
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const MAX_RETRIES = 6;
     const f = document.getElementById('f');
     const bar = document.getElementById('bar');
     const barWrap = document.getElementById('barWrap');
     const status = document.getElementById('status');
     const btn = document.getElementById('btn');
-    f.addEventListener('submit', function (e) {
+
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+    function xhrJson(method, url, body, isForm) {
+      return new Promise(function (resolve, reject) {
+        const xhr = new XMLHttpRequest();
+        xhr.open(method, url);
+        xhr.onload = function () {
+          var j = {};
+          try { j = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+          if (xhr.status >= 200 && xhr.status < 300) resolve(j);
+          else reject(new Error(j.message || xhr.statusText || ('HTTP ' + xhr.status)));
+        };
+        xhr.onerror = function () { reject(new Error('Network error')); };
+        if (isForm) xhr.send(body);
+        else {
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.send(JSON.stringify(body || {}));
+        }
+      });
+    }
+
+    async function putChunk(uploadId, index, blob) {
+      var attempt = 0;
+      while (true) {
+        attempt++;
+        try {
+          var fd = new FormData();
+          fd.append('chunk', blob, 'chunk-' + index + '.bin');
+          return await xhrJson('POST', '../upload/' + encodeURIComponent(uploadId) + '/chunk/' + index, fd, true);
+        } catch (err) {
+          if (attempt >= MAX_RETRIES) throw err;
+          status.textContent = 'Chunk ' + (index + 1) + ' failed (' + (err.message || 'error') + '), retry ' + attempt + '…';
+          await sleep(Math.min(15000, 500 * Math.pow(2, attempt - 1)));
+        }
+      }
+    }
+
+    f.addEventListener('submit', async function (e) {
       e.preventDefault();
       const version = document.getElementById('version').value.trim();
       const password = document.getElementById('password').value;
-      const fileInput = document.getElementById('file');
-      const file = fileInput.files[0];
+      const file = document.getElementById('file').files[0];
       if (!file) { status.textContent = 'Choose a file.'; status.className = 'status err'; return; }
-      const fd = new FormData();
-      fd.append('version', version);
-      fd.append('password', password);
-      fd.append('file', file);
+      if (!/\\.exe$/i.test(file.name)) { status.textContent = 'Only .exe files are allowed.'; status.className = 'status err'; return; }
+
       status.className = 'status';
-      status.textContent = 'Uploading…';
+      status.textContent = 'Starting chunked upload…';
       barWrap.classList.add('active');
       bar.style.width = '0%';
       btn.disabled = true;
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '../upload');
-      xhr.upload.onprogress = function (ev) {
-        if (ev.lengthComputable) {
-          const pct = Math.round((ev.loaded / ev.total) * 100);
-          bar.style.width = pct + '%';
+
+      try {
+        const init = await xhrJson('POST', '../upload/init', {
+          password: password,
+          kind: 'release',
+          version: version,
+          totalBytes: file.size,
+          chunkSize: CHUNK_SIZE
+        });
+        const uploadId = init.uploadId;
+        const chunkSize = init.chunkSize || CHUNK_SIZE;
+        const totalChunks = init.totalChunks;
+        var uploadedBytes = 0;
+
+        for (var i = 0; i < totalChunks; i++) {
+          var start = i * chunkSize;
+          var end = Math.min(file.size, start + chunkSize);
+          var blob = file.slice(start, end);
+          status.textContent = 'Uploading chunk ' + (i + 1) + ' / ' + totalChunks + '…';
+          await putChunk(uploadId, i, blob);
+          uploadedBytes = end;
+          bar.style.width = Math.round((uploadedBytes / file.size) * 100) + '%';
         }
-      };
-      xhr.onload = function () {
-        btn.disabled = false;
-        barWrap.classList.remove('active');
-        try {
-          const j = JSON.parse(xhr.responseText || '{}');
-          if (xhr.status >= 200 && xhr.status < 300) {
-            status.className = 'status ok';
-            status.textContent = 'Published ' + (j.version || version) + ' — ' + (j.fileName || '');
-          } else {
-            status.className = 'status err';
-            status.textContent = (j.message || xhr.statusText || 'Upload failed');
-          }
-        } catch {
-          status.className = 'status err';
-          status.textContent = xhr.status >= 400 ? (xhr.responseText || 'Error') : 'Done';
-        }
-      };
-      xhr.onerror = function () {
-        btn.disabled = false;
-        barWrap.classList.remove('active');
+
+        status.textContent = 'Assembling & publishing…';
+        const done = await xhrJson('POST', '../upload/' + encodeURIComponent(uploadId) + '/complete', {});
+        status.className = 'status ok';
+        status.textContent = 'Published ' + (done.version || version) + ' — ' + (done.fileName || '');
+      } catch (err) {
         status.className = 'status err';
-        status.textContent = 'Network error';
-      };
-      xhr.send(fd);
+        status.textContent = (err && err.message) ? err.message : 'Upload failed';
+      } finally {
+        btn.disabled = false;
+        barWrap.classList.remove('active');
+      }
     });
   </script>
 </body>
@@ -509,7 +638,7 @@ const ASSET_UPLOAD_HTML = `<!DOCTYPE html>
 <body>
   <div class="shell">
     <h1>Helty Desktop — Upload extra exe</h1>
-    <p class="sub">Store an extra Windows <code>&lt;name&gt;.exe</code> for download.</p>
+    <p class="sub">Store an extra Windows <code>&lt;name&gt;.exe</code>. Large files upload in chunks with automatic retries.</p>
     <form id="f">
       <label for="name">File name</label>
       <input id="name" name="name" type="text" placeholder="e.g. helpertool.exe" required autocomplete="off" />
@@ -525,61 +654,101 @@ const ASSET_UPLOAD_HTML = `<!DOCTYPE html>
     <div class="status" id="status"></div>
   </div>
   <script>
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const MAX_RETRIES = 6;
     const f = document.getElementById('f');
     const bar = document.getElementById('bar');
     const barWrap = document.getElementById('barWrap');
     const status = document.getElementById('status');
     const btn = document.getElementById('btn');
-    f.addEventListener('submit', function (e) {
+
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+    function xhrJson(method, url, body, isForm) {
+      return new Promise(function (resolve, reject) {
+        const xhr = new XMLHttpRequest();
+        xhr.open(method, url);
+        xhr.onload = function () {
+          var j = {};
+          try { j = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+          if (xhr.status >= 200 && xhr.status < 300) resolve(j);
+          else reject(new Error(j.message || xhr.statusText || ('HTTP ' + xhr.status)));
+        };
+        xhr.onerror = function () { reject(new Error('Network error')); };
+        if (isForm) xhr.send(body);
+        else {
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.send(JSON.stringify(body || {}));
+        }
+      });
+    }
+
+    async function putChunk(uploadId, index, blob) {
+      var attempt = 0;
+      while (true) {
+        attempt++;
+        try {
+          var fd = new FormData();
+          fd.append('chunk', blob, 'chunk-' + index + '.bin');
+          return await xhrJson('POST', '../upload/' + encodeURIComponent(uploadId) + '/chunk/' + index, fd, true);
+        } catch (err) {
+          if (attempt >= MAX_RETRIES) throw err;
+          status.textContent = 'Chunk ' + (index + 1) + ' failed (' + (err.message || 'error') + '), retry ' + attempt + '…';
+          await sleep(Math.min(15000, 500 * Math.pow(2, attempt - 1)));
+        }
+      }
+    }
+
+    f.addEventListener('submit', async function (e) {
       e.preventDefault();
       const name = document.getElementById('name').value.trim();
       const description = document.getElementById('description').value.trim();
       const password = document.getElementById('password').value;
-      const fileInput = document.getElementById('file');
-      const file = fileInput.files[0];
+      const file = document.getElementById('file').files[0];
       if (!file) { status.textContent = 'Choose a file.'; status.className = 'status err'; return; }
-      const fd = new FormData();
-      fd.append('name', name);
-      fd.append('description', description);
-      fd.append('password', password);
-      fd.append('file', file);
+      if (!/\\.exe$/i.test(file.name)) { status.textContent = 'Only .exe files are allowed.'; status.className = 'status err'; return; }
+
       status.className = 'status';
-      status.textContent = 'Uploading…';
+      status.textContent = 'Starting chunked upload…';
       barWrap.classList.add('active');
       bar.style.width = '0%';
       btn.disabled = true;
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '../assets/upload');
-      xhr.upload.onprogress = function (ev) {
-        if (ev.lengthComputable) {
-          const pct = Math.round((ev.loaded / ev.total) * 100);
-          bar.style.width = pct + '%';
+
+      try {
+        const init = await xhrJson('POST', '../upload/init', {
+          password: password,
+          kind: 'asset',
+          name: name,
+          description: description,
+          totalBytes: file.size,
+          chunkSize: CHUNK_SIZE
+        });
+        const uploadId = init.uploadId;
+        const chunkSize = init.chunkSize || CHUNK_SIZE;
+        const totalChunks = init.totalChunks;
+        var uploadedBytes = 0;
+
+        for (var i = 0; i < totalChunks; i++) {
+          var start = i * chunkSize;
+          var end = Math.min(file.size, start + chunkSize);
+          var blob = file.slice(start, end);
+          status.textContent = 'Uploading chunk ' + (i + 1) + ' / ' + totalChunks + '…';
+          await putChunk(uploadId, i, blob);
+          uploadedBytes = end;
+          bar.style.width = Math.round((uploadedBytes / file.size) * 100) + '%';
         }
-      };
-      xhr.onload = function () {
-        btn.disabled = false;
-        barWrap.classList.remove('active');
-        try {
-          const j = JSON.parse(xhr.responseText || '{}');
-          if (xhr.status >= 200 && xhr.status < 300) {
-            status.className = 'status ok';
-            status.textContent = 'Uploaded ' + (j.fileName || name) + '.';
-          } else {
-            status.className = 'status err';
-            status.textContent = (j.message || xhr.statusText || 'Upload failed');
-          }
-        } catch {
-          status.className = 'status err';
-          status.textContent = xhr.status >= 400 ? (xhr.responseText || 'Error') : 'Done';
-        }
-      };
-      xhr.onerror = function () {
-        btn.disabled = false;
-        barWrap.classList.remove('active');
+
+        status.textContent = 'Assembling…';
+        const done = await xhrJson('POST', '../upload/' + encodeURIComponent(uploadId) + '/complete', {});
+        status.className = 'status ok';
+        status.textContent = 'Uploaded ' + (done.fileName || name) + '.';
+      } catch (err) {
         status.className = 'status err';
-        status.textContent = 'Network error';
-      };
-      xhr.send(fd);
+        status.textContent = (err && err.message) ? err.message : 'Upload failed';
+      } finally {
+        btn.disabled = false;
+        barWrap.classList.remove('active');
+      }
     });
   </script>
 </body>
