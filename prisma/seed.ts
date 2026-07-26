@@ -41,7 +41,16 @@ function readCsvData(filePath: string) {
 function getSeedCsvPath(fileName: string): string {
     // Default: look next to this seed script (same `prisma/` folder).
     // Optional override: set `SEED_DATA_DIR` to point to a different folder.
-    const configuredDir = process.env.SEED_DATA_DIR ? path.resolve(process.env.SEED_DATA_DIR) : null;
+    // For diagnostics customers prefer `pnpm run seed:diagnostics` (creates admin + stub catalog).
+    // `SEED_PROFILE=diagnostics` also points at `prisma/seeds/diagnostics`.
+    const profile = (process.env.SEED_PROFILE ?? '').trim().toLowerCase();
+    const profileDir =
+        profile === 'diagnostics'
+            ? path.resolve(process.cwd(), 'prisma', 'seeds', 'diagnostics')
+            : null;
+    const configuredDir = process.env.SEED_DATA_DIR
+        ? path.resolve(process.env.SEED_DATA_DIR)
+        : profileDir;
     const candidateDirs = [
         ...(configuredDir ? [configuredDir] : [__dirname]),
         // Fallback when the seed is executed from a different working directory.
@@ -118,6 +127,15 @@ async function main() {
 
 
 
+    console.log(`Success! Inserted ${result.count} services into the database.`);
+
+    const profile = (process.env.SEED_PROFILE ?? '').trim().toLowerCase();
+    if (profile === 'diagnostics') {
+        console.log('SEED_PROFILE=diagnostics — skipping pharmacy drug import.');
+        console.log('Prefer `pnpm run seed:diagnostics` for admin bootstrap on empty DBs.');
+        return;
+    }
+
     console.log('5. Seeding Drugs from PHAR.csv...');
     const rawDrugs = readCsvData(getSeedCsvPath('PHAR.csv'));
 
@@ -143,7 +161,6 @@ async function main() {
     });
 
     console.log(`Success! Inserted ${drugResult.count} drugs into the database.`);
-    console.log(`Success! Inserted ${result.count} services into the database.`);
 }
 
 main()

@@ -9,6 +9,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { StaffModule } from '../staff/staff.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MailModule } from '../mail/mail.module';
+import { resolveJwtSecret } from '../../common/security/jwt-secret';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { MailModule } from '../mail/mail.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') || 'hard-to-guess-secret',
+        secret: resolveJwtSecret(config.get<string>('JWT_SECRET')),
         signOptions: { expiresIn: '24h' },
       }),
     }),

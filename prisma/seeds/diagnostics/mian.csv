@@ -1,0 +1,7 @@
+Service Code,Service Name,Service Rate,Department,Category
+LAB-FBC,Full Blood Count,5000,Laboratory,Laboratory
+LAB-UE,Urea and Electrolytes,4500,Laboratory,Laboratory
+LAB-LFT,Liver Function Test,6000,Laboratory,Laboratory
+RAD-CXR,Chest X-Ray,8000,Radiology,Radiology
+RAD-USS-ABD,Abdominal Ultrasound,12000,Radiology,Radiology
+CONS-DX,Diagnostics Consultation,2000,Front Desk,Consultation

@@ -23,7 +23,9 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Helty hospital management API (NestJS + Prisma + PostgreSQL).
+
+**Diagnostics / Coolify multi-org deploys (no forks):** see [docs/coolify-diagnostics-deploy.md](docs/coolify-diagnostics-deploy.md).
 
 ## Project setup
 

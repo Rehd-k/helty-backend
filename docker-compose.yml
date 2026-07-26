@@ -1,0 +1,45 @@
+# Local parity with Coolify: API + Postgres + persistent uploads.
+# Usage:
+#   docker compose up --build
+#   docker compose exec api pnpm run seed:diagnostics
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: helty
+      POSTGRES_PASSWORD: helty
+      POSTGRES_DB: helty_diagnostics
+    ports:
+      - '5433:5432'
+    volumes:
+      - helty_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U helty -d helty_diagnostics']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://helty:helty@postgres:5432/helty_diagnostics
+      JWT_SECRET: local-diagnostics-dev-secret-change-me
+      HOSPITAL_NAME: Local Diagnostics Lab
+      PUBLIC_API_BASE_URL: http://localhost:3000
+      CORS_ORIGIN: '*'
+      USE_REDIS: 'false'
+      HELITY_DESKTOP_UPLOAD_PASSWORD: local-desktop-upload
+    volumes:
+      - helty_uploads:/app/uploads
+
+volumes:
+  helty_pg_data:
+  helty_uploads:

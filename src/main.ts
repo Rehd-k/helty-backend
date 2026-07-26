@@ -6,11 +6,14 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { HttpExceptionShapeFilter } from './common/filters/http-exception-shape.filter';
+import { assertProductionJwtSecretConfigured } from './common/security/jwt-secret';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { RedisIoAdapter } from './redis/redis-io.adapter';
 import { isUseRedisEnabled } from './redis/redis.module';
 
 async function bootstrap() {
+  assertProductionJwtSecretConfigured();
+
   // bufferLogs: true ensures early logs are captured and re-flushed via Pino
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['log', 'error', 'warn', 'debug', 'verbose'],

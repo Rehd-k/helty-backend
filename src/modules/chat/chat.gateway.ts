@@ -12,6 +12,7 @@ import type { Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { resolveJwtSecret } from '../../common/security/jwt-secret';
 import { StaffService } from '../staff/staff.service';
 import { ChatService } from './chat.service';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -177,9 +178,9 @@ export class ChatGateway
 
     if (token) {
       try {
-        const secret =
-          this.configService.get<string>('JWT_SECRET') ||
-          'hard-to-guess-secret';
+        const secret = resolveJwtSecret(
+          this.configService.get<string>('JWT_SECRET'),
+        );
         const payload = await this.jwtService.verifyAsync(token, { secret });
         const staff = await this.staffService.findById(payload.sub);
         const user: OnlineUserInfo = {
