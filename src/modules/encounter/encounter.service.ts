@@ -21,6 +21,7 @@ import { patientNameFieldsSelect } from '../../common/utils/patient-display-name
 import { labRequestWithBillingInclude } from '../lab-request/lab-request-includes';
 import { EncounterEditPolicyService } from './encounter-edit-policy.service';
 import { ENCOUNTER_CLINICAL_SNAPSHOT_FIELDS } from './encounter-clinical-snapshot.types';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 type ProcedureConsumableEntry = {
   id?: string;
@@ -360,6 +361,7 @@ export class EncounterService {
             },
           },
           admission: { select: { id: true, status: true } },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.encounter.count({ where }),
@@ -398,6 +400,9 @@ export class EncounterService {
             staffRole: true,
             accountType: true,
           },
+        },
+        createdBy: {
+          select: staffBriefSelect,
         },
         updatedBy: {
           select: {

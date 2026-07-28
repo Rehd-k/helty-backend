@@ -1,4 +1,5 @@
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 export const dialysisSessionSummaryInclude = {
   patient: {
@@ -21,4 +22,5 @@ export const dialysisSessionSummaryInclude = {
 export const dialysisSessionConsumableInclude = {
   consumable: { select: { id: true, name: true } },
   storeLocation: { select: { id: true, name: true, code: true } },
+  createdBy: { select: staffBriefSelect },
 } as const;

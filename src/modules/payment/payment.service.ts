@@ -7,6 +7,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { RecordInvoicePaymentDto } from '../invoice/dto/invoice.dto';
 import { UpdateInvoicePaymentDto } from './dto/invoice-payment.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 const invoicePaymentDetailInclude = {
   walletTransaction: true,
@@ -71,6 +72,7 @@ export class PaymentService {
         take,
         include: {
           patient: true,
+          createdBy: { select: staffBriefSelect },
         },
         orderBy: { date: 'desc' },
       }),
@@ -85,6 +87,8 @@ export class PaymentService {
       where: { id },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
       },
     });
   }
@@ -95,6 +99,7 @@ export class PaymentService {
       orderBy: { date: 'desc' },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }

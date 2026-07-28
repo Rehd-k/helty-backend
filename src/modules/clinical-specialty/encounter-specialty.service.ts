@@ -17,6 +17,7 @@ import {
 import { SyncSpecialtyModulesDto } from './dto/sync-specialty-modules.dto';
 import { UpsertClinicalSectionDto } from './dto/upsert-clinical-section.dto';
 import { ListClinicalSectionsQueryDto } from './dto/list-clinical-sections.query.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class EncounterSpecialtyService {
@@ -78,6 +79,9 @@ export class EncounterSpecialtyService {
     return this.prisma.encounterSpecialtyModule.findMany({
       where: { encounterId },
       orderBy: { specialty: 'asc' },
+      include: {
+        createdBy: { select: staffBriefSelect },
+      },
     });
   }
 
@@ -205,6 +209,9 @@ export class EncounterSpecialtyService {
         ...(keys?.length ? { sectionKey: { in: keys } } : {}),
       },
       orderBy: [{ specialty: 'asc' }, { sectionKey: 'asc' }],
+      include: {
+        createdBy: { select: staffBriefSelect },
+      },
     });
   }
 

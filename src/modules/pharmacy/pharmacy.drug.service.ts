@@ -22,6 +22,7 @@ import {
   sortDrugSearchPage,
   summarizeDrugBatches,
 } from './pharmacy.drug-search.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class PharmacyDrugService {
@@ -432,6 +433,7 @@ export class PharmacyDrugService {
             },
           },
         },
+        createdBy: { select: staffBriefSelect },
       },
     });
 

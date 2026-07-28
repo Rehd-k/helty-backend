@@ -1,4 +1,5 @@
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 export const surgeryRequestSummaryInclude = {
   patient: { select: patientNameFieldsSelect },
@@ -61,6 +62,7 @@ export const surgeryRequestSummaryInclude = {
 export const theatreCaseConsumableInclude = {
   consumable: { select: { id: true, name: true } },
   storeLocation: { select: { id: true, name: true, code: true } },
+  createdBy: { select: staffBriefSelect },
 } as const;
 
 export const theatreScheduleListInclude = {

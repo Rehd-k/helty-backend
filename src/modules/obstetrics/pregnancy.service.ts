@@ -7,6 +7,7 @@ import {
 } from './dto/create-pregnancy.dto';
 import { ListPregnanciesQueryDto } from './dto/list-pregnancies-query.dto';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 import {
   closeAntenatalEncounterForPregnancy,
   createAntenatalEncounterForPregnancy,
@@ -87,6 +88,7 @@ export class PregnancyService {
         orderBy: { createdAt: 'desc' },
         include: {
           patient: { select: patientNameFieldsSelect },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.pregnancy.count({ where }),
@@ -103,6 +105,8 @@ export class PregnancyService {
         encounter: { select: { id: true, status: true, visitType: true } },
         antenatalVisits: { orderBy: { visitDate: 'desc' }, take: 10 },
         labourDeliveries: true,
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
       },
     });
     if (!pregnancy) {

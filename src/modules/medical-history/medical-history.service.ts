@@ -4,6 +4,7 @@ import {
   CreateMedicalHistoryDto,
   UpdateMedicalHistoryDto,
 } from './dto/create-medical-history.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class MedicalHistoryService {
@@ -25,6 +26,7 @@ export class MedicalHistoryService {
         take,
         include: {
           patient: true,
+          createdBy: { select: staffBriefSelect },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -39,6 +41,7 @@ export class MedicalHistoryService {
       where: { id },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -49,6 +52,7 @@ export class MedicalHistoryService {
       orderBy: { createdAt: 'desc' },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }

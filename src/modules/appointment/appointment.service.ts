@@ -16,6 +16,7 @@ import { parseDateRange } from '../../common/utils/date-range';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { AppointmentNotificationService } from './notification/appointment-notification.service';
 import { isCancelledStatus } from './notification/appointment-message.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class AppointmentService {
@@ -166,6 +167,7 @@ export class AppointmentService {
       where: { id },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -176,6 +178,7 @@ export class AppointmentService {
       orderBy: { date: 'desc' },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -191,6 +194,7 @@ export class AppointmentService {
       },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
       orderBy: { date: 'asc' },
     });

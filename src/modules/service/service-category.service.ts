@@ -4,6 +4,7 @@ import {
   CreateServiceCategoryDto,
   UpdateServiceCategoryDto,
 } from './dto/create-service-category.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class ServiceCategoryService {
@@ -16,14 +17,22 @@ export class ServiceCategoryService {
   }
 
   async findAll() {
-    const categories = await this.prisma.serviceCategory.findMany();
+    const categories = await this.prisma.serviceCategory.findMany({
+      include: {
+        createdBy: { select: staffBriefSelect },
+      },
+    });
     return { categories };
   }
 
   async findOne(id: string) {
     return this.prisma.serviceCategory.findUnique({
       where: { id },
-      include: { services: true },
+      include: {
+        services: true,
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
+      },
     });
   }
 

@@ -8,6 +8,7 @@ import {
   formatPatientDisplayName,
   patientNameFieldsSelect,
 } from '../../common/utils/patient-display-name.util';
+import { buildPatientNameSearchWhere } from '../../common/utils/patient-name-search.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FcmService } from '../fcm/fcm.service';
 import { ListPatientDevicesQueryDto } from './dto/list-patient-devices-query.dto';
@@ -54,9 +55,7 @@ export class FrontdeskPatientDeviceService {
             patient: {
               OR: [
                 { patientId: { contains: search, mode: 'insensitive' as const } },
-                { firstName: { contains: search, mode: 'insensitive' as const } },
-                { surname: { contains: search, mode: 'insensitive' as const } },
-                { otherName: { contains: search, mode: 'insensitive' as const } },
+                buildPatientNameSearchWhere(search),
               ],
             },
           }

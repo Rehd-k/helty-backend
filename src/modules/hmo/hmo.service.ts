@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { buildPatientNameSearchWhere } from '../../common/utils/patient-name-search.util';
 import {
   CreateHmoDto,
   UpdateHmoDto,
@@ -255,8 +256,7 @@ export class HmoService {
       ...(search
         ? {
             OR: [
-              { surname: { contains: search, mode: 'insensitive' } },
-              { firstName: { contains: search, mode: 'insensitive' } },
+              buildPatientNameSearchWhere(search),
               { phoneNumber: { contains: search, mode: 'insensitive' } },
               { patientId: { contains: search, mode: 'insensitive' } },
             ],

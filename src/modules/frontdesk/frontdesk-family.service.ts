@@ -10,6 +10,7 @@ import {
 } from '../../common/utils/patient-display-name.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LinkChildDto } from './dto/link-child.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class FrontdeskFamilyService {
@@ -25,6 +26,7 @@ export class FrontdeskFamilyService {
         child: {
           select: patientNameFieldsSelect,
         },
+        createdBy: { select: staffBriefSelect },
       },
     });
 
@@ -40,6 +42,7 @@ export class FrontdeskFamilyService {
           gender: link.child.gender,
           avatarUrl: link.child.avatarUrl ?? null,
         },
+        createdBy: link.createdBy,
       })),
     };
   }

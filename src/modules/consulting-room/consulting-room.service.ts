@@ -10,6 +10,7 @@ import {
   UpdateConsultingRoomDto,
 } from './dto/consulting-room.dto';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class ConsultingRoomService {
@@ -93,6 +94,7 @@ export class ConsultingRoomService {
               },
             },
           },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.consultingRoom.count({ where }),
@@ -119,6 +121,8 @@ export class ConsultingRoomService {
             },
           },
         },
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
       },
     });
 

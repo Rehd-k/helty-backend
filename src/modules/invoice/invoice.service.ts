@@ -22,6 +22,7 @@ import {
   patientNameFieldsSelect,
   toPatientNameWithLegacyKey,
 } from '../../common/utils/patient-display-name.util';
+import { buildPatientNameSearchWhere } from '../../common/utils/patient-name-search.util';
 import {
   AddInvoiceItemDto,
   AllocateInvoiceItemPaymentDto,
@@ -247,8 +248,7 @@ export class InvoiceService {
       {
         patient: {
           OR: [
-            { firstName: { contains: q, mode: 'insensitive' } },
-            { surname: { contains: q, mode: 'insensitive' } },
+            buildPatientNameSearchWhere(q),
             { patientId: { contains: q, mode: 'insensitive' } },
           ],
         },
@@ -274,13 +274,7 @@ export class InvoiceService {
       { invoice: { invoiceID: needle } },
       {
         invoice: {
-          patient: {
-            OR: [
-              { firstName: needle },
-              { surname: needle },
-              { otherName: needle },
-            ],
-          },
+          patient: buildPatientNameSearchWhere(q),
         },
       },
     ];
@@ -1185,7 +1179,7 @@ export class InvoiceService {
         updatedAt,
         patient: {
           status: patientStatus,
-          OR: [{ firstName: needle }, { surname: needle }],
+          ...buildPatientNameSearchWhere(q),
         },
       };
     }
@@ -1220,8 +1214,7 @@ export class InvoiceService {
             {
               patient: {
                 OR: [
-                  { firstName: needle },
-                  { surname: needle },
+                  buildPatientNameSearchWhere(q),
                   { patientId: needle },
                 ],
               },

@@ -14,6 +14,7 @@ import {
 } from './dto/waiting-patient.dto';
 import { parseDateRange } from '../../common/utils/date-range';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { buildPatientNameSearchWhere } from '../../common/utils/patient-name-search.util';
 import {
   CONSULTATION_BILLING_CATEGORY,
   CONSULTATION_CREDIT_MAX_VISITS,
@@ -74,9 +75,7 @@ export class WaitingPatientService {
       {
         patient: {
           OR: [
-            { firstName: needle },
-            { surname: needle },
-            { otherName: needle },
+            buildPatientNameSearchWhere(q),
             { patientId: needle },
           ],
         },

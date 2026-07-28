@@ -11,6 +11,7 @@ import {
 } from './dto/create-baby.dto';
 import { ListBabiesQueryDto } from './dto/list-babies-query.dto';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class BabyService {
@@ -83,6 +84,7 @@ export class BabyService {
         include: {
           mother: { select: patientNameFieldsSelect },
           labourDelivery: { select: { id: true, deliveryDateTime: true } },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.baby.count({ where }),
@@ -98,6 +100,8 @@ export class BabyService {
         mother: true,
         labourDelivery: { include: { pregnancy: true } },
         registeredPatient: true,
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
       },
     });
     if (!baby) {

@@ -11,6 +11,11 @@ import { PatientStatus, Prisma } from '@prisma/client';
 import { endOfDay, startOfDay } from '../../common/utils/date-range';
 import { generateHumanReadableId } from '../../common/utils/human-readable-id.util';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import {
+  buildPatientNameSearchWhere,
+  normalizePatientSearchName,
+} from '../../common/utils/patient-name-search.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class PatientService {
@@ -104,6 +109,12 @@ export class PatientService {
     if (createPatientDto.fingerprintData)
       data.fingerprintData = createPatientDto.fingerprintData;
     if (createPatientDto.cardNo) data.cardNo = createPatientDto.cardNo;
+
+    data.searchName = normalizePatientSearchName(
+      data.firstName as string | null | undefined,
+      data.otherName as string | null | undefined,
+      data.surname as string | null | undefined,
+    );
 
     try {
       if (!createPatientDto.phoneNumber) {
@@ -232,18 +243,7 @@ export class PatientService {
               mode: 'insensitive',
             },
           },
-          {
-            firstName: {
-              contains: trimmedSearch,
-              mode: 'insensitive',
-            },
-          },
-          {
-            surname: {
-              contains: trimmedSearch,
-              mode: 'insensitive',
-            },
-          },
+          buildPatientNameSearchWhere(trimmedSearch),
         ],
       });
     }
@@ -258,13 +258,7 @@ export class PatientService {
         take,
         orderBy: { createdAt: 'desc' },
         include: {
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
+          createdBy: { select: staffBriefSelect },
           ward: {
             select: { id: true, name: true },
           },
@@ -325,28 +319,7 @@ export class PatientService {
           },
         });
       } else if (category === 'fullName') {
-        andParts.push({
-          OR: [
-            {
-              firstName: {
-                contains: trimmedSearch,
-                mode: 'insensitive',
-              },
-            },
-            {
-              otherName: {
-                contains: trimmedSearch,
-                mode: 'insensitive',
-              },
-            },
-            {
-              surname: {
-                contains: trimmedSearch,
-                mode: 'insensitive',
-              },
-            },
-          ],
-        });
+        andParts.push(buildPatientNameSearchWhere(trimmedSearch));
       } else if (category === 'nameIdPhonenumber') {
         andParts.push({
           OR: [
@@ -362,24 +335,7 @@ export class PatientService {
                 mode: 'insensitive',
               },
             },
-            {
-              firstName: {
-                contains: trimmedSearch,
-                mode: 'insensitive',
-              },
-            },
-            {
-              otherName: {
-                contains: trimmedSearch,
-                mode: 'insensitive',
-              },
-            },
-            {
-              surname: {
-                contains: trimmedSearch,
-                mode: 'insensitive',
-              },
-            },
+            buildPatientNameSearchWhere(trimmedSearch),
           ],
         });
       } else if (this.ALLOWED_FILTER_FIELDS.has(category)) {
@@ -441,20 +397,8 @@ export class PatientService {
         take: Math.min(take * 5, 100),
         orderBy,
         include: {
-          createdBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
+          createdBy: { select: staffBriefSelect },
+          updatedBy: { select: staffBriefSelect },
           ward: true,
           hmoProvider: {
             select: { id: true, name: true, code: true },
@@ -479,33 +423,44 @@ export class PatientService {
     return this.prisma.patient.findUnique({
       where: { id },
       include: {
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
         ward: true,
         appointments: {
           orderBy: { date: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         admissions: {
           orderBy: { admissionDate: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         payments: {
           orderBy: { date: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         medicalHistories: {
           orderBy: { createdAt: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         doctorReports: {
           orderBy: { createdAt: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         labReports: {
           orderBy: { date: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         radiologyReports: {
           orderBy: { date: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         prescriptions: {
           orderBy: { startDate: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         invoice: {
           orderBy: { createdAt: 'desc' },
+          include: { createdBy: { select: staffBriefSelect } },
         },
         hmoProvider: {
           select: { id: true, name: true, code: true },
@@ -518,15 +473,35 @@ export class PatientService {
     return this.prisma.patient.findUnique({
       where: { patientId },
       include: {
-        appointments: true,
-        admissions: true,
-        payments: true,
-        medicalHistories: true,
-        doctorReports: true,
-        labReports: true,
-        radiologyReports: true,
-        prescriptions: true,
-        invoice: true,
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
+        appointments: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        admissions: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        payments: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        medicalHistories: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        doctorReports: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        labReports: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        radiologyReports: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        prescriptions: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
+        invoice: {
+          include: { createdBy: { select: staffBriefSelect } },
+        },
         hmoProvider: {
           select: { id: true, name: true, code: true },
         },
@@ -610,6 +585,25 @@ export class PatientService {
     if (!existing.patientId && updatePatientDto.patientId === undefined) {
       (data as Record<string, unknown>).patientId = generateHumanReadableId();
     }
+
+    const nameChanged =
+      updatePatientDto.firstName !== undefined ||
+      updatePatientDto.otherName !== undefined ||
+      updatePatientDto.surname !== undefined;
+    if (nameChanged) {
+      (data as Record<string, unknown>).searchName = normalizePatientSearchName(
+        updatePatientDto.firstName !== undefined
+          ? updatePatientDto.firstName
+          : existing.firstName,
+        updatePatientDto.otherName !== undefined
+          ? updatePatientDto.otherName
+          : existing.otherName,
+        updatePatientDto.surname !== undefined
+          ? updatePatientDto.surname
+          : existing.surname,
+      );
+    }
+
     try {
       return await this.prisma.patient.update({
         where: { id },
@@ -652,15 +646,18 @@ export class PatientService {
   }
 
   async search(query: string) {
+    const trimmed = query.trim();
     return this.prisma.patient.findMany({
       where: {
         OR: [
-          { patientId: { contains: query, mode: 'insensitive' } },
-          { firstName: { contains: query, mode: 'insensitive' } },
-          { surname: { contains: query, mode: 'insensitive' } },
-          { email: { contains: query, mode: 'insensitive' } },
-          { phoneNumber: { contains: query, mode: 'insensitive' } },
+          { patientId: { contains: trimmed, mode: 'insensitive' } },
+          { email: { contains: trimmed, mode: 'insensitive' } },
+          { phoneNumber: { contains: trimmed, mode: 'insensitive' } },
+          buildPatientNameSearchWhere(trimmed),
         ],
+      },
+      include: {
+        createdBy: { select: staffBriefSelect },
       },
       take: 10,
     });

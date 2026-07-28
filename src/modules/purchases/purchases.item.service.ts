@@ -11,6 +11,7 @@ import {
   UpdatePurchaseItemDto,
 } from './dto/item.dto';
 import { resolvePagination } from './purchases.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 const ALLOWED_SORT = new Set(['itemName', 'createdAt', 'reorderLevel']);
 
@@ -72,6 +73,7 @@ export class PurchasesItemService {
             expiryDate: true,
           },
         },
+        createdBy: { select: staffBriefSelect },
       },
     });
     const total = await this.prisma.purchaseItem.count({ where });
@@ -113,6 +115,8 @@ export class PurchasesItemService {
       include: {
         manufacturer: true,
         batches: { orderBy: { createdAt: 'desc' }, take: 20 },
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
       },
     });
     if (!item) {

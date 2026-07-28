@@ -16,6 +16,7 @@ import { CmacLaboratoryService } from '../cmac-analytics/services/cmac-laborator
 import { CmacStaffService } from '../cmac-analytics/services/cmac-staff.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { CmdAnalyticsQueryDto } from './dto/cmd-analytics-query.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class CmdAnalyticsService {
@@ -498,6 +499,7 @@ export class CmdAnalyticsService {
         priority: true,
         scheduledFor: true,
         sentAt: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }

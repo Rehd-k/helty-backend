@@ -2100,9 +2100,18 @@ describe('InvoiceService', () => {
           invoice: {
             patient: {
               OR: [
-                { firstName: { contains: 'francine', mode: 'insensitive' } },
-                { surname: { contains: 'francine', mode: 'insensitive' } },
-                { otherName: { contains: 'francine', mode: 'insensitive' } },
+                {
+                  firstName: { contains: 'francine', mode: 'insensitive' },
+                },
+                {
+                  otherName: { contains: 'francine', mode: 'insensitive' },
+                },
+                {
+                  surname: { contains: 'francine', mode: 'insensitive' },
+                },
+                {
+                  searchName: { contains: 'francine', mode: 'insensitive' },
+                },
               ],
             },
           },

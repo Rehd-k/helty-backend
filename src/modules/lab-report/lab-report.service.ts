@@ -10,6 +10,7 @@ import {
 } from './dto/create-lab-report.dto';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class LabReportService {
@@ -42,6 +43,7 @@ export class LabReportService {
         take,
         include: {
           patient: true,
+          createdBy: { select: staffBriefSelect },
         },
         orderBy: { date: 'desc' },
       }),
@@ -56,6 +58,7 @@ export class LabReportService {
       where: { id },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -66,6 +69,7 @@ export class LabReportService {
       orderBy: { date: 'desc' },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }

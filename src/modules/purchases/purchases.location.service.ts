@@ -11,6 +11,7 @@ import {
   ListPurchasesLocationDto,
   UpdatePurchasesLocationDto,
 } from './dto/location.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 const ALLOWED_SORT = new Set(['name', 'locationType', 'createdAt']);
 
@@ -76,6 +77,7 @@ export class PurchasesLocationService {
         take,
         include: {
           staff: { select: { id: true, firstName: true, lastName: true } },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.purchasesLocation.count({ where }),
@@ -88,6 +90,8 @@ export class PurchasesLocationService {
       where: { id },
       include: {
         staff: { select: { id: true, firstName: true, lastName: true } },
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
       },
     });
     if (!row) {

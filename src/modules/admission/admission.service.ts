@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { InvoiceService } from '../invoice/invoice.service';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 const ADMISSION_UPDATE_INCLUDE = {
   updatedBy: {
@@ -390,6 +391,7 @@ export class AdmissionService {
           wardEntity: true,
           bed: true,
           encounter: true,
+          createdBy: { select: staffBriefSelect },
         },
         orderBy: { admissionDate: 'desc' },
       }),
@@ -424,6 +426,7 @@ export class AdmissionService {
             },
           },
           encounter: { select: { id: true } },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.admission.count({ where }),
@@ -448,6 +451,7 @@ export class AdmissionService {
           attendingDoctor: admission.attendingDoctor,
           clinicallyDischargedBy: admission.clinicallyDischargedBy,
           patient: admission.patient,
+          createdBy: admission.createdBy,
           billing: this.buildBillingSummary(invoices, coveredByInvoiceId),
         };
       }),
@@ -602,6 +606,9 @@ export class AdmissionService {
         billingClearedBy: {
           select: { id: true, firstName: true, lastName: true },
         },
+        createdBy: {
+          select: staffBriefSelect,
+        },
       },
     });
 
@@ -618,6 +625,7 @@ export class AdmissionService {
       include: {
         patient: true,
         encounter: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -630,6 +638,7 @@ export class AdmissionService {
       include: {
         patient: true,
         encounter: true,
+        createdBy: { select: staffBriefSelect },
       },
       orderBy: { admissionDate: 'asc' },
     });

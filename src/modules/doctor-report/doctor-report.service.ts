@@ -12,6 +12,7 @@ import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
 import { AdmissionStatus } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class DoctorReportService {
@@ -76,6 +77,7 @@ export class DoctorReportService {
         take,
         include: {
           patient: true,
+          createdBy: { select: staffBriefSelect },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -92,6 +94,7 @@ export class DoctorReportService {
       where: { id },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -102,6 +105,7 @@ export class DoctorReportService {
       orderBy: { createdAt: 'desc' },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -138,7 +142,11 @@ export class DoctorReportService {
     return this.prisma.doctorReport.findMany({
       where: { encounterId },
       orderBy: { createdAt: 'desc' },
-      include: { patient: true, encounter: true },
+      include: {
+        patient: true,
+        encounter: true,
+        createdBy: { select: staffBriefSelect },
+      },
     });
   }
 

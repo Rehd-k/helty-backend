@@ -10,6 +10,7 @@ import {
   ListPurchasesSupplierDto,
   UpdatePurchasesSupplierDto,
 } from './dto/supplier.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 const ALLOWED_SORT = new Set(['name', 'rating', 'createdAt']);
 
@@ -65,6 +66,7 @@ export class PurchasesSupplierService {
         take,
         include: {
           _count: { select: { batches: true, purchaseOrders: true } },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.purchasesSupplier.count({ where }),
@@ -77,6 +79,7 @@ export class PurchasesSupplierService {
       where: { id },
       include: {
         _count: { select: { batches: true, purchaseOrders: true } },
+        createdBy: { select: staffBriefSelect },
       },
     });
     if (!row) {

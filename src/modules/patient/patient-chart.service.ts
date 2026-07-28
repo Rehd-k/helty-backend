@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { PatientChartQueryDto } from './dto/patient-chart-query.dto';
 import { endOfDay, startOfDay } from '../../common/utils/date-range';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 export const PATIENT_CHART_SECTIONS = [
   'encounters',
@@ -191,6 +192,7 @@ export class PatientChartService {
             },
             diagnoses: true,
             admission: { select: { id: true, status: true } },
+            createdBy: { select: staffBriefSelect },
           },
         });
       case 'admissions':
@@ -208,6 +210,7 @@ export class PatientChartService {
             attendingDoctor: {
               select: { id: true, firstName: true, lastName: true },
             },
+            createdBy: { select: staffBriefSelect },
           },
         });
       case 'medicationOrders':
@@ -234,6 +237,9 @@ export class PatientChartService {
           skip: q.skip,
           take: q.limit,
           orderBy: { startDate: 'desc' },
+          include: {
+            createdBy: { select: staffBriefSelect },
+          },
         });
       case 'labOrders':
         return this.prisma.labOrder.findMany({
@@ -279,6 +285,9 @@ export class PatientChartService {
           skip: q.skip,
           take: q.limit,
           orderBy: { date: 'desc' },
+          include: {
+            createdBy: { select: staffBriefSelect },
+          },
         });
       case 'radiologyOrders':
         return this.prisma.radiologyOrder.findMany({
@@ -319,6 +328,9 @@ export class PatientChartService {
           skip: q.skip,
           take: q.limit,
           orderBy: { date: 'desc' },
+          include: {
+            createdBy: { select: staffBriefSelect },
+          },
         });
       case 'vitals':
         return this.prisma.patientVitals.findMany({
@@ -352,6 +364,9 @@ export class PatientChartService {
           skip: q.skip,
           take: q.limit,
           orderBy: { date: 'desc' },
+          include: {
+            createdBy: { select: staffBriefSelect },
+          },
         });
       case 'invoices':
         return this.prisma.invoice.findMany({
@@ -376,6 +391,7 @@ export class PatientChartService {
                 },
               },
             },
+            createdBy: { select: staffBriefSelect },
           },
         });
       case 'payments':
@@ -387,6 +403,9 @@ export class PatientChartService {
           skip: q.skip,
           take: q.limit,
           orderBy: { date: 'desc' },
+          include: {
+            createdBy: { select: staffBriefSelect },
+          },
         });
       case 'wallet': {
         const wallet = await this.invoiceService.getWallet(patientId);
@@ -397,6 +416,7 @@ export class PatientChartService {
           orderBy: { createdAt: 'desc' },
           include: {
             invoice: { select: { id: true, invoiceID: true, status: true } },
+            createdBy: { select: staffBriefSelect },
           },
         });
         return { wallet, transactions };
@@ -410,6 +430,9 @@ export class PatientChartService {
           skip: q.skip,
           take: q.limit,
           orderBy: { createdAt: 'desc' },
+          include: {
+            createdBy: { select: staffBriefSelect },
+          },
         });
       case 'doctorReports':
         return this.prisma.doctorReport.findMany({
@@ -420,6 +443,9 @@ export class PatientChartService {
           skip: q.skip,
           take: q.limit,
           orderBy: { createdAt: 'desc' },
+          include: {
+            createdBy: { select: staffBriefSelect },
+          },
         });
       case 'archivedEncounters':
         return this.listArchivedEncounters(patientId, q);

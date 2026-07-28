@@ -15,6 +15,7 @@ import {
   getExcludedStockLocationIds,
   startOfToday,
 } from './pharmacy-sellable-stock.util';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 const ALLOWED_SORT = new Set(['name', 'locationType', 'createdAt']);
 
@@ -91,6 +92,7 @@ export class PharmacyLocationService {
         take,
         include: {
           staff: { select: { id: true, firstName: true, lastName: true } },
+          createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.pharmacyLocation.count({ where }),

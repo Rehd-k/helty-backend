@@ -10,6 +10,7 @@ import {
   ListPurchasesManufacturerDto,
   UpdatePurchasesManufacturerDto,
 } from './dto/manufacturer.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 const ALLOWED_SORT = new Set(['name', 'country', 'createdAt']);
 
@@ -54,7 +55,10 @@ export class PurchasesManufacturerService {
         orderBy,
         skip: Math.max(0, skip),
         take,
-        include: { _count: { select: { items: true } } },
+        include: {
+          _count: { select: { items: true } },
+          createdBy: { select: staffBriefSelect },
+        },
       }),
       this.prisma.purchasesManufacturer.count({ where }),
     ]);
@@ -64,7 +68,10 @@ export class PurchasesManufacturerService {
   async findOne(id: string) {
     const row = await this.prisma.purchasesManufacturer.findUnique({
       where: { id },
-      include: { items: { select: { id: true, itemName: true } } },
+      include: {
+        items: { select: { id: true, itemName: true } },
+        createdBy: { select: staffBriefSelect },
+      },
     });
     if (!row) {
       throw new NotFoundException(`Manufacturer "${id}" not found.`);

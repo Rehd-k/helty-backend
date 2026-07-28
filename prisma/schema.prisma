@@ -46,6 +46,8 @@ model Patient {
   fingerprintData       String?
   avatarUrl             String?
   status                PatientStatus @default(OUTPATIENT)
+  /** Lowercased concat of firstName + otherName + surname for multi-word search. */
+  searchName            String?       @db.Text
 
   hmoProvider Hmo? @relation(fields: [hmoId], references: [id])
 
@@ -102,6 +104,7 @@ model Patient {
   parentsAsChild             PatientFamilyLink[] @relation("FamilyChild")
 
   @@index([hmoId])
+  @@index([searchName])
 }
 
 enum PatientDeviceStatus {

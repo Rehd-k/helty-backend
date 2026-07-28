@@ -13,6 +13,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { parseDateRange } from '../../common/utils/date-range';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
+import { buildPatientNameSearchWhere } from '../../common/utils/patient-name-search.util';
 import {
   CreateRemittanceDto,
   DiscountReceivablesQueryDto,
@@ -40,7 +41,7 @@ export class ReceivablesService {
       {
         invoice: {
           patient: {
-            OR: [{ firstName: needle }, { surname: needle }, { patientId: needle }],
+            OR: [buildPatientNameSearchWhere(q), { patientId: needle }],
           },
         },
       },

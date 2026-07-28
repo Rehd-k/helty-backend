@@ -8,6 +8,7 @@ import {
   CreatePrescriptionDto,
   UpdatePrescriptionDto,
 } from './dto/create-prescription.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class PrescriptionService {
@@ -39,6 +40,7 @@ export class PrescriptionService {
         take,
         include: {
           patient: true,
+          createdBy: { select: staffBriefSelect },
         },
         orderBy: { startDate: 'desc' },
       }),
@@ -53,6 +55,7 @@ export class PrescriptionService {
       where: { id },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -63,6 +66,7 @@ export class PrescriptionService {
       orderBy: { startDate: 'desc' },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -76,6 +80,9 @@ export class PrescriptionService {
         OR: [{ endDate: null }, { endDate: { gte: today } }],
       },
       orderBy: { startDate: 'desc' },
+      include: {
+        createdBy: { select: staffBriefSelect },
+      },
     });
   }
 
@@ -117,7 +124,11 @@ export class PrescriptionService {
     return this.prisma.prescription.findMany({
       where: { encounterId },
       orderBy: { startDate: 'desc' },
-      include: { patient: true, encounter: true },
+      include: {
+        patient: true,
+        encounter: true,
+        createdBy: { select: staffBriefSelect },
+      },
     });
   }
 

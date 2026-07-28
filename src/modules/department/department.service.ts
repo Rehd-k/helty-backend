@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { CreateDepartmentDto } from './dto/create-department.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class DepartmentService {
@@ -18,6 +19,9 @@ export class DepartmentService {
     const [departments, total] = await Promise.all([
       this.prisma.department.findMany({
         orderBy: { name: 'asc' },
+        include: {
+          createdBy: { select: staffBriefSelect },
+        },
       }),
       this.prisma.department.count(),
     ]);
@@ -26,7 +30,13 @@ export class DepartmentService {
   }
 
   async findOne(id: string) {
-    const dep = await this.prisma.department.findUnique({ where: { id } });
+    const dep = await this.prisma.department.findUnique({
+      where: { id },
+      include: {
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
+      },
+    });
     if (!dep) throw new NotFoundException('Department not found');
     return dep;
   }

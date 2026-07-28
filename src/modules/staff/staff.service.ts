@@ -10,6 +10,7 @@ import {
   staffRoleToNursingUnit,
 } from '../nursing/nursing.constants';
 import { wardMatchesNursingUnit } from '../nursing/nursing-scope.utils';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class StaffService {
@@ -151,6 +152,7 @@ export class StaffService {
         include: {
           department: true,
           ward: { select: { id: true, name: true, type: true } },
+          createdBy: { select: staffBriefSelect },
         },
         omit: { password: true },
       }),
@@ -168,6 +170,8 @@ export class StaffService {
         ward: { select: { id: true, name: true, type: true } },
         headedDepartment: true,
         passwordResets: activeStaffPasswordResetInclude(),
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
       },
     });
     if (!user) throw new NotFoundException('Staff member not found');

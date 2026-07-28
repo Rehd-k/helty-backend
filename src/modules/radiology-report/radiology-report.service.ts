@@ -8,6 +8,7 @@ import {
   CreateRadiologyReportDto,
   UpdateRadiologyReportDto,
 } from './dto/create-radiology-report.dto';
+import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
 @Injectable()
 export class RadiologyReportService {
@@ -37,6 +38,7 @@ export class RadiologyReportService {
         take,
         include: {
           patient: true,
+          createdBy: { select: staffBriefSelect },
         },
         orderBy: { date: 'desc' },
       }),
@@ -51,6 +53,7 @@ export class RadiologyReportService {
       where: { id },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
@@ -61,6 +64,7 @@ export class RadiologyReportService {
       orderBy: { date: 'desc' },
       include: {
         patient: true,
+        createdBy: { select: staffBriefSelect },
       },
     });
   }
