@@ -95,6 +95,7 @@ model Patient {
   referrals                 Referral[]
   complaints                PatientComplaint[]
   feedbackSubmissions       PatientFeedback[]
+  emergencyRequests         EmergencyRequest[]
   safetyIncidents           SafetyIncident[]
   infectionCases            InfectionCase[]
   medicationDoseLogs        PatientMedicationDoseLog[]
@@ -2572,6 +2573,7 @@ model Staff {
   complaintsCreated                  PatientComplaint[]             @relation("ComplaintCreatedBy")
   complaintsAssigned                 PatientComplaint[]             @relation("ComplaintAssignedTo")
   patientFeedbackResponded           PatientFeedback[]              @relation("PatientFeedbackRespondedBy")
+  emergencyRequestsResponded         EmergencyRequest[]             @relation("EmergencyRequestRespondedBy")
   safetyIncidentsReported            SafetyIncident[]               @relation("SafetyIncidentReportedBy")
   infectionCasesCreated              InfectionCase[]                @relation("InfectionCaseCreatedBy")
   cmdCommunicationsCreated           CmdCommunication[]             @relation("CmdCommunicationCreatedBy")
@@ -3367,6 +3369,14 @@ enum PatientFeedbackStatus {
   CLOSED
 }
 
+enum EmergencyRequestStatus {
+  SUBMITTED
+  ACKNOWLEDGED
+  DISPATCHED
+  CLOSED
+  CANCELLED
+}
+
 enum SafetyIncidentType {
   MEDICATION
   FALL
@@ -3478,6 +3488,32 @@ model PatientFeedback {
   @@index([status, createdAt])
   @@index([kind, createdAt])
   @@index([departmentId])
+}
+
+model EmergencyRequest {
+  id              String                  @id @default(uuid())
+  patient         Patient                 @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId       String
+  status          EmergencyRequestStatus  @default(SUBMITTED)
+  latitude        Float
+  longitude       Float
+  accuracyMeters  Float?
+  addressText     String?
+  description     String?
+  voiceUrl        String?
+  videoUrl        String?
+  staffNote       String?
+  respondedBy     Staff?                  @relation("EmergencyRequestRespondedBy", fields: [respondedById], references: [id], onDelete: SetNull)
+  respondedById   String?
+  acknowledgedAt  DateTime?
+  dispatchedAt    DateTime?
+  closedAt        DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([patientId])
+  @@index([status, createdAt])
 }
 
 model SafetyIncident {

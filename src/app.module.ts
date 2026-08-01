@@ -22,6 +22,8 @@ import { PatientMedicationsModule } from './modules/patient-medications/patient-
 import { PatientBillingModule } from './modules/patient-billing/patient-billing.module';
 import { PatientAppointmentsModule } from './modules/patient-appointments/patient-appointments.module';
 import { PatientFeedbackModule } from './modules/patient-feedback/patient-feedback.module';
+import { PatientEmergencyModule } from './modules/patient-emergency/patient-emergency.module';
+import { EmergencyRequestsModule } from './modules/emergency-requests/emergency-requests.module';
 import { PatientProfileModule } from './modules/patient-profile/patient-profile.module';
 import { PatientFamilyModule } from './modules/patient-family/patient-family.module';
 import { DepartmentModule } from './modules/department/department.module';
@@ -102,6 +104,8 @@ import { FcmModule } from './modules/fcm/fcm.module';
     PatientBillingModule,
     PatientAppointmentsModule,
     PatientFeedbackModule,
+    PatientEmergencyModule,
+    EmergencyRequestsModule,
     PatientProfileModule,
     PatientFamilyModule,
     DepartmentModule,
