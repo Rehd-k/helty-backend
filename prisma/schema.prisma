@@ -5168,6 +5168,23 @@ model HeltyDesktopExternalExecutable {
   @@index([createdAt])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// IMSH ANDROID (Flutter patient app .apk distribution)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ImshAndroidRelease {
+  id           String   @id @default(uuid())
+  /// Semantic version string shown to clients (e.g. 0.1.1)
+  version      String   @unique
+  /// Stored filename, e.g. imsh0.1.1.apk
+  fileName     String
+  /// Path under uploads/imsh-android/ (not the tmp folder)
+  relativePath String
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // Scanned historical OPD encounters (pre-digital chart backfill)
 model PatientArchivedEncounter {
   id                  String                             @id @default(uuid())

@@ -58,6 +58,7 @@ import { DialysisModule } from './modules/dialysis/dialysis.module';
 import { BillingAnalyticsModule } from './modules/billing-analytics/billing-analytics.module';
 import { FrontdeskModule } from './modules/frontdesk/frontdesk.module';
 import { HeltyDesktopModule } from './modules/helty-desktop/helty-desktop.module';
+import { ImshAndroidModule } from './modules/imsh-android/imsh-android.module';
 import { MedicationScheduleModule } from './modules/medication-schedule/medication-schedule.module';
 import { NursesDashboardModule } from './modules/nurses-dashboard/nurses-dashboard.module';
 import { HmoModule } from './modules/hmo/hmo.module';
@@ -148,6 +149,7 @@ import { FcmModule } from './modules/fcm/fcm.module';
     BillingAnalyticsModule,
     FrontdeskModule,
     HeltyDesktopModule,
+    ImshAndroidModule,
     NursesDashboardModule,
     MedicationScheduleModule,
     HmoModule,
