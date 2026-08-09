@@ -12,6 +12,7 @@ import { UpdateRadiologyRequestDto } from './dto/update-radiology-request.dto';
 import { UpdateRadiologyOrderItemDto } from './dto/update-radiology-order-item.dto';
 import { ListRadiologyRequestsQueryDto } from './dto/list-radiology-requests-query.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { getPatientAdmissionContext } from '../../common/utils/patient-admission-context.util';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import {
   resolveOrderingDoctorId,
@@ -227,6 +228,11 @@ export class RadiologyRequestService {
       prepared.push({ item: resolved, encounterBilled });
     }
 
+    const admissionCtx = await getPatientAdmissionContext(
+      this.prisma,
+      dto.patientId,
+    );
+
     return this.prisma.$transaction(async (tx) => {
       for (const { item, encounterBilled } of prepared) {
         if (
@@ -251,6 +257,8 @@ export class RadiologyRequestService {
           pregnancyId: pregnancyId ?? undefined,
           requestedById,
           departmentId: dto.departmentId ?? undefined,
+          admissionId: admissionCtx.admissionId,
+          wardId: admissionCtx.wardId,
           items: {
             create: prepared.map(({ item }) => ({
               clinicalNotes: item.clinicalNotes ?? null,

@@ -1,14 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import { AppointmentVisitType, MedicalSpecialty } from '@prisma/client';
+import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
 
 export class CreatePatientAppointmentDto {
-  @ApiProperty()
-  @IsString()
-  doctorId!: string;
-
-  @ApiProperty()
+  @ApiProperty({
+    description: 'Preferred appointment date (date-only YYYY-MM-DD or ISO datetime)',
+    example: '2026-08-15',
+  })
   @IsDateString()
-  scheduledAt!: string;
+  date!: string;
+
+  @ApiProperty({ enum: MedicalSpecialty })
+  @IsEnum(MedicalSpecialty)
+  specialty!: MedicalSpecialty;
+
+  @ApiProperty({ enum: AppointmentVisitType })
+  @IsEnum(AppointmentVisitType)
+  visitType!: AppointmentVisitType;
 
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()

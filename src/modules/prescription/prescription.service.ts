@@ -9,6 +9,7 @@ import {
   UpdatePrescriptionDto,
 } from './dto/create-prescription.dto';
 import { staffBriefSelect } from '../../common/constants/staff-select.constants';
+import { getPatientAdmissionContext } from '../../common/utils/patient-admission-context.util';
 
 @Injectable()
 export class PrescriptionService {
@@ -22,6 +23,10 @@ export class PrescriptionService {
       );
     }
     const { encounterId, ...rest } = createPrescriptionDto;
+    const admissionCtx = await getPatientAdmissionContext(
+      this.prisma,
+      createPrescriptionDto.patientId,
+    );
     return this.prisma.prescription.create({
       data: {
         ...rest,
@@ -29,6 +34,8 @@ export class PrescriptionService {
         ...(rest.startDate && { startDate: new Date(rest.startDate) }),
         ...(rest.endDate && { endDate: new Date(rest.endDate) }),
         createdById: '',
+        admissionId: admissionCtx.admissionId,
+        wardId: admissionCtx.wardId,
       },
     });
   }

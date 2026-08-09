@@ -8,6 +8,7 @@ import {
   RAW_COMPLETED_STATUSES,
   RAW_CONFIRMED_STATUSES,
   RAW_PENDING_STATUSES,
+  RAW_REQUESTED_STATUSES,
 } from './patient-appointments.constants';
 
 function normalizeStatus(status: string): string {
@@ -16,6 +17,9 @@ function normalizeStatus(status: string): string {
 
 export function toPortalStatus(status: string): PortalAppointmentStatus {
   const normalized = normalizeStatus(status);
+  if (RAW_REQUESTED_STATUSES.map(normalizeStatus).includes(normalized)) {
+    return PORTAL_APPOINTMENT_STATUS.REQUESTED;
+  }
   if (RAW_PENDING_STATUSES.map(normalizeStatus).includes(normalized)) {
     return PORTAL_APPOINTMENT_STATUS.PENDING;
   }
@@ -35,7 +39,8 @@ export function isUpcomingPortalStatus(status: string): boolean {
   const portal = toPortalStatus(status);
   return (
     portal === PORTAL_APPOINTMENT_STATUS.CONFIRMED ||
-    portal === PORTAL_APPOINTMENT_STATUS.PENDING
+    portal === PORTAL_APPOINTMENT_STATUS.PENDING ||
+    portal === PORTAL_APPOINTMENT_STATUS.REQUESTED
   );
 }
 
@@ -51,6 +56,8 @@ export function rawStatusesForPortal(
   portal: PortalAppointmentStatus,
 ): readonly string[] {
   switch (portal) {
+    case PORTAL_APPOINTMENT_STATUS.REQUESTED:
+      return RAW_REQUESTED_STATUSES;
     case PORTAL_APPOINTMENT_STATUS.CONFIRMED:
       return RAW_CONFIRMED_STATUSES;
     case PORTAL_APPOINTMENT_STATUS.PENDING:
@@ -80,6 +87,7 @@ export function buildAppointmentFilterWhere(
           in: [
             ...RAW_CONFIRMED_STATUSES,
             ...RAW_PENDING_STATUSES,
+            ...RAW_REQUESTED_STATUSES,
           ],
         },
       };
@@ -93,7 +101,9 @@ export function buildAppointmentFilterWhere(
     case APPOINTMENT_LIST_FILTER.PENDING:
       return {
         ...base,
-        status: { in: [...RAW_PENDING_STATUSES] },
+        status: {
+          in: [...RAW_PENDING_STATUSES, ...RAW_REQUESTED_STATUSES],
+        },
       };
     default:
       return base;

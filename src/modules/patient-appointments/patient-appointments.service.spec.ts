@@ -3,7 +3,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AccountType, MedicalSpecialty } from '@prisma/client';
+import { AccountType, AppointmentVisitType, MedicalSpecialty } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AppointmentNotificationService } from '../appointment/notification/appointment-notification.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
@@ -77,6 +77,8 @@ describe('PatientAppointmentsService', () => {
     date: futureDate,
     status: PORTAL_APPOINTMENT_STATUS.CONFIRMED,
     location: 'Wing B',
+    specialty: MedicalSpecialty.CARDIOLOGY,
+    visitType: AppointmentVisitType.IN_PERSON,
     reason: 'Follow-up',
     notes: 'Bring ECG',
     createdAt: new Date('2024-10-01T09:00:00.000Z'),
@@ -167,56 +169,48 @@ describe('PatientAppointmentsService', () => {
   });
 
   describe('createAppointment', () => {
-    it('throws 422 for past scheduledAt', async () => {
+    it('throws 422 for past date', async () => {
       await expect(
         service.createAppointment(patientUser, {
-          doctorId: 'doctor-1',
-          scheduledAt: '2020-01-01T08:30:00.000Z',
+          date: '2020-01-01',
+          specialty: MedicalSpecialty.CARDIOLOGY,
+          visitType: AppointmentVisitType.TELEMEDICINE,
         }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
-    it('throws 409 when slot is unavailable', async () => {
-      prisma.staff.findFirst.mockResolvedValue({ id: 'doctor-1' });
-      prisma.appointment.findMany.mockResolvedValue([
-        { date: futureDate },
-      ]);
-
-      await expect(
-        service.createAppointment(patientUser, {
-          doctorId: 'doctor-1',
-          scheduledAt: futureDate.toISOString(),
-        }),
-      ).rejects.toBeInstanceOf(ConflictException);
-    });
-
-    it('creates a pending appointment', async () => {
-      prisma.staff.findFirst.mockResolvedValue({ id: 'doctor-1' });
-      prisma.appointment.findMany.mockResolvedValue([]);
-      prisma.consultingRoom.findFirst.mockResolvedValue({
-        location: 'Wing B',
-        name: 'Room 204',
-      });
+    it('creates a REQUESTED appointment without a doctor', async () => {
       prisma.appointment.create.mockResolvedValue({
         ...appointmentRow,
-        status: PORTAL_APPOINTMENT_STATUS.PENDING,
+        staff: null,
+        staffId: null,
+        specialty: MedicalSpecialty.CARDIOLOGY,
+        visitType: AppointmentVisitType.TELEMEDICINE,
+        status: PORTAL_APPOINTMENT_STATUS.REQUESTED,
       });
 
       const result = await service.createAppointment(patientUser, {
-        doctorId: 'doctor-1',
-        scheduledAt: futureDate.toISOString(),
+        date: '2099-06-15',
+        specialty: MedicalSpecialty.CARDIOLOGY,
+        visitType: AppointmentVisitType.TELEMEDICINE,
         reason: 'Follow-up',
       });
 
       expect(prisma.appointment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            status: PORTAL_APPOINTMENT_STATUS.PENDING,
-            staffId: 'doctor-1',
+            status: PORTAL_APPOINTMENT_STATUS.REQUESTED,
+            staffId: null,
+            specialty: MedicalSpecialty.CARDIOLOGY,
+            visitType: AppointmentVisitType.TELEMEDICINE,
+            createdById: 'system-staff-1',
           }),
         }),
       );
-      expect(result.status).toBe(PORTAL_APPOINTMENT_STATUS.PENDING);
+      expect(prisma.staff.findFirst).not.toHaveBeenCalled();
+      expect(result.status).toBe(PORTAL_APPOINTMENT_STATUS.REQUESTED);
+      expect(result.specialty).toBe(MedicalSpecialty.CARDIOLOGY);
+      expect(result.visitType).toBe(AppointmentVisitType.TELEMEDICINE);
       expect(notificationService.notifyCreated).toHaveBeenCalledWith('appt-1');
     });
   });

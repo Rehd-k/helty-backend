@@ -106,10 +106,11 @@ export class PatientAppointmentsController {
   @AccountTypes(PATIENT_ACCOUNT_TYPE)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Book a new appointment' })
+  @ApiOperation({
+    summary: 'Request a new appointment (no doctor assignment yet)',
+  })
   @ApiResponse({ status: 201, type: AppointmentDetailDto })
-  @ApiResponse({ status: 409, description: 'Slot unavailable' })
-  @ApiResponse({ status: 422, description: 'Invalid doctorId or scheduledAt' })
+  @ApiResponse({ status: 422, description: 'Invalid date, specialty, or visitType' })
   createAppointment(
     @Request() req: { user: PatientJwtPayload },
     @Body() dto: CreatePatientAppointmentDto,

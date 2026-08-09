@@ -61,17 +61,44 @@ export class AdmissionController {
     return this.admissionService.findPendingBillingClearance(skip, take);
   }
 
+  @Get('pending-nurses-clearance')
+  @ApiOperation({
+    summary:
+      'List clinically discharged admissions awaiting nurses clearance',
+  })
+  findPendingNursesClearance(@Query() query: ListAdmissionsQueryDto) {
+    const skip = Math.max(0, parseInt(query.skip ?? '0', 10) || 0);
+    const take = Math.min(
+      100,
+      Math.max(1, parseInt(query.take ?? '20', 10) || 20),
+    );
+    return this.admissionService.findPendingNursesClearance(skip, take);
+  }
+
   @Post(':id/billing-clearance')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Finalize admission after billing clearance (move patient to OPD when paid)',
+      'Record billing clearance; finalize when nurses clearance is also done',
   })
   clearBillingClearance(
     @Param('id') id: string,
     @Req() req: { user: { sub: string } },
   ) {
     return this.admissionService.clearBillingClearance(id, req.user.sub);
+  }
+
+  @Post(':id/nurses-clearance')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Record nurses clearance; finalize to OPD when billing clearance is also done',
+  })
+  clearNursesClearance(
+    @Param('id') id: string,
+    @Req() req: { user: { sub: string } },
+  ) {
+    return this.admissionService.clearNursesClearance(id, req.user.sub);
   }
 
   @Get('active')

@@ -1773,6 +1773,7 @@ describe('InvoiceService', () => {
         id: string;
         invoiceID: string;
         createdAt: Date;
+        status?: InvoiceStatus;
         vitalsId?: string | null;
         encounterId?: string | null;
         consultingRoomId?: string | null;
@@ -1787,7 +1788,7 @@ describe('InvoiceService', () => {
             options.invoices.map((inv) => ({
               ...inv,
               patientId,
-              status: InvoiceStatus.PENDING,
+              status: inv.status ?? InvoiceStatus.PENDING,
               vitalsId: inv.vitalsId ?? null,
               encounterId: inv.encounterId ?? null,
               consultingRoomId: inv.consultingRoomId ?? null,
@@ -1890,23 +1891,48 @@ describe('InvoiceService', () => {
       expect(tx.invoice.delete).not.toHaveBeenCalled();
     });
 
-    it('ignores PARTIALLY_PAID invoices because only PENDING rows are loaded', async () => {
+    it('includes PARTIALLY_PAID invoices and prefers the oldest open as target', async () => {
       const { tx } = createConsolidationTx({
         invoices: [
-          { id: 'inv-pending', invoiceID: 'PEND000001', createdAt: new Date('2026-01-01') },
+          {
+            id: 'inv-partial',
+            invoiceID: 'PART000001',
+            createdAt: new Date('2026-01-01'),
+            status: InvoiceStatus.PARTIALLY_PAID,
+          },
+          {
+            id: 'inv-pending',
+            invoiceID: 'PEND000002',
+            createdAt: new Date('2026-01-02'),
+            status: InvoiceStatus.PENDING,
+          },
         ],
         itemsByInvoice: {
           'inv-pending': [movableItem('item-pending')],
         },
       });
       const service = createInvoiceService({} as any);
+      jest.spyOn(service, 'recalculateInvoiceTotals').mockResolvedValue({} as any);
 
       const result = await service.consolidatePendingInvoicesForPatient(patientId, tx);
 
-      expect(result.mergedCount).toBe(0);
+      expect(result).toEqual({
+        targetInvoiceId: 'inv-partial',
+        mergedCount: 1,
+        deletedCount: 1,
+        skippedSourceIds: [],
+      });
       expect(tx.invoice.findMany).toHaveBeenCalledWith({
-        where: { patientId, status: InvoiceStatus.PENDING },
+        where: {
+          patientId,
+          status: {
+            in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID],
+          },
+        },
         orderBy: { createdAt: 'asc' },
+      });
+      expect(tx.invoice.delete).toHaveBeenCalledWith({
+        where: { id: 'inv-pending' },
       });
     });
 

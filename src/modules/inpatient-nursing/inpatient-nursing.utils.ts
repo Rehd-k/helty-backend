@@ -32,11 +32,14 @@ export async function assertAdmissionExists(
   return admission;
 }
 
-/** Block writes when admission is no longer active (optional strictness). */
+/** Allow writes while active or awaiting discharge clearances. */
 export function assertAdmissionWritable(admission: {
   status: AdmissionStatus;
 }) {
-  if (admission.status !== AdmissionStatus.ACTIVE) {
+  const writable =
+    admission.status === AdmissionStatus.ACTIVE ||
+    admission.status === AdmissionStatus.PENDING_BILLING_CLEARANCE;
+  if (!writable) {
     throw new ForbiddenException(
       'This admission is not active; nursing actions are not allowed.',
     );

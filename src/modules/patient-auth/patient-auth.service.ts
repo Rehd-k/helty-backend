@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -121,13 +120,6 @@ export class PatientAuthService {
       where: { deviceKey },
     });
 
-    if (existing && existing.patientId !== patientId) {
-      throw new ConflictException({
-        message: 'This device is already registered to another patient.',
-        code: 'DEVICE_OWNED_BY_OTHER_PATIENT',
-      });
-    }
-
     if (fcmToken) {
       const tokenOwner = await this.prisma.patientDevice.findUnique({
         where: { fcmToken },
@@ -139,6 +131,23 @@ export class PatientAuthService {
           data: { fcmToken: null },
         });
       }
+    }
+
+    if (existing && existing.patientId !== patientId) {
+      return this.prisma.patientDevice.update({
+        where: { id: existing.id },
+        data: {
+          patientId,
+          status: PatientDeviceStatus.PENDING,
+          approvedAt: null,
+          approvedById: null,
+          platform,
+          deviceLabel,
+          ...(fcmToken ? { fcmToken } : {}),
+          lastSeenAt: now,
+        },
+        select: DEVICE_SELECT,
+      });
     }
 
     if (existing) {

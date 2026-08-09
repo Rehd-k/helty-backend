@@ -4,7 +4,7 @@ import {
   IsOptional,
   IsDateString,
   IsEnum,
-  IsPhoneNumber,
+  IsBoolean,
   MinLength,
   MaxLength,
   IsUUID,
@@ -12,7 +12,8 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PatientStatus } from '@prisma/client';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { transformForceCreateFlag } from './similar-matches.dto';
 
 export enum Title {
   MR = 'Mr',
@@ -162,6 +163,15 @@ export class CreatePatientDto {
   @IsString()
   @IsOptional()
   cardNo?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'When true, skip similar-name+DOB conflict and create anyway. Phone uniqueness is still enforced.',
+  })
+  @IsOptional()
+  @Transform(transformForceCreateFlag)
+  @IsBoolean()
+  forceCreate?: boolean;
 }
 
 export class UpdatePatientDto {

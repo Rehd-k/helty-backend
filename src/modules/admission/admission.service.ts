@@ -34,6 +34,9 @@ const ADMISSION_UPDATE_INCLUDE = {
   billingClearedBy: {
     select: { id: true, firstName: true, lastName: true },
   },
+  nursesClearedBy: {
+    select: { id: true, firstName: true, lastName: true },
+  },
 } as const;
 
 @Injectable()
@@ -239,6 +242,9 @@ export class AdmissionService {
       outcome: string;
       staffId: string;
       billingClearedById?: string;
+      nursesClearedById?: string;
+      billingClearedAt?: Date | null;
+      nursesClearedAt?: Date | null;
     },
   ) {
     const isDeath = params.outcome === 'Death';
@@ -270,14 +276,78 @@ export class AdmissionService {
       data: {
         status: isDeath ? AdmissionStatus.DECEASED : AdmissionStatus.DISCHARGED,
         updatedById: params.staffId,
-        ...(params.billingClearedById
-          ? {
-            billingClearedById: params.billingClearedById,
-            billingClearedAt: clearedAt,
-          }
-          : {}),
+        billingClearedById:
+          params.billingClearedById ?? undefined,
+        billingClearedAt: params.billingClearedById
+          ? (params.billingClearedAt ?? clearedAt)
+          : undefined,
+        nursesClearedById: params.nursesClearedById ?? undefined,
+        nursesClearedAt: params.nursesClearedById
+          ? (params.nursesClearedAt ?? clearedAt)
+          : undefined,
       },
       include: ADMISSION_UPDATE_INCLUDE,
+    });
+  }
+
+  private async tryFinalizePendingClearance(
+    tx: Prisma.TransactionClient,
+    admission: {
+      id: string;
+      patientId: string;
+      outcome: string | null;
+      billingClearedAt: Date | null;
+      nursesClearedAt: Date | null;
+    },
+    staffId: string,
+  ) {
+    if (!admission.outcome) {
+      throw new BadRequestException(
+        'Admission has no discharge outcome recorded.',
+      );
+    }
+    if (!admission.billingClearedAt || !admission.nursesClearedAt) {
+      return tx.admission.findUniqueOrThrow({
+        where: { id: admission.id },
+        include: ADMISSION_UPDATE_INCLUDE,
+      });
+    }
+    return this.finalizeAdmission(tx, {
+      admissionId: admission.id,
+      patientId: admission.patientId,
+      outcome: admission.outcome,
+      staffId,
+    });
+  }
+
+  private async recordWardHistory(
+    tx: Prisma.TransactionClient,
+    params: {
+      admissionId: string;
+      fromWardId?: string | null;
+      toWardId?: string | null;
+      fromBedId?: string | null;
+      toBedId?: string | null;
+      changedById: string;
+      reason?: string | null;
+    },
+  ) {
+    if (
+      params.fromWardId === params.toWardId &&
+      params.fromBedId === params.toBedId
+    ) {
+      return;
+    }
+    await tx.admissionWardHistory.create({
+      data: {
+        admissionId: params.admissionId,
+        fromWardId: params.fromWardId ?? null,
+        toWardId: params.toWardId ?? null,
+        fromBedId: params.fromBedId ?? null,
+        toBedId: params.toBedId ?? null,
+        changedById: params.changedById,
+        reason: params.reason ?? null,
+      },
     });
   }
 
@@ -352,6 +422,18 @@ export class AdmissionService {
       },
     });
 
+    await this.prisma.admissionWardHistory.create({
+      data: {
+        admissionId: admission.id,
+        fromWardId: null,
+        toWardId: createAdmissionDto.wardId ?? null,
+        fromBedId: null,
+        toBedId: createAdmissionDto.bedId ?? null,
+        changedById: req.user.sub,
+        reason: 'Admission',
+      },
+    });
+
     return this.prisma.admission.findUnique({
       where: { id: admission.id },
       include: {
@@ -402,7 +484,10 @@ export class AdmissionService {
   }
 
   async findPendingBillingClearance(skip = 0, take = 20) {
-    const where = { status: AdmissionStatus.PENDING_BILLING_CLEARANCE };
+    const where = {
+      status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+      billingClearedAt: null,
+    };
 
     const [admissions, total] = await Promise.all([
       this.prisma.admission.findMany({
@@ -479,6 +564,9 @@ export class AdmissionService {
           'Admission has no discharge outcome recorded.',
         );
       }
+      if (admission.billingClearedAt) {
+        throw new BadRequestException('Billing clearance already recorded.');
+      }
 
       const invoices = await this.getAdmissionInvoices(tx, admission);
       const invoiceIds = invoices.map((invoice) => invoice.id);
@@ -495,14 +583,98 @@ export class AdmissionService {
         });
       }
 
-      return this.finalizeAdmission(tx, {
-        admissionId: admission.id,
-        patientId: admission.patientId,
-        outcome: admission.outcome,
-        staffId,
-        billingClearedById: staffId,
+      const clearedAt = new Date();
+      const updated = await tx.admission.update({
+        where: { id: admission.id },
+        data: {
+          billingClearedAt: clearedAt,
+          billingClearedById: staffId,
+          updatedById: staffId,
+        },
+        include: ADMISSION_UPDATE_INCLUDE,
       });
+
+      return this.tryFinalizePendingClearance(
+        tx,
+        {
+          id: updated.id,
+          patientId: updated.patientId,
+          outcome: updated.outcome,
+          billingClearedAt: updated.billingClearedAt,
+          nursesClearedAt: updated.nursesClearedAt,
+        },
+        staffId,
+      );
     });
+  }
+
+  async clearNursesClearance(admissionId: string, staffId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const admission = await tx.admission.findUnique({
+        where: { id: admissionId },
+      });
+      if (!admission) {
+        throw new NotFoundException('Admission not found');
+      }
+      if (admission.status !== AdmissionStatus.PENDING_BILLING_CLEARANCE) {
+        throw new BadRequestException(
+          'Admission is not awaiting discharge clearance.',
+        );
+      }
+      if (!admission.outcome) {
+        throw new BadRequestException(
+          'Admission has no discharge outcome recorded.',
+        );
+      }
+      if (admission.nursesClearedAt) {
+        throw new BadRequestException('Nurses clearance already recorded.');
+      }
+
+      const clearedAt = new Date();
+      const updated = await tx.admission.update({
+        where: { id: admission.id },
+        data: {
+          nursesClearedAt: clearedAt,
+          nursesClearedById: staffId,
+          updatedById: staffId,
+        },
+        include: ADMISSION_UPDATE_INCLUDE,
+      });
+
+      return this.tryFinalizePendingClearance(
+        tx,
+        {
+          id: updated.id,
+          patientId: updated.patientId,
+          outcome: updated.outcome,
+          billingClearedAt: updated.billingClearedAt,
+          nursesClearedAt: updated.nursesClearedAt,
+        },
+        staffId,
+      );
+    });
+  }
+
+  async findPendingNursesClearance(skip = 0, take = 20) {
+    const where = {
+      status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+      nursesClearedAt: null,
+    };
+    const [admissions, total] = await Promise.all([
+      this.prisma.admission.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { dischargeDateTime: 'asc' },
+        include: {
+          ...ADMISSION_UPDATE_INCLUDE,
+          attendingDoctor: { select: staffBriefSelect },
+          createdBy: { select: staffBriefSelect },
+        },
+      }),
+      this.prisma.admission.count({ where }),
+    ]);
+    return { admissions, total, skip, take };
   }
 
   async findOne(id: string) {
@@ -606,6 +778,17 @@ export class AdmissionService {
         billingClearedBy: {
           select: { id: true, firstName: true, lastName: true },
         },
+        nursesClearedBy: {
+          select: { id: true, firstName: true, lastName: true },
+        },
+        wardHistory: {
+          orderBy: { changedAt: 'asc' },
+          include: {
+            fromWard: { select: { id: true, name: true } },
+            toWard: { select: { id: true, name: true } },
+            changedBy: { select: staffBriefSelect },
+          },
+        },
         createdBy: {
           select: staffBriefSelect,
         },
@@ -650,20 +833,53 @@ export class AdmissionService {
     staffId: string,
   ) {
     if (!updateAdmissionDto.dischargeDate) {
-      return this.prisma.admission.update({
-        where: { id },
-        data: {
-          ward: updateAdmissionDto.ward,
-          wardId: updateAdmissionDto.wardId,
-          bedId: updateAdmissionDto.bedId,
-          room: updateAdmissionDto.room,
-          reason: updateAdmissionDto.reason,
-          updatedById: staffId,
-          ...(updateAdmissionDto.attendingDoctorId !== undefined && {
-            attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
-          }),
-        },
-        include: ADMISSION_UPDATE_INCLUDE,
+      return this.prisma.$transaction(async (tx) => {
+        const existing = await tx.admission.findUnique({ where: { id } });
+        if (!existing) throw new NotFoundException('Admission not found');
+
+        const nextWardId =
+          updateAdmissionDto.wardId !== undefined
+            ? updateAdmissionDto.wardId
+            : existing.wardId;
+        const nextBedId =
+          updateAdmissionDto.bedId !== undefined
+            ? updateAdmissionDto.bedId
+            : existing.bedId;
+
+        const updated = await tx.admission.update({
+          where: { id },
+          data: {
+            ward: updateAdmissionDto.ward,
+            wardId: updateAdmissionDto.wardId,
+            bedId: updateAdmissionDto.bedId,
+            room: updateAdmissionDto.room,
+            reason: updateAdmissionDto.reason,
+            updatedById: staffId,
+            ...(updateAdmissionDto.attendingDoctorId !== undefined && {
+              attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
+            }),
+          },
+          include: ADMISSION_UPDATE_INCLUDE,
+        });
+
+        await this.recordWardHistory(tx, {
+          admissionId: id,
+          fromWardId: existing.wardId,
+          toWardId: nextWardId,
+          fromBedId: existing.bedId,
+          toBedId: nextBedId,
+          changedById: staffId,
+          reason: 'Ward/bed change',
+        });
+
+        if (nextWardId && nextWardId !== existing.wardId) {
+          await tx.patient.update({
+            where: { id: existing.patientId },
+            data: { wardId: nextWardId, updatedById: staffId },
+          });
+        }
+
+        return updated;
       });
     }
 
@@ -708,12 +924,14 @@ export class AdmissionService {
         admission.bed?.bedNumber ??
         null;
 
+      const allPaid = await this.areAllAdmissionInvoicesPaid(tx, invoiceIds);
       const clinicalData = {
         dischargeDate: dischargedAt,
         dischargeDateTime: dischargedAt,
         outcome,
         dischargeSummary,
         bedId: null,
+        clinicallyDischargedAt: dischargedAt,
         clinicallyDischargedById: staffId,
         ward: updateAdmissionDto.ward,
         room: roomSnapshot,
@@ -722,6 +940,12 @@ export class AdmissionService {
         ...(updateAdmissionDto.attendingDoctorId !== undefined && {
           attendingDoctorId: updateAdmissionDto.attendingDoctorId || null,
         }),
+        ...(allPaid && !isDeath
+          ? {
+              billingClearedAt: dischargedAt,
+              billingClearedById: staffId,
+            }
+          : {}),
       };
 
       if (isDeath) {
@@ -734,24 +958,12 @@ export class AdmissionService {
           patientId: admission.patientId,
           outcome,
           staffId,
-        });
-      }
-
-      const allPaid = await this.areAllAdmissionInvoicesPaid(tx, invoiceIds);
-      if (allPaid) {
-        await tx.admission.update({
-          where: { id },
-          data: clinicalData,
-        });
-        return this.finalizeAdmission(tx, {
-          admissionId: id,
-          patientId: admission.patientId,
-          outcome,
-          staffId,
           billingClearedById: staffId,
+          nursesClearedById: staffId,
         });
       }
 
+      // Always require nurses clearance; billing may already be auto-cleared if paid.
       return tx.admission.update({
         where: { id },
         data: {

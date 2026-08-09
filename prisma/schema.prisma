@@ -188,6 +188,44 @@ enum CustomPushTargetType {
   SELECTED
 }
 
+model HealthCampaign {
+  id          String    @id @default(uuid())
+  title       String
+  body        String
+  imageUrl    String?
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  isPublished Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   Staff     @relation("HealthCampaignCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?    @relation("HealthCampaignUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  @@index([isPublished, publishedAt])
+  @@index([expiresAt])
+}
+
+model HealthNewsArticle {
+  id          String    @id @default(uuid())
+  title       String
+  body        String
+  imageUrl    String?
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  isPublished Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   Staff     @relation("HealthNewsArticleCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?    @relation("HealthNewsArticleUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  @@index([isPublished, publishedAt])
+  @@index([expiresAt])
+}
+
 model CustomPushNotification {
   id            String               @id @default(uuid())
   title         String
@@ -213,6 +251,11 @@ enum AppointmentNotificationStatus {
   FAILED
 }
 
+enum AppointmentVisitType {
+  IN_PERSON
+  TELEMEDICINE
+}
+
 model Appointment {
   id        String   @id @default(uuid())
   patient   Patient  @relation(fields: [patientId], references: [id])
@@ -223,6 +266,9 @@ model Appointment {
   notes     String?
   location  String?
   referral  String?
+  /// MedicalSpecialty enum value when patient requests without a doctor.
+  specialty String?
+  visitType AppointmentVisitType @default(IN_PERSON)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   staffId   String?
@@ -235,6 +281,10 @@ model Appointment {
   createdById String
   updatedBy   Staff?  @relation("AppointmentUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+
+  @@index([status])
+  @@index([specialty])
+  @@index([visitType])
 }
 
 model AppointmentNotification {
@@ -289,12 +339,17 @@ model Admission {
   dischargeSummary   String?
   outcome            String?
 
+  clinicallyDischargedAt   DateTime?
   clinicallyDischargedBy   Staff?    @relation("AdmissionClinicallyDischargedBy", fields: [clinicallyDischargedById], references: [id])
   clinicallyDischargedById String?
   billingClearedAt         DateTime?
   billingClearedBy         Staff?    @relation("AdmissionBillingClearedBy", fields: [billingClearedById], references: [id])
   billingClearedById       String?
+  nursesClearedAt          DateTime?
+  nursesClearedBy          Staff?    @relation("AdmissionNursesClearedBy", fields: [nursesClearedById], references: [id])
+  nursesClearedById        String?
 
+  wardHistory               AdmissionWardHistory[]
   nurseAssignments          NurseAssignment[]
   medicationOrders          MedicationOrder[]
   medicationAdministrations MedicationAdministration[]
@@ -322,6 +377,10 @@ model Admission {
   referrals             Referral[]
   safetyIncidents       SafetyIncident[]
   infectionCases        InfectionCase[]
+  prescriptions         Prescription[]
+  labRequests           LabRequest[]
+  radiologyOrders       RadiologyOrder[]
+  medicationRequests    MedicationRequest[]
 
   createdBy   Staff   @relation("AdmissionCreatedBy", fields: [createdById], references: [id])
   createdById String
@@ -331,6 +390,29 @@ model Admission {
   @@index([patientId])
   @@index([status])
   @@index([attendingDoctorId])
+}
+
+model AdmissionWardHistory {
+  id          String    @id @default(uuid())
+  admission   Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  admissionId String
+  fromWard    Ward?     @relation("AdmissionWardHistoryFrom", fields: [fromWardId], references: [id], onDelete: SetNull)
+  fromWardId  String?
+  toWard      Ward?     @relation("AdmissionWardHistoryTo", fields: [toWardId], references: [id], onDelete: SetNull)
+  toWardId    String?
+  fromBed     Bed?      @relation("AdmissionWardHistoryFromBed", fields: [fromBedId], references: [id], onDelete: SetNull)
+  fromBedId   String?
+  toBed       Bed?      @relation("AdmissionWardHistoryToBed", fields: [toBedId], references: [id], onDelete: SetNull)
+  toBedId     String?
+  reason      String?
+  changedAt   DateTime  @default(now())
+  changedBy   Staff?    @relation("AdmissionWardHistoryChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+  changedById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([admissionId])
+  @@index([toWardId])
+  @@index([changedAt])
 }
 
 model Payment {
@@ -417,6 +499,10 @@ model Prescription {
   patientId   String
   encounter   Encounter? @relation(fields: [encounterId], references: [id])
   encounterId String?
+  admission   Admission? @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId String?
+  ward        Ward?      @relation("PrescriptionRequestWard", fields: [wardId], references: [id], onDelete: SetNull)
+  wardId      String?
   // Legacy simple fields (kept nullable for backward compatibility)
   drug        String?
   dosage      String?
@@ -440,6 +526,9 @@ model Prescription {
   createdById String
   updatedBy   Staff?  @relation("PrescriptionUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+
+  @@index([admissionId])
+  @@index([wardId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2475,7 +2564,13 @@ model Staff {
   pharmacyLocationAssigned            PharmacyLocation?           @relation("PharmacyLocationStaff")
   admissionsAsAttendingDoctor         Admission[]                 @relation("AdmissionAttendingDoctor")
   admissionsClinicallyDischarged        Admission[]                 @relation("AdmissionClinicallyDischargedBy")
-  admissionsBillingCleared            Admission[]                 @relation("AdmissionBillingClearedBy")
+  admissionsBillingCleared              Admission[]                 @relation("AdmissionBillingClearedBy")
+  admissionsNursesCleared               Admission[]                 @relation("AdmissionNursesClearedBy")
+  admissionWardHistoryChanges           AdmissionWardHistory[]      @relation("AdmissionWardHistoryChangedBy")
+  healthCampaignsCreated                HealthCampaign[]            @relation("HealthCampaignCreatedBy")
+  healthCampaignsUpdated                HealthCampaign[]            @relation("HealthCampaignUpdatedBy")
+  healthNewsArticlesCreated             HealthNewsArticle[]         @relation("HealthNewsArticleCreatedBy")
+  healthNewsArticlesUpdated             HealthNewsArticle[]         @relation("HealthNewsArticleUpdatedBy")
   wardRoundNotes                      WardRoundNote[]
   pregnanciesCreated                  Pregnancy[]                 @relation("PregnancyCreatedBy")
   pregnanciesUpdated                  Pregnancy[]                 @relation("PregnancyUpdatedBy")
@@ -2974,6 +3069,10 @@ model LabRequest {
   encounterId         String
   patient             Patient          @relation(fields: [patientId], references: [id])
   patientId           String
+  admission           Admission?       @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId         String?
+  ward                Ward?            @relation("LabRequestWard", fields: [wardId], references: [id], onDelete: SetNull)
+  wardId              String?
   requestedBy         Staff            @relation("LabRequestOrderedBy", fields: [requestedByDoctorId], references: [id])
   requestedByDoctorId String
   testType            String?
@@ -2990,6 +3089,8 @@ model LabRequest {
 
   @@index([invoiceId])
   @@index([pregnancyId])
+  @@index([admissionId])
+  @@index([wardId])
 }
 
 // InsuranceClaim: insurance coverage applied to an invoice
@@ -3141,6 +3242,12 @@ model Ward {
   admissions           Admission[]        @relation("WardAdmissions")
   nurseShiftRosters    NurseShiftRoster[]
   assignedChargeNurses Staff[]
+  wardHistoryFrom      AdmissionWardHistory[] @relation("AdmissionWardHistoryFrom")
+  wardHistoryTo        AdmissionWardHistory[] @relation("AdmissionWardHistoryTo")
+  labRequests          LabRequest[]           @relation("LabRequestWard")
+  radiologyOrders      RadiologyOrder[]       @relation("RadiologyOrderWard")
+  prescriptions        Prescription[]         @relation("PrescriptionRequestWard")
+  medicationRequests   MedicationRequest[]    @relation("MedicationRequestWard")
 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -3156,6 +3263,8 @@ model Bed {
   status    BedStatus @default(AVAILABLE)
 
   admissions Admission[] @relation("BedAdmissions")
+  wardHistoryFrom AdmissionWardHistory[] @relation("AdmissionWardHistoryFromBed")
+  wardHistoryTo   AdmissionWardHistory[] @relation("AdmissionWardHistoryToBed")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -3275,6 +3384,10 @@ model MedicationRequest {
   encounter          Encounter               @relation(fields: [encounterId], references: [id], onDelete: Cascade)
   patientId          String
   patient            Patient                 @relation(fields: [patientId], references: [id])
+  admission          Admission?              @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId        String?
+  ward               Ward?                   @relation("MedicationRequestWard", fields: [wardId], references: [id], onDelete: SetNull)
+  wardId             String?
   requestedQuantity  Int
   requestedByNurseId String
   requestedByNurse   Staff                   @relation("MedicationRequestRequestedBy", fields: [requestedByNurseId], references: [id])
@@ -3293,6 +3406,8 @@ model MedicationRequest {
   @@index([patientId])
   @@index([status])
   @@index([invoiceItemId])
+  @@index([admissionId])
+  @@index([wardId])
 }
 
 model LegacyLabCatalog {
@@ -4539,6 +4654,10 @@ model RadiologyOrder {
   patientId     String
   encounter     Encounter?             @relation(fields: [encounterId], references: [id], onDelete: SetNull)
   encounterId   String?
+  admission     Admission?             @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId   String?
+  ward          Ward?                  @relation("RadiologyOrderWard", fields: [wardId], references: [id], onDelete: SetNull)
+  wardId        String?
   requestedBy   Staff                  @relation("RadiologyOrderOrderedBy", fields: [requestedById], references: [id])
   requestedById String
   department    Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -4556,6 +4675,8 @@ model RadiologyOrder {
   @@index([requestedById])
   @@index([createdAt])
   @@index([pregnancyId])
+  @@index([admissionId])
+  @@index([wardId])
 }
 
 model RadiologyOrderItem {

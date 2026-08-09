@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AppointmentVisitType } from '@prisma/client';
 
 export class AppointmentDoctorDto {
   @ApiProperty()
@@ -18,14 +19,25 @@ export class AppointmentSummaryDto {
   @ApiProperty()
   id!: string;
 
-  @ApiProperty({ enum: ['CONFIRMED', 'PENDING', 'CANCELLED', 'COMPLETED'] })
-  status!: 'CONFIRMED' | 'PENDING' | 'CANCELLED' | 'COMPLETED';
+  @ApiProperty({
+    enum: ['REQUESTED', 'CONFIRMED', 'PENDING', 'CANCELLED', 'COMPLETED'],
+  })
+  status!: 'REQUESTED' | 'CONFIRMED' | 'PENDING' | 'CANCELLED' | 'COMPLETED';
 
   @ApiProperty()
   scheduledAt!: Date;
 
   @ApiPropertyOptional({ nullable: true })
   location!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'MedicalSpecialty enum value when requested without a doctor',
+  })
+  specialty!: string | null;
+
+  @ApiProperty({ enum: AppointmentVisitType })
+  visitType!: AppointmentVisitType;
 
   @ApiProperty({ type: AppointmentDoctorDto })
   doctor!: AppointmentDoctorDto;

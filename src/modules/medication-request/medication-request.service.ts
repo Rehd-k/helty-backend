@@ -18,6 +18,7 @@ import {
   UpdateMedicationRequestDto,
 } from './dto/create-medication-request.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { getPatientAdmissionContext } from '../../common/utils/patient-admission-context.util';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { medicationRequestWithDetailsInclude } from './medication-request-includes';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
@@ -250,6 +251,11 @@ export class MedicationRequestService {
       );
     }
 
+    const admissionCtx = await getPatientAdmissionContext(
+      this.prisma,
+      order.patientId,
+    );
+
     return this.prisma.medicationRequest.create({
       data: {
         medicationOrderId: order.id,
@@ -258,6 +264,8 @@ export class MedicationRequestService {
         requestedQuantity: dto.requestedQuantity,
         requestedByNurseId: dto.requestedByNurseId,
         notes: dto.notes ?? undefined,
+        admissionId: admissionCtx.admissionId,
+        wardId: admissionCtx.wardId,
       },
       include: medicationRequestWithDetailsInclude,
     });

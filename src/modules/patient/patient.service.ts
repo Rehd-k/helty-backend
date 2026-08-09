@@ -17,11 +17,140 @@ import {
 } from '../../common/utils/patient-name-search.util';
 import { staffBriefSelect } from '../../common/constants/staff-select.constants';
 
+export type SimilarPatientMatch = {
+  id: string;
+  patientId: string | null;
+  firstName: string | null;
+  surname: string | null;
+  otherName: string | null;
+  dob: Date | null;
+  phoneNumber: string | null;
+};
+
+/** Tables with a simple `patientId` FK that can be bulk-reassigned on merge. */
+const PATIENT_FK_UPDATE_MANY = [
+  'appointment',
+  'appointmentNotification',
+  'admission',
+  'payment',
+  'medicalHistory',
+  'doctorReport',
+  'labReport',
+  'radiologyReport',
+  'prescription',
+  'patientMedicationDoseLog',
+  'prescriptionRefillRequest',
+  'consumableUsageEvent',
+  'invoice',
+  'encounter',
+  'labRequest',
+  'patientVitals',
+  'waitingPatient',
+  'patientAllergy',
+  'medicationOrder',
+  'medicationRequest',
+  'referral',
+  'patientComplaint',
+  'patientFeedback',
+  'emergencyRequest',
+  'safetyIncident',
+  'infectionCase',
+  'labOrder',
+  'dialysisSession',
+  'pregnancy',
+  'postnatalVisit',
+  'gynaeProcedure',
+  'surgeryRequest',
+  'radiologyOrder',
+  'patientArchivedEncounter',
+] as const;
+
 @Injectable()
 export class PatientService {
   private readonly logger = new Logger(PatientService.name);
 
   constructor(private prisma: PrismaService) { }
+
+  private similarMatchSelect = {
+    id: true,
+    patientId: true,
+    firstName: true,
+    surname: true,
+    otherName: true,
+    dob: true,
+    phoneNumber: true,
+  } as const;
+
+  /**
+   * Case-insensitive name similarity + same calendar DOB.
+   * Uses contains/equals-style Prisma filters (practical fuzzy match).
+   */
+  async findSimilarMatches(input: {
+    firstName: string;
+    surname: string;
+    otherName?: string;
+    dob: string | Date;
+  }): Promise<SimilarPatientMatch[]> {
+    const firstName = input.firstName.trim();
+    const surname = input.surname.trim();
+    const otherName = input.otherName?.trim();
+    const dobAnchor = input.dob instanceof Date ? input.dob : new Date(input.dob);
+    if (Number.isNaN(dobAnchor.getTime())) {
+      throw new BadRequestException('Invalid date of birth.');
+    }
+    if (!firstName || !surname) {
+      throw new BadRequestException('firstName and surname are required.');
+    }
+
+    const dobFrom = startOfDay(dobAnchor);
+    const dobTo = endOfDay(dobAnchor);
+
+    const nameAnd: Prisma.PatientWhereInput[] = [
+      {
+        OR: [
+          { firstName: { equals: firstName, mode: 'insensitive' } },
+          { firstName: { contains: firstName, mode: 'insensitive' } },
+        ],
+      },
+      {
+        OR: [
+          { surname: { equals: surname, mode: 'insensitive' } },
+          { surname: { contains: surname, mode: 'insensitive' } },
+        ],
+      },
+    ];
+
+    if (otherName) {
+      nameAnd.push({
+        OR: [
+          { otherName: { equals: otherName, mode: 'insensitive' } },
+          { otherName: { contains: otherName, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    const normalized = normalizePatientSearchName(firstName, otherName, surname);
+    const where: Prisma.PatientWhereInput = {
+      AND: [
+        { dob: { gte: dobFrom, lte: dobTo } },
+        {
+          OR: [
+            { AND: nameAnd },
+            ...(normalized
+              ? [{ searchName: { contains: normalized, mode: 'insensitive' as const } }]
+              : []),
+          ],
+        },
+      ],
+    };
+
+    return this.prisma.patient.findMany({
+      where,
+      select: this.similarMatchSelect,
+      take: 50,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
   /** Ward whose trimmed name is `OPD` (same rule as `update` ward handling). */
   private async resolveOpdWardId(): Promise<string> {
@@ -40,10 +169,13 @@ export class PatientService {
   async create(
     createPatientDto: CreatePatientDto,
     req: { user: { sub: string } },
+    options?: { forceCreate?: boolean },
   ) {
     const staffId = req.user.sub;
     const wardId = createPatientDto.wardId;
     const hmoId = createPatientDto.hmoId;
+    const forceCreate =
+      options?.forceCreate === true || createPatientDto.forceCreate === true;
 
     const [staff, ward, hmo] = await Promise.all([
       this.prisma.staff.findUnique({ where: { id: staffId } }),
@@ -63,6 +195,41 @@ export class PatientService {
     }
     if (hmoId && !hmo) {
       throw new NotFoundException(`HMO "${hmoId}" not found.`);
+    }
+
+    // Hard phone uniqueness — never bypassed by forceCreate.
+    if (createPatientDto.phoneNumber) {
+      const phoneOwner = await this.prisma.patient.findUnique({
+        where: { phoneNumber: createPatientDto.phoneNumber },
+        select: { id: true },
+      });
+      if (phoneOwner) {
+        throw new ConflictException(
+          'This phone number is already registered.',
+        );
+      }
+    }
+
+    if (
+      !forceCreate &&
+      createPatientDto.firstName &&
+      createPatientDto.surname &&
+      createPatientDto.dob
+    ) {
+      const candidates = await this.findSimilarMatches({
+        firstName: createPatientDto.firstName,
+        surname: createPatientDto.surname,
+        otherName: createPatientDto.otherName,
+        dob: createPatientDto.dob,
+      });
+      if (candidates.length > 0) {
+        throw new ConflictException({
+          message:
+            'Similar patient records found. Confirm identity or pass forceCreate=true to register anyway.',
+          code: 'PATIENT_SIMILAR_MATCHES',
+          candidates,
+        });
+      }
     }
 
     const patientId = generateHumanReadableId();
@@ -122,7 +289,7 @@ export class PatientService {
       }
       const newPatient = await this.prisma.patient.create({ data });
       this.logger.log(
-        `Patient created id=${newPatient.id} patientId=${patientId}`,
+        `Patient created id=${newPatient.id} patientId=${patientId} forceCreate=${forceCreate}`,
       );
       return newPatient;
     } catch (e) {
@@ -139,6 +306,187 @@ export class PatientService {
       }
       throw e;
     }
+  }
+
+  /**
+   * Super-admin merge: reassign all patient FK rows from duplicate → survivor, then delete duplicate.
+   * Survivor keeps unique fields (phoneNumber, patientId). Devices on the duplicate are deleted.
+   */
+  async mergePatients(
+    survivorId: string,
+    duplicateId: string,
+    actorStaffId: string,
+  ) {
+    if (survivorId === duplicateId) {
+      throw new BadRequestException(
+        'survivorId and duplicateId must be different patients.',
+      );
+    }
+
+    const [survivor, duplicate, actor] = await Promise.all([
+      this.prisma.patient.findUnique({ where: { id: survivorId } }),
+      this.prisma.patient.findUnique({ where: { id: duplicateId } }),
+      this.prisma.staff.findUnique({
+        where: { id: actorStaffId },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!survivor) {
+      throw new NotFoundException(`Survivor patient "${survivorId}" not found.`);
+    }
+    if (!duplicate) {
+      throw new NotFoundException(
+        `Duplicate patient "${duplicateId}" not found.`,
+      );
+    }
+    if (!actor) {
+      throw new NotFoundException(`Staff "${actorStaffId}" not found.`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Devices: unique deviceKey / fcmToken — drop duplicate's devices.
+      await tx.patientDevice.deleteMany({ where: { patientId: duplicateId } });
+
+      // Wallet: patientId is unique — merge transactions then remove duplicate wallet.
+      const [survivorWallet, duplicateWallet] = await Promise.all([
+        tx.patientWallet.findUnique({ where: { patientId: survivorId } }),
+        tx.patientWallet.findUnique({ where: { patientId: duplicateId } }),
+      ]);
+      if (duplicateWallet) {
+        if (survivorWallet) {
+          await tx.walletTransaction.updateMany({
+            where: { walletId: duplicateWallet.id },
+            data: { walletId: survivorWallet.id },
+          });
+          const mergedBalance =
+            Number(survivorWallet.balance) + Number(duplicateWallet.balance);
+          await tx.patientWallet.update({
+            where: { id: survivorWallet.id },
+            data: { balance: mergedBalance },
+          });
+          await tx.patientWallet.delete({ where: { id: duplicateWallet.id } });
+        } else {
+          await tx.patientWallet.update({
+            where: { id: duplicateWallet.id },
+            data: { patientId: survivorId },
+          });
+        }
+      }
+
+      // Family links: avoid self-links and unique (parent, child) collisions.
+      await tx.patientFamilyLink.deleteMany({
+        where: {
+          OR: [
+            { parentPatientId: duplicateId, childPatientId: survivorId },
+            { parentPatientId: survivorId, childPatientId: duplicateId },
+            { parentPatientId: duplicateId, childPatientId: duplicateId },
+          ],
+        },
+      });
+      const survivorAsParent = await tx.patientFamilyLink.findMany({
+        where: { parentPatientId: survivorId },
+        select: { childPatientId: true },
+      });
+      const survivorChildIds = new Set(
+        survivorAsParent.map((l) => l.childPatientId),
+      );
+      const dupAsParent = await tx.patientFamilyLink.findMany({
+        where: { parentPatientId: duplicateId },
+      });
+      for (const link of dupAsParent) {
+        if (
+          link.childPatientId === survivorId ||
+          survivorChildIds.has(link.childPatientId)
+        ) {
+          await tx.patientFamilyLink.delete({ where: { id: link.id } });
+        } else {
+          await tx.patientFamilyLink.update({
+            where: { id: link.id },
+            data: { parentPatientId: survivorId },
+          });
+        }
+      }
+      const survivorAsChild = await tx.patientFamilyLink.findMany({
+        where: { childPatientId: survivorId },
+        select: { parentPatientId: true },
+      });
+      const survivorParentIds = new Set(
+        survivorAsChild.map((l) => l.parentPatientId),
+      );
+      const dupAsChild = await tx.patientFamilyLink.findMany({
+        where: { childPatientId: duplicateId },
+      });
+      for (const link of dupAsChild) {
+        if (
+          link.parentPatientId === survivorId ||
+          survivorParentIds.has(link.parentPatientId)
+        ) {
+          await tx.patientFamilyLink.delete({ where: { id: link.id } });
+        } else {
+          await tx.patientFamilyLink.update({
+            where: { id: link.id },
+            data: { childPatientId: survivorId },
+          });
+        }
+      }
+
+      // Baby mother + registered-patient FKs (not plain patientId).
+      await tx.baby.updateMany({
+        where: { motherId: duplicateId },
+        data: { motherId: survivorId },
+      });
+      const survivorRegistered = await tx.baby.findFirst({
+        where: { registeredPatientId: survivorId },
+        select: { id: true },
+      });
+      if (survivorRegistered) {
+        await tx.baby.updateMany({
+          where: { registeredPatientId: duplicateId },
+          data: { registeredPatientId: null },
+        });
+      } else {
+        await tx.baby.updateMany({
+          where: { registeredPatientId: duplicateId },
+          data: { registeredPatientId: survivorId },
+        });
+      }
+
+      for (const model of PATIENT_FK_UPDATE_MANY) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (tx as any)[model].updateMany({
+          where: { patientId: duplicateId },
+          data: { patientId: survivorId },
+        });
+      }
+
+      // Clear unique fields on duplicate so delete cannot collide with survivor.
+      await tx.patient.update({
+        where: { id: duplicateId },
+        data: {
+          phoneNumber: null,
+          patientId: null,
+        },
+      });
+
+      await tx.patient.delete({ where: { id: duplicateId } });
+    });
+
+    this.logger.log(
+      `Patient merge: survivor=${survivorId} duplicate=${duplicateId} by staff=${actorStaffId}`,
+    );
+
+    return this.prisma.patient.findUnique({
+      where: { id: survivorId },
+      include: {
+        createdBy: { select: staffBriefSelect },
+        updatedBy: { select: staffBriefSelect },
+        ward: true,
+        hmoProvider: {
+          select: { id: true, name: true, code: true },
+        },
+      },
+    });
   }
 
   private readonly ALLOWED_FILTER_FIELDS = new Set([

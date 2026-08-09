@@ -19,6 +19,9 @@ describe('LabRequestService', () => {
         admission: null,
       }),
     },
+    admission: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     labRequest: {
       create: jest.fn().mockResolvedValue({ id: 'req-1' }),
       update: jest.fn().mockResolvedValue({
@@ -62,6 +65,14 @@ describe('LabRequestService', () => {
     );
 
     expect(invoiceService.assertInpatientCreditAllowed).not.toHaveBeenCalled();
+    expect(prisma.labRequest.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          admissionId: null,
+          wardId: null,
+        }),
+      }),
+    );
     expect(invoiceService.createWithServiceItem).toHaveBeenCalledWith({
       patientId: 'pat-1',
       encounterId: 'enc-1',

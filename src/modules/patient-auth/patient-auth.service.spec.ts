@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PatientDeviceStatus, PatientStatus } from '@prisma/client';
 import { PatientAuthService } from './patient-auth.service';
@@ -120,21 +120,51 @@ describe('PatientAuthService', () => {
     expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
   });
 
-  it('rejects device owned by another patient', async () => {
+  it('reassigns device owned by another patient to PENDING', async () => {
+    const reassigned = {
+      ...pendingDevice,
+      status: PatientDeviceStatus.PENDING,
+      approvedAt: null,
+    };
     prisma.patient.findFirst = jest.fn().mockResolvedValue(patientRecord);
-    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
-      id: 'device-x',
-      patientId: 'other-patient',
+    prisma.patientDevice.findUnique = jest.fn().mockImplementation(({ where }) => {
+      if (where.deviceKey) {
+        return Promise.resolve({
+          id: 'device-x',
+          patientId: 'other-patient',
+          deviceKey: 'key-1',
+          status: PatientDeviceStatus.APPROVED,
+          approvedAt: new Date(),
+          approvedById: 'staff-1',
+          fcmToken: null,
+        });
+      }
+      return Promise.resolve(null);
+    });
+    prisma.patientDevice.update = jest.fn().mockResolvedValue(reassigned);
+
+    const result = await service.login({
+      patientId: 'AB12CD34',
+      dob: '1990-05-15',
       deviceKey: 'key-1',
+      platform: 'ios',
+      deviceLabel: 'New Phone',
     });
 
-    await expect(
-      service.login({
-        patientId: 'AB12CD34',
-        dob: '1990-05-15',
-        deviceKey: 'key-1',
+    expect(prisma.patientDevice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'device-x' },
+        data: expect.objectContaining({
+          patientId: 'uuid-1',
+          status: PatientDeviceStatus.PENDING,
+          approvedAt: null,
+          approvedById: null,
+          platform: 'ios',
+          deviceLabel: 'New Phone',
+        }),
       }),
-    ).rejects.toBeInstanceOf(ConflictException);
+    );
+    expect(result.device.status).toBe(PatientDeviceStatus.PENDING);
   });
 
   it('rejects unknown patient ID', async () => {

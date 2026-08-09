@@ -41,6 +41,7 @@ describe('RadiologyRequestService', () => {
         admission: null,
       }),
     },
+    admission: { findFirst: jest.fn().mockResolvedValue(null) },
     staff: { findUnique: jest.fn().mockResolvedValue({ id: 'doc-1' }) },
     department: { findUnique: jest.fn() },
     radiologyOrderItem: {
@@ -55,6 +56,11 @@ describe('RadiologyRequestService', () => {
       delete: jest.fn(),
     },
     $transaction: jest.fn(),
+  };
+
+  const pregnancyClinicalContext = { resolve: jest.fn() };
+  const clinicalPackageService = {
+    resolveAntenatalPackageItemForService: jest.fn().mockResolvedValue(null),
   };
 
   let service: RadiologyRequestService;
@@ -81,7 +87,12 @@ describe('RadiologyRequestService', () => {
         },
       }),
     );
-    service = new RadiologyRequestService(prisma as any, invoiceService as any);
+    service = new RadiologyRequestService(
+      prisma as any,
+      invoiceService as any,
+      pregnancyClinicalContext as any,
+      clinicalPackageService as any,
+    );
   });
 
   it('encounter-billed imaging skips admission and consumable payment checks', async () => {

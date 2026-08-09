@@ -20,6 +20,12 @@ import { InvoiceService } from '../invoice/invoice.service';
 import { CreatePatientDto, UpdatePatientDto } from './dto/create-patient.dto';
 import { PatientChartQueryDto } from './dto/patient-chart-query.dto';
 import { RegisteredTodayQueryDto } from './dto/registered-today-query.dto';
+import {
+  ForceCreateQueryDto,
+  MergePatientsDto,
+  SimilarMatchesBodyDto,
+  SimilarMatchesQueryDto,
+} from './dto/similar-matches.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
 @ApiTags('Patient')
@@ -62,13 +68,63 @@ export class PatientController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new patient' })
+  @ApiOperation({
+    summary: 'Create a new patient',
+    description:
+      'Returns 409 PATIENT_SIMILAR_MATCHES when name+DOB candidates exist unless forceCreate=true (query or body). Phone conflicts always 409.',
+  })
   @ApiResponse({
     status: 201,
     description: 'Patient created successfully',
   })
-  create(@Body() createPatientDto: CreatePatientDto, @Req() req: any) {
-    return this.patientService.create(createPatientDto, req);
+  @ApiResponse({
+    status: 409,
+    description: 'Phone conflict or similar patient matches',
+  })
+  create(
+    @Body() createPatientDto: CreatePatientDto,
+    @Query() forceQuery: ForceCreateQueryDto,
+    @Req() req: any,
+  ) {
+    return this.patientService.create(createPatientDto, req, {
+      forceCreate: forceQuery.forceCreate,
+    });
+  }
+
+  @Get('similar-matches')
+  @ApiOperation({
+    summary: 'Find patients with similar name and same date of birth',
+  })
+  @ApiResponse({ status: 200, description: 'Matching patient candidates' })
+  findSimilarMatchesGet(@Query() query: SimilarMatchesQueryDto) {
+    return this.patientService.findSimilarMatches(query);
+  }
+
+  @Post('similar-matches')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Find patients with similar name and same date of birth (body)',
+  })
+  @ApiResponse({ status: 200, description: 'Matching patient candidates' })
+  findSimilarMatchesPost(@Body() body: SimilarMatchesBodyDto) {
+    return this.patientService.findSimilarMatches(body);
+  }
+
+  @Post('merge')
+  @AccountTypes('SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Merge duplicate patient into survivor (SUPER_ADMIN)',
+    description:
+      'Reassigns all patient FK relations from duplicateId to survivorId, then deletes the duplicate. Survivor keeps phoneNumber and hospital patientId.',
+  })
+  @ApiResponse({ status: 200, description: 'Survivor patient after merge' })
+  merge(@Body() body: MergePatientsDto, @Req() req: { user: { sub: string } }) {
+    return this.patientService.mergePatients(
+      body.survivorId,
+      body.duplicateId,
+      req.user.sub,
+    );
   }
 
   @Public()

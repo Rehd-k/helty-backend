@@ -112,7 +112,7 @@ describe('AdmissionService', () => {
     );
   });
 
-  it('clinical discharge with paid invoices auto-finalizes to DISCHARGED', async () => {
+  it('clinical discharge with paid invoices still awaits nurses clearance', async () => {
     const tx = makeTx({
       invoice: {
         findMany: jest.fn().mockResolvedValue([
@@ -133,13 +133,11 @@ describe('AdmissionService', () => {
           bed: null,
           room: 'Room 2',
         }),
-        update: jest
-          .fn()
-          .mockResolvedValueOnce({ id: 'adm-1' })
-          .mockResolvedValueOnce({
-            id: 'adm-1',
-            status: AdmissionStatus.DISCHARGED,
-          }),
+        update: jest.fn().mockResolvedValue({
+          id: 'adm-1',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+          billingClearedAt: new Date('2026-03-27T11:00:00.000Z'),
+        }),
       },
     });
 
@@ -157,12 +155,14 @@ describe('AdmissionService', () => {
       'staff-1',
     );
 
-    expect(result.status).toBe(AdmissionStatus.DISCHARGED);
-    expect(tx.patient.update).toHaveBeenCalledWith(
+    expect(result.status).toBe(AdmissionStatus.PENDING_BILLING_CLEARANCE);
+    expect(tx.patient.update).not.toHaveBeenCalled();
+    expect(tx.admission.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          status: 'OUTPATIENT',
-          wardId: 'opd-ward-1',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+          billingClearedById: 'staff-1',
+          clinicallyDischargedById: 'staff-1',
         }),
       }),
     );
@@ -211,7 +211,7 @@ describe('AdmissionService', () => {
     );
   });
 
-  it('billing clearance finalizes pending admission when invoices are paid', async () => {
+  it('billing clearance records billing only until nurses also clear', async () => {
     const tx = makeTx({
       admission: {
         findUnique: jest.fn().mockResolvedValue({
@@ -219,11 +219,23 @@ describe('AdmissionService', () => {
           patientId: 'pat-1',
           status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
           outcome: 'Duly Discharged',
+          billingClearedAt: null,
+          nursesClearedAt: null,
           encounter: { id: 'enc-1' },
+        }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'adm-1',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+          billingClearedAt: new Date('2026-03-27T12:00:00.000Z'),
+          nursesClearedAt: null,
         }),
         update: jest.fn().mockResolvedValue({
           id: 'adm-1',
-          status: AdmissionStatus.DISCHARGED,
+          patientId: 'pat-1',
+          outcome: 'Duly Discharged',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+          billingClearedAt: new Date('2026-03-27T12:00:00.000Z'),
+          nursesClearedAt: null,
         }),
       },
       invoice: {
@@ -246,12 +258,60 @@ describe('AdmissionService', () => {
     const service = new AdmissionService(prisma, makeInvoiceService() as any);
     const result = await service.clearBillingClearance('adm-1', 'billing-1');
 
-    expect(result.status).toBe(AdmissionStatus.DISCHARGED);
+    expect(result.status).toBe(AdmissionStatus.PENDING_BILLING_CLEARANCE);
     expect(tx.admission.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          status: AdmissionStatus.DISCHARGED,
           billingClearedById: 'billing-1',
+        }),
+      }),
+    );
+    expect(tx.patient.update).not.toHaveBeenCalled();
+  });
+
+  it('nurses clearance finalizes when billing already cleared', async () => {
+    const clearedAt = new Date('2026-03-27T12:00:00.000Z');
+    const tx = makeTx({
+      admission: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'adm-1',
+          patientId: 'pat-1',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+          outcome: 'Duly Discharged',
+          billingClearedAt: clearedAt,
+          nursesClearedAt: null,
+          encounter: { id: 'enc-1' },
+        }),
+        update: jest
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'adm-1',
+            patientId: 'pat-1',
+            outcome: 'Duly Discharged',
+            status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+            billingClearedAt: clearedAt,
+            nursesClearedAt: clearedAt,
+          })
+          .mockResolvedValueOnce({
+            id: 'adm-1',
+            status: AdmissionStatus.DISCHARGED,
+          }),
+      },
+    });
+
+    const prisma: any = {
+      $transaction: jest.fn().mockImplementation((cb) => cb(tx)),
+    };
+
+    const service = new AdmissionService(prisma, makeInvoiceService() as any);
+    const result = await service.clearNursesClearance('adm-1', 'nurse-1');
+
+    expect(result.status).toBe(AdmissionStatus.DISCHARGED);
+    expect(tx.patient.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'OUTPATIENT',
+          wardId: 'opd-ward-1',
         }),
       }),
     );
@@ -299,11 +359,21 @@ describe('AdmissionService', () => {
           patientId: 'pat-1',
           status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
           outcome: 'Duly Discharged',
+          billingClearedAt: null,
+          nursesClearedAt: null,
           encounter: { id: 'enc-1' },
+        }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'adm-1',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
         }),
         update: jest.fn().mockResolvedValue({
           id: 'adm-1',
-          status: AdmissionStatus.DISCHARGED,
+          patientId: 'pat-1',
+          outcome: 'Duly Discharged',
+          status: AdmissionStatus.PENDING_BILLING_CLEARANCE,
+          billingClearedAt: new Date('2026-03-27T12:00:00.000Z'),
+          nursesClearedAt: null,
         }),
       },
       invoice: {
@@ -334,6 +404,13 @@ describe('AdmissionService', () => {
     const service = new AdmissionService(prisma, makeInvoiceService() as any);
     const result = await service.clearBillingClearance('adm-1', 'billing-1');
 
-    expect(result.status).toBe(AdmissionStatus.DISCHARGED);
+    expect(result.status).toBe(AdmissionStatus.PENDING_BILLING_CLEARANCE);
+    expect(tx.admission.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          billingClearedById: 'billing-1',
+        }),
+      }),
+    );
   });
 });

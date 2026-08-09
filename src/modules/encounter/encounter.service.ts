@@ -15,7 +15,12 @@ import {
   CreateEncounterDiagnosisDto,
   UpdateEncounterDiagnosisDto,
 } from './dto/encounter-diagnosis.dto';
-import { EncounterType, EncounterStatus } from '@prisma/client';
+import {
+  AccountType,
+  EncounterType,
+  EncounterStatus,
+  StaffRole,
+} from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
 import { patientNameFieldsSelect } from '../../common/utils/patient-display-name.util';
 import { labRequestWithBillingInclude } from '../lab-request/lab-request-includes';
@@ -873,15 +878,40 @@ export class EncounterService {
 
   /** Set encounter status to COMPLETED and endTime to now. */
   async complete(id: string, staffId: string) {
-    await this.editPolicy.assertCanEdit(id, staffId);
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: { accountType: true, staffRole: true },
+    });
+    const isSuperAdmin =
+      staff?.accountType === AccountType.SUPER_ADMIN ||
+      staff?.staffRole === StaffRole.SUPER_ADMIN;
+
+    if (isSuperAdmin) {
+      // Bypass ownership/edit policy; do not attribute completion to super admin.
+      const existing = await this.prisma.encounter.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Encounter "${id}" not found.`);
+      }
+    } else {
+      await this.editPolicy.assertCanEdit(id, staffId);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const encounter = await tx.encounter.update({
         where: { id },
-        data: {
-          status: EncounterStatus.COMPLETED,
-          endTime: new Date(),
-          updatedById: staffId,
-        },
+        data: isSuperAdmin
+          ? {
+              status: EncounterStatus.COMPLETED,
+              endTime: new Date(),
+            }
+          : {
+              status: EncounterStatus.COMPLETED,
+              endTime: new Date(),
+              updatedById: staffId,
+            },
         include: {
           patient: {
             select: patientNameFieldsSelect,

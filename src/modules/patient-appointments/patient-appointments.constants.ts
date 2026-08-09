@@ -1,4 +1,5 @@
 export const PORTAL_APPOINTMENT_STATUS = {
+  REQUESTED: 'REQUESTED',
   CONFIRMED: 'CONFIRMED',
   PENDING: 'PENDING',
   CANCELLED: 'CANCELLED',
@@ -37,6 +38,8 @@ export const RAW_CONFIRMED_STATUSES = [
 ] as const;
 
 export const RAW_PENDING_STATUSES = ['pending', 'PENDING'] as const;
+
+export const RAW_REQUESTED_STATUSES = ['requested', 'REQUESTED'] as const;
 
 export const RAW_CANCELLED_STATUSES = ['cancelled', 'CANCELLED'] as const;
 

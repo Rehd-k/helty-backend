@@ -232,35 +232,25 @@ export class PatientAppointmentsService {
     user: PatientJwtPayload,
     dto: CreatePatientAppointmentDto,
   ) {
-    const scheduledAt = new Date(dto.scheduledAt);
-    if (Number.isNaN(scheduledAt.getTime())) {
-      throw new UnprocessableEntityException('Invalid scheduledAt.');
-    }
-    if (scheduledAt <= new Date()) {
-      throw new UnprocessableEntityException(
-        'scheduledAt must be in the future.',
-      );
+    const scheduledAt = this.parsePreferredDate(dto.date);
+    const todayKey = this.toLocalDateKey(new Date());
+    const requestedKey = this.toLocalDateKey(scheduledAt);
+    if (requestedKey < todayKey) {
+      throw new UnprocessableEntityException('date must be today or in the future.');
     }
 
-    await this.assertActivePhysician(dto.doctorId);
-
-    const dateKey = this.toLocalDateKey(scheduledAt);
-    const booked = await this.getDoctorBookedSlots(dto.doctorId, dateKey);
-    if (!isSlotAvailable(scheduledAt, booked)) {
-      throw new ConflictException('Selected slot is no longer available.');
-    }
-
-    const location = await this.resolveDoctorLocation(dto.doctorId);
     const createdById = this.getSystemStaffId();
 
     const appointment = await this.prisma.appointment.create({
       data: {
         patientId: user.sub,
-        staffId: dto.doctorId,
+        staffId: null,
         date: scheduledAt,
-        status: PORTAL_APPOINTMENT_STATUS.PENDING,
+        status: PORTAL_APPOINTMENT_STATUS.REQUESTED,
+        specialty: dto.specialty,
+        visitType: dto.visitType,
         reason: dto.reason,
-        location,
+        location: null,
         createdById,
       },
       include: APPOINTMENT_INCLUDE,
@@ -294,10 +284,6 @@ export class PatientAppointmentsService {
     let nextDate = existing.date;
 
     if (dto.scheduledAt) {
-      if (!existing.staffId) {
-        throw new ConflictException('Appointment cannot be rescheduled.');
-      }
-
       nextDate = new Date(dto.scheduledAt);
       if (Number.isNaN(nextDate.getTime())) {
         throw new UnprocessableEntityException('Invalid scheduledAt.');
@@ -308,14 +294,16 @@ export class PatientAppointmentsService {
         );
       }
 
-      const dateKey = this.toLocalDateKey(nextDate);
-      const booked = await this.getDoctorBookedSlots(
-        existing.staffId!,
-        dateKey,
-        existing.id,
-      );
-      if (!isSlotAvailable(nextDate, booked)) {
-        throw new ConflictException('Selected slot is no longer available.');
+      if (existing.staffId) {
+        const dateKey = this.toLocalDateKey(nextDate);
+        const booked = await this.getDoctorBookedSlots(
+          existing.staffId,
+          dateKey,
+          existing.id,
+        );
+        if (!isSlotAvailable(nextDate, booked)) {
+          throw new ConflictException('Selected slot is no longer available.');
+        }
       }
     }
 
@@ -404,17 +392,6 @@ export class PatientAppointmentsService {
     return staffId;
   }
 
-  private async resolveDoctorLocation(doctorId: string): Promise<string | null> {
-    const room = await this.prisma.consultingRoom.findFirst({
-      where: { staffId: doctorId },
-      select: { location: true, name: true },
-    });
-    if (!room) {
-      return null;
-    }
-    return room.location ?? room.name;
-  }
-
   private async getDoctorBookedSlots(
     doctorId: string,
     date: string,
@@ -435,6 +412,24 @@ export class PatientAppointmentsService {
     });
 
     return appointments.map((row) => row.date);
+  }
+
+  private parsePreferredDate(raw: string): Date {
+    const trimmed = raw.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const offset = '+01:00';
+      const parsed = new Date(`${trimmed}T00:00:00.000${offset}`);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new UnprocessableEntityException('Invalid date.');
+      }
+      return parsed;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new UnprocessableEntityException('Invalid date.');
+    }
+    return parsed;
   }
 
   private toLocalDateKey(date: Date): string {

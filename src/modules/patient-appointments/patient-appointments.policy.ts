@@ -1,4 +1,4 @@
-import { MIN_HOURS_BEFORE_CHANGE } from './patient-appointments.constants';
+import { MIN_HOURS_BEFORE_CHANGE, PORTAL_APPOINTMENT_STATUS } from './patient-appointments.constants';
 import { isUpcomingPortalStatus, toPortalStatus } from './patient-appointments.status';
 
 export function canModifyAppointment(
@@ -20,6 +20,9 @@ export function canRescheduleAppointment(
   scheduledAt: Date,
   now?: Date,
 ): boolean {
+  if (toPortalStatus(status) === PORTAL_APPOINTMENT_STATUS.REQUESTED) {
+    return true;
+  }
   return canModifyAppointment(status, scheduledAt, now);
 }
 
@@ -28,6 +31,9 @@ export function canCancelAppointment(
   scheduledAt: Date,
   now?: Date,
 ): boolean {
+  if (toPortalStatus(status) === PORTAL_APPOINTMENT_STATUS.REQUESTED) {
+    return true;
+  }
   return canModifyAppointment(status, scheduledAt, now);
 }
 

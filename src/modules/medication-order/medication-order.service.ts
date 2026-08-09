@@ -12,6 +12,7 @@ import {
   UpdateMedicationOrderDto,
 } from './dto/create-medication-order.dto';
 import { BeyondDurationConsentDto } from './dto/beyond-duration-consent.dto';
+import { getPatientAdmissionContext } from '../../common/utils/patient-admission-context.util';
 import { isOutpatientPatient } from '../../common/utils/patient-outpatient.util';
 import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
 import { PregnancyClinicalContextService } from '../obstetrics/pregnancy-clinical-context.service';
@@ -118,6 +119,10 @@ export class MedicationOrderService {
       });
 
       if (isOutpatient) {
+        const admissionCtx = await getPatientAdmissionContext(
+          tx,
+          order.patientId,
+        );
         await tx.medicationRequest.create({
           data: {
             medicationOrderId: order.id,
@@ -126,6 +131,8 @@ export class MedicationOrderService {
             requestedQuantity: dto.requestedQuantity!,
             requestedByNurseId: doctor.id,
             notes: dto.notes ?? undefined,
+            admissionId: admissionCtx.admissionId,
+            wardId: admissionCtx.wardId,
           },
         });
       }

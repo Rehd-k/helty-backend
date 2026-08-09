@@ -1,4 +1,9 @@
-import { EncounterStatus, LabRequestStatus, MedicalSpecialty } from '@prisma/client';
+import {
+  AppointmentVisitType,
+  EncounterStatus,
+  LabRequestStatus,
+  MedicalSpecialty,
+} from '@prisma/client';
 import { getCatalogEntry } from '../clinical-specialty/clinical-specialty-catalog';
 import {
   ConsultationResultStatus,
@@ -29,6 +34,8 @@ type AppointmentRow = {
   date: Date;
   status: string;
   location: string | null;
+  specialty?: string | null;
+  visitType?: AppointmentVisitType | null;
   reason?: string | null;
   notes?: string | null;
   createdAt?: Date;
@@ -73,19 +80,33 @@ function resolveDoctorSpecialty(doctor: DoctorFields | null): string | null {
   return doctor.department?.name ?? null;
 }
 
-function toDoctorDto(doctor: DoctorFields | null): AppointmentSummaryDto['doctor'] {
+function resolveAppointmentSpecialty(
+  specialty: string | null | undefined,
+  doctor: DoctorFields | null,
+): string | null {
+  if (specialty) {
+    const catalog = getCatalogEntry(specialty as MedicalSpecialty);
+    return catalog?.displayName ?? specialty;
+  }
+  return resolveDoctorSpecialty(doctor);
+}
+
+function toDoctorDto(
+  doctor: DoctorFields | null,
+  specialtyFallback: string | null,
+): AppointmentSummaryDto['doctor'] {
   if (!doctor) {
     return {
       id: '',
-      name: 'Unknown doctor',
-      specialty: null,
+      name: 'Unassigned',
+      specialty: specialtyFallback,
       avatarUrl: null,
     };
   }
   return {
     id: doctor.id,
     name: formatDoctorDisplayName(doctor),
-    specialty: resolveDoctorSpecialty(doctor),
+    specialty: resolveDoctorSpecialty(doctor) ?? specialtyFallback,
     avatarUrl: null,
   };
 }
@@ -94,13 +115,23 @@ export function toAppointmentSummaryDto(
   appointment: AppointmentRow,
   now: Date = new Date(),
 ): AppointmentSummaryDto {
+  const specialty = resolveAppointmentSpecialty(
+    appointment.specialty,
+    appointment.staff,
+  );
   return {
     id: appointment.id,
     status: toPortalStatus(appointment.status),
     scheduledAt: appointment.date,
     location: appointment.location,
-    doctor: toDoctorDto(appointment.staff),
-    canReschedule: canRescheduleAppointment(appointment.status, appointment.date, now),
+    specialty: appointment.specialty ?? null,
+    visitType: appointment.visitType ?? AppointmentVisitType.IN_PERSON,
+    doctor: toDoctorDto(appointment.staff, specialty),
+    canReschedule: canRescheduleAppointment(
+      appointment.status,
+      appointment.date,
+      now,
+    ),
     canCancel: canCancelAppointment(appointment.status, appointment.date, now),
   };
 }

@@ -165,6 +165,61 @@ export class TheatreScheduleService {
     return { data, total, skip, take };
   }
 
+  /**
+   * Patient portal: schedules for the patient's surgery requests, plus any
+   * unscheduled surgery requests so the patient can see pending theatre cases.
+   */
+  async findAllForPatient(patientId: string) {
+    const [schedules, surgeryRequests] = await Promise.all([
+      this.prisma.theatreSchedule.findMany({
+        where: { surgeryRequest: { patientId } },
+        orderBy: { scheduledAt: 'asc' },
+        include: theatreScheduleListInclude,
+      }),
+      this.prisma.surgeryRequest.findMany({
+        where: { patientId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          service: { select: { id: true, name: true } },
+          requestedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          schedule: {
+            include: {
+              theatreRoom: { select: { id: true, name: true } },
+              surgeon: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  staffId: true,
+                },
+              },
+              anaesthetist: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  staffId: true,
+                },
+              },
+              scrubNurse: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  staffId: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    return { schedules, surgeryRequests };
+  }
+
   async update(id: string, dto: UpdateTheatreScheduleDto) {
     const schedule = await this.prisma.theatreSchedule.findUnique({
       where: { id },

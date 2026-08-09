@@ -12,6 +12,7 @@ import {
   ListLabRequestsQueryDto,
 } from './dto/create-lab-request.dto';
 import { parseDateRange } from '../../common/utils/date-range';
+import { getPatientAdmissionContext } from '../../common/utils/patient-admission-context.util';
 import { labRequestWithBillingInclude } from './lab-request-includes';
 import { resolveOrderingDoctorId } from '../encounter/encounter-inpatient-edit.util';
 import { PregnancyClinicalContextService } from '../obstetrics/pregnancy-clinical-context.service';
@@ -65,6 +66,10 @@ export class LabRequestService {
       actingStaffId,
       dto.requestedByDoctorId,
     );
+    const admissionCtx = await getPatientAdmissionContext(
+      this.prisma,
+      dto.patientId,
+    );
     const labRequest = await this.prisma.labRequest.create({
       data: {
         encounterId,
@@ -73,6 +78,8 @@ export class LabRequestService {
         testType: dto.testType,
         notes: dto.notes,
         pregnancyId: pregnancyId ?? null,
+        admissionId: admissionCtx.admissionId,
+        wardId: admissionCtx.wardId,
       },
     });
     if (dto.serviceId) {

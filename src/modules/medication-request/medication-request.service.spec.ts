@@ -174,6 +174,9 @@ describe('MedicationRequestService', () => {
       encounter: {
         findUnique: jest.fn().mockResolvedValue({ id: encounterId, patientId }),
       },
+      admission: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       medicationRequest: {
         create: medicationRequestCreate,
         findMany: medicationRequestFindMany,
@@ -192,9 +195,14 @@ describe('MedicationRequestService', () => {
       removeBillableLineForEncounterRequest,
     };
 
+    const clinicalPackageService = {
+      resolveAntenatalPackageItemForDrug: jest.fn().mockResolvedValue(null),
+    };
+
     service = new MedicationRequestService(
       prisma as any,
       invoiceService as any,
+      clinicalPackageService as any,
     );
 
     medicationOrderFindUnique.mockImplementation(async (args: { where: { id: string } }) => {

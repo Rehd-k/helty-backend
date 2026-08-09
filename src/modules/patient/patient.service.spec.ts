@@ -1,4 +1,4 @@
-import {
+﻿import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +9,214 @@ jest.mock('../../common/utils/human-readable-id.util', () => ({
 }));
 
 import { PatientService } from './patient.service';
+
+describe('PatientService.create similarity', () => {
+  const staffId = 'staff-1';
+  const req = { user: { sub: staffId } };
+
+  const prisma = {
+    staff: { findUnique: jest.fn() },
+    patient: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+    },
+    ward: { findUnique: jest.fn() },
+    hmo: { findUnique: jest.fn() },
+  };
+
+  let service: PatientService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new PatientService(prisma as any);
+    prisma.staff.findUnique.mockResolvedValue({ id: staffId });
+    prisma.patient.findUnique.mockResolvedValue(null);
+    prisma.patient.create.mockImplementation(({ data }) =>
+      Promise.resolve({ id: 'new-p', ...data }),
+    );
+  });
+
+  it('returns 409 PATIENT_SIMILAR_MATCHES when candidates exist and forceCreate is absent', async () => {
+    const candidates = [
+      {
+        id: 'dup-1',
+        patientId: 'P1',
+        firstName: 'Ada',
+        surname: 'Okafor',
+        otherName: null,
+        dob: new Date('1990-05-12'),
+        phoneNumber: null,
+      },
+    ];
+    prisma.patient.findMany.mockResolvedValue(candidates);
+
+    await expect(
+      service.create(
+        {
+          firstName: 'Ada',
+          surname: 'Okafor',
+          dob: '1990-05-12',
+        } as any,
+        req,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'PATIENT_SIMILAR_MATCHES',
+        candidates,
+      }),
+    });
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+  });
+
+  it('creates when forceCreate=true despite similar matches', async () => {
+    prisma.patient.findMany.mockResolvedValue([
+      { id: 'dup-1', firstName: 'Ada', surname: 'Okafor' },
+    ]);
+
+    await service.create(
+      {
+        firstName: 'Ada',
+        surname: 'Okafor',
+        dob: '1990-05-12',
+        forceCreate: true,
+      } as any,
+      req,
+    );
+
+    expect(prisma.patient.create).toHaveBeenCalled();
+  });
+
+  it('hard-blocks duplicate phone even with forceCreate', async () => {
+    prisma.patient.findUnique.mockResolvedValue({ id: 'other' });
+
+    await expect(
+      service.create(
+        {
+          firstName: 'Ada',
+          surname: 'Okafor',
+          dob: '1990-05-12',
+          phoneNumber: '+2348012345678',
+          forceCreate: true,
+        } as any,
+        req,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.patient.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('PatientService.mergePatients', () => {
+  const survivorId = 'surv-1';
+  const duplicateId = 'dup-1';
+  const actorId = 'admin-1';
+
+  const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+  const tx = {
+    patientDevice: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    patientWallet: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    walletTransaction: { updateMany: jest.fn() },
+    patientFamilyLink: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findMany: jest.fn().mockResolvedValue([]),
+      delete: jest.fn(),
+      update: jest.fn(),
+    },
+    baby: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    appointment: { updateMany },
+    appointmentNotification: { updateMany },
+    admission: { updateMany },
+    payment: { updateMany },
+    medicalHistory: { updateMany },
+    doctorReport: { updateMany },
+    labReport: { updateMany },
+    radiologyReport: { updateMany },
+    prescription: { updateMany },
+    patientMedicationDoseLog: { updateMany },
+    prescriptionRefillRequest: { updateMany },
+    consumableUsageEvent: { updateMany },
+    invoice: { updateMany },
+    encounter: { updateMany },
+    labRequest: { updateMany },
+    patientVitals: { updateMany },
+    waitingPatient: { updateMany },
+    patientAllergy: { updateMany },
+    medicationOrder: { updateMany },
+    medicationRequest: { updateMany },
+    referral: { updateMany },
+    patientComplaint: { updateMany },
+    patientFeedback: { updateMany },
+    emergencyRequest: { updateMany },
+    safetyIncident: { updateMany },
+    infectionCase: { updateMany },
+    labOrder: { updateMany },
+    dialysisSession: { updateMany },
+    pregnancy: { updateMany },
+    postnatalVisit: { updateMany },
+    gynaeProcedure: { updateMany },
+    surgeryRequest: { updateMany },
+    radiologyOrder: { updateMany },
+    patientArchivedEncounter: { updateMany },
+    patient: {
+      update: jest.fn().mockResolvedValue({}),
+      delete: jest.fn().mockResolvedValue({}),
+    },
+  };
+
+  const prisma = {
+    patient: {
+      findUnique: jest.fn(),
+    },
+    staff: { findUnique: jest.fn() },
+    $transaction: jest.fn(async (cb: (client: typeof tx) => unknown) => cb(tx)),
+  };
+
+  let service: PatientService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new PatientService(prisma as any);
+    prisma.staff.findUnique.mockResolvedValue({ id: actorId });
+    prisma.patient.findUnique.mockImplementation(({ where }: any) => {
+      if (where.id === survivorId) return Promise.resolve({ id: survivorId });
+      if (where.id === duplicateId) return Promise.resolve({ id: duplicateId });
+      return Promise.resolve(null);
+    });
+    prisma.$transaction.mockImplementation(async (cb: any) => cb(tx));
+  });
+
+  it('rejects merging a patient into itself', async () => {
+    await expect(
+      service.mergePatients(survivorId, survivorId, actorId),
+    ).rejects.toThrow(/different/);
+  });
+
+  it('reassigns FKs, clears duplicate uniques, and deletes duplicate', async () => {
+    await service.mergePatients(survivorId, duplicateId, actorId);
+
+    expect(tx.patientDevice.deleteMany).toHaveBeenCalledWith({
+      where: { patientId: duplicateId },
+    });
+    expect(tx.appointment.updateMany).toHaveBeenCalledWith({
+      where: { patientId: duplicateId },
+      data: { patientId: survivorId },
+    });
+    expect(tx.patient.update).toHaveBeenCalledWith({
+      where: { id: duplicateId },
+      data: { phoneNumber: null, patientId: null },
+    });
+    expect(tx.patient.delete).toHaveBeenCalledWith({
+      where: { id: duplicateId },
+    });
+  });
+});
 
 describe('PatientService.update', () => {
   const staffId = 'staff-1';

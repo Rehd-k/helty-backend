@@ -1956,15 +1956,20 @@ export class InvoiceService {
   }
 
   /**
-   * Merge duplicate PENDING invoices for one patient into the oldest bill.
-   * Newer invoices have their line items moved into the target; emptied sources are deleted.
+   * Merge duplicate open invoices (PENDING or PARTIALLY_PAID) for one patient
+   * into the oldest open bill. Newer invoices have their line items moved into
+   * the target; emptied sources are deleted.
    */
   async consolidatePendingInvoicesForPatient(
     patientId: string,
     tx: Prisma.TransactionClient = this.prisma,
   ): Promise<ConsolidatePendingInvoicesForPatientResult> {
+    const openStatuses = [
+      InvoiceStatus.PENDING,
+      InvoiceStatus.PARTIALLY_PAID,
+    ] as const;
     const pendingInvoices = await tx.invoice.findMany({
-      where: { patientId, status: InvoiceStatus.PENDING },
+      where: { patientId, status: { in: [...openStatuses] } },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -1988,7 +1993,7 @@ export class InvoiceService {
         await this.getMovableItemIdsForInvoice(source.id, tx);
       if (unmovableIds.length > 0) {
         this.logger.warn(
-          `Skipping PENDING invoice ${source.invoiceID} (${source.id}) for patient ${patientId}: ${unmovableIds.length} unmovable line(s).`,
+          `Skipping open invoice ${source.invoiceID} (${source.id}, ${source.status}) for patient ${patientId}: ${unmovableIds.length} unmovable line(s).`,
         );
         skippedSourceIds.push(source.id);
         continue;
@@ -2033,11 +2038,16 @@ export class InvoiceService {
   }
 
   /**
-   * Batch entry point for nightly consolidation: one PENDING invoice per patient.
+   * Batch entry point for nightly consolidation: one open (PENDING or
+   * PARTIALLY_PAID) invoice per patient.
    */
   async consolidatePendingInvoices(): Promise<ConsolidatePendingInvoicesResult> {
     const pending = await this.prisma.invoice.findMany({
-      where: { status: InvoiceStatus.PENDING },
+      where: {
+        status: {
+          in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID],
+        },
+      },
       select: { patientId: true },
     });
     const countByPatient = new Map<string, number>();
