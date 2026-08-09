@@ -212,12 +212,13 @@ export class AppointmentService {
     });
   }
 
-  async listRequests(status = PORTAL_APPOINTMENT_STATUS.REQUESTED) {
-    const normalized = status.trim().toUpperCase();
+  async listRequests(status?: string) {
+    const resolved = (status ?? PORTAL_APPOINTMENT_STATUS.REQUESTED).trim();
+    const normalized = resolved.toUpperCase();
     const statusFilter =
       normalized === PORTAL_APPOINTMENT_STATUS.REQUESTED
         ? [...RAW_REQUESTED_STATUSES]
-        : [status.trim(), normalized];
+        : [resolved, normalized];
 
     const appointments = await this.prisma.appointment.findMany({
       where: { status: { in: statusFilter } },
