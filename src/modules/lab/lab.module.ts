@@ -23,6 +23,8 @@ import { LabAstResultController } from './lab-ast-result/lab-ast-result.controll
 import { LabAstResultService } from './lab-ast-result/lab-ast-result.service';
 import { LabInvestigationsController } from './lab-investigations/lab-investigations.controller';
 import { LabInvestigationsService } from './lab-investigations/lab-investigations.service';
+import { LabConfigTransferController } from './lab-config-transfer/lab-config-transfer.controller';
+import { LabConfigTransferService } from './lab-config-transfer/lab-config-transfer.service';
 
 @Module({
   imports: [PrismaModule, InvoiceModule],
@@ -38,6 +40,7 @@ import { LabInvestigationsService } from './lab-investigations/lab-investigation
     LabAstResultOptionController,
     LabAstResultController,
     LabInvestigationsController,
+    LabConfigTransferController,
   ],
   providers: [
     LabCategoryService,
@@ -51,6 +54,7 @@ import { LabInvestigationsService } from './lab-investigations/lab-investigation
     LabAstResultOptionService,
     LabAstResultService,
     LabInvestigationsService,
+    LabConfigTransferService,
   ],
   exports: [
     LabCategoryService,
@@ -64,6 +68,7 @@ import { LabInvestigationsService } from './lab-investigations/lab-investigation
     LabAstResultOptionService,
     LabAstResultService,
     LabInvestigationsService,
+    LabConfigTransferService,
   ],
 })
 export class LabModule {}

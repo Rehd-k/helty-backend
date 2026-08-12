@@ -667,14 +667,67 @@ export class AdmissionService {
         take,
         orderBy: { dischargeDateTime: 'asc' },
         include: {
-          ...ADMISSION_UPDATE_INCLUDE,
-          attendingDoctor: { select: staffBriefSelect },
+          wardEntity: { select: { id: true, name: true } },
+          bed: { select: { bedNumber: true } },
+          attendingDoctor: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              staffId: true,
+            },
+          },
+          clinicallyDischargedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          billingClearedBy: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+          patient: {
+            select: {
+              ...patientNameFieldsSelect,
+              phoneNumber: true,
+            },
+          },
+          encounter: { select: { id: true } },
           createdBy: { select: staffBriefSelect },
         },
       }),
       this.prisma.admission.count({ where }),
     ]);
-    return { admissions, total, skip, take };
+
+    const rows = await Promise.all(
+      admissions.map(async (admission) => {
+        const invoices = await this.getAdmissionInvoices(this.prisma, admission);
+        const coveredByInvoiceId = await this.invoiceCoveredAmountsByInvoiceId(
+          this.prisma,
+          invoices.map((invoice) => invoice.id),
+        );
+        return {
+          id: admission.id,
+          patientId: admission.patientId,
+          status: admission.status,
+          admissionDate: admission.admissionDate,
+          dischargeDateTime: admission.dischargeDateTime,
+          outcome: admission.outcome,
+          dischargeSummary: admission.dischargeSummary,
+          room: admission.room,
+          primaryDiagnosis: admission.primaryDiagnosis,
+          wardEntity: admission.wardEntity,
+          bed: admission.bed,
+          attendingDoctor: admission.attendingDoctor,
+          clinicallyDischargedBy: admission.clinicallyDischargedBy,
+          billingClearedAt: admission.billingClearedAt,
+          billingClearedBy: admission.billingClearedBy,
+          nursesClearedAt: admission.nursesClearedAt,
+          patient: admission.patient,
+          createdBy: admission.createdBy,
+          billing: this.buildBillingSummary(invoices, coveredByInvoiceId),
+        };
+      }),
+    );
+
+    return { admissions: rows, total, skip, take };
   }
 
   async findOne(id: string) {
