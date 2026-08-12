@@ -3,9 +3,11 @@
  * Usage: `npx ts-node ./prisma/backup-restore/restore.ts` or `npm run db:restore`
  * Options: `--file=path`, env `BACKUP_FILE`, `--continue-on-error`, env `RESTORE_BATCH_SIZE`, `SYNC_SEQUENCES=1`.
  * Env `RESTORE_PG_DEFER_FK=0` disables PostgreSQL `session_replication_role = replica` (stricter FK order; fails on self-FKs / cycles).
+ * Accepts plain `.json` or gzip-compressed `.json.gz` / `.gz` backups.
  */
 import 'dotenv/config';
 import { readFileSync } from 'fs';
+import { gunzipSync } from 'zlib';
 import type { PrismaClient } from '@prisma/client';
 import { createScriptPrismaClient } from './lib/prisma-client';
 import { filterWritableModels, loadDatamodel } from './lib/dmmf-models';
@@ -28,6 +30,15 @@ function parseCli(): { filePath: string; continueOnError: boolean } {
   return { filePath, continueOnError };
 }
 
+function readBackupRaw(filePath: string): string {
+  const buf = readFileSync(filePath);
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith('.gz')) {
+    return gunzipSync(buf).toString('utf-8');
+  }
+  return buf.toString('utf-8');
+}
+
 function extractTables(parsed: Record<string, unknown>): Record<string, unknown[]> {
   const { _meta: _drop, ...rest } = parsed;
   const tables: Record<string, unknown[]> = {};
@@ -44,7 +55,7 @@ function extractTables(parsed: Record<string, unknown>): Record<string, unknown[
 
 export async function runRestoreCli(): Promise<void> {
   const { filePath, continueOnError } = parseCli();
-  const raw = readFileSync(filePath, 'utf-8');
+  const raw = readBackupRaw(filePath);
   const parsed = parseBackupJson(raw) as Record<string, unknown>;
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('Backup file must contain a JSON object.');
