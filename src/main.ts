@@ -15,9 +15,14 @@ async function bootstrap() {
   assertProductionJwtSecretConfigured();
 
   // bufferLogs: true ensures early logs are captured and re-flushed via Pino
+  // Disable default 100kb parsers so lab-config import (and similar JSON) can be larger.
+  const bodyLimit = process.env.HTTP_JSON_BODY_LIMIT?.trim() || '10mb';
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['log', 'error', 'warn', 'debug', 'verbose'],
+    bodyParser: false,
   });
+  app.useBodyParser('json', { limit: bodyLimit });
+  app.useBodyParser('urlencoded', { limit: bodyLimit, extended: true });
 
   app.setBaseViewsDir(join(process.cwd(), 'views'));
   app.setViewEngine('hbs');
