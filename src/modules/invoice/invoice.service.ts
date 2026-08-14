@@ -62,6 +62,7 @@ import {
   computeRecurringDays,
   invoiceLineTotal,
 } from '../../common/utils/invoice-line-total.util';
+import { deriveBillType } from '../patient-billing/patient-billing.util';
 
 function generateInvoiceHumanId(): string {
   return generateHumanReadableId(10);
@@ -1594,6 +1595,25 @@ export class InvoiceService {
         },
         consultingRoom: { select: { id: true, name: true } },
         vitals: true,
+        encounter: {
+          select: {
+            id: true,
+            encounterType: true,
+            admissionId: true,
+            admission: {
+              select: {
+                id: true,
+                status: true,
+                admissionDate: true,
+                admissionDateTime: true,
+                dischargeDate: true,
+                dischargeDateTime: true,
+                ward: true,
+                wardEntity: { select: { name: true } },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1635,6 +1655,11 @@ export class InvoiceService {
     // Invoice is authoritative for client-facing due amount.
     // Do not override with linked transaction financial fields.
     const netAmountDue = amountDue;
+    const billType = deriveBillType(invoice.encounter);
+    const wardName =
+      invoice.encounter?.admission?.wardEntity?.name?.trim() ||
+      invoice.encounter?.admission?.ward?.trim() ||
+      null;
 
     return {
       ...invoice,
@@ -1643,6 +1668,8 @@ export class InvoiceService {
       effectivePayable,
       amountDue,
       netAmountDue,
+      billType,
+      wardName,
     };
   }
 
@@ -3308,15 +3335,28 @@ export class InvoiceService {
       paymentMethod,
       processedById,
       q,
+      patientId,
     } = query;
-    const { from, to } = parseDateRange(fromDate, toDate);
     const needle = q?.trim();
+    const hasExplicitDates = Boolean(
+      (fromDate && String(fromDate).trim()) ||
+        (toDate && String(toDate).trim()),
+    );
+    // Patient account history: skip default today-range when dates omitted.
+    const paidAtFilter =
+      patientId && !hasExplicitDates
+        ? undefined
+        : (() => {
+            const { from, to } = parseDateRange(fromDate, toDate);
+            return { paidAt: { gte: from, lte: to } as const };
+          })();
 
     const where: Prisma.InvoicePaymentWhereInput = {
-      paidAt: { gte: from, lte: to },
+      ...paidAtFilter,
       ...(source ? { source } : {}),
       ...(paymentMethod ? { method: paymentMethod } : {}),
       ...(processedById ? { receivedById: processedById } : {}),
+      ...(patientId ? { invoice: { patientId } } : {}),
       ...(needle ? { OR: this.buildPaymentListSearchOr(needle) } : {}),
     };
 

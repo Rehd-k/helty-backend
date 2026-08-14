@@ -204,6 +204,14 @@ export class ListInvoicePaymentsQueryDto extends DateRangeSkipTakeDto {
   @IsOptional()
   @IsUUID()
   processedById?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter payments to a single patient (internal UUID). When set and dates are omitted, returns full payment history (no default today range).',
+  })
+  @IsOptional()
+  @IsUUID()
+  patientId?: string;
 }
 
 // ─── InvoiceItem DTOs ──────────────────────────────────────────────────────────
