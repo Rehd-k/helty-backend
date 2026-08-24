@@ -224,4 +224,113 @@ describe('PatientAuthService', () => {
       where: { id: 'device-1' },
     });
   });
+
+  it('auto-approves devices for the exempt test patient', async () => {
+    const testPatient = {
+      ...patientRecord,
+      id: 'uuid-test',
+      patientId: 'Q4CMEZM8',
+    };
+    const approvedDevice = {
+      ...pendingDevice,
+      status: PatientDeviceStatus.APPROVED,
+      approvedAt: new Date(),
+    };
+    prisma.patient.findFirst = jest.fn().mockResolvedValue(testPatient);
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
+    prisma.patientDevice.create = jest.fn().mockResolvedValue(approvedDevice);
+
+    const result = await service.login({
+      patientId: 'q4cmezm8',
+      dob: '1990-05-15',
+      deviceKey: 'key-test',
+      platform: 'android',
+      deviceLabel: 'Test Phone',
+    });
+
+    expect(prisma.patientDevice.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          patientId: 'uuid-test',
+          deviceKey: 'key-test',
+          status: PatientDeviceStatus.APPROVED,
+          approvedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
+  });
+
+  it('upgrades an existing pending device for the exempt test patient', async () => {
+    const testPatient = {
+      ...patientRecord,
+      id: 'uuid-test',
+      patientId: 'Q4CMEZM8',
+    };
+    const approvedDevice = {
+      ...pendingDevice,
+      status: PatientDeviceStatus.APPROVED,
+      approvedAt: new Date(),
+    };
+    prisma.patient.findFirst = jest.fn().mockResolvedValue(testPatient);
+    prisma.patientDevice.findUnique = jest.fn().mockImplementation(({ where }) => {
+      if (where.deviceKey) {
+        return Promise.resolve({
+          ...pendingDevice,
+          patientId: 'uuid-test',
+          fcmToken: null,
+        });
+      }
+      return Promise.resolve(null);
+    });
+    prisma.patientDevice.update = jest.fn().mockResolvedValue(approvedDevice);
+
+    const result = await service.login({
+      patientId: 'Q4CMEZM8',
+      dob: '1990-05-15',
+      deviceKey: 'key-1',
+    });
+
+    expect(prisma.patientDevice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: PatientDeviceStatus.APPROVED,
+          approvedAt: expect.any(Date),
+        }),
+      }),
+    );
+    expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
+  });
+
+  it('auto-approves a pending device when the exempt test patient restores a session', async () => {
+    const testPatient = {
+      ...patientRecord,
+      id: 'uuid-test',
+      patientId: 'Q4CMEZM8',
+    };
+    prisma.patient.findUnique = jest.fn().mockResolvedValue(testPatient);
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(pendingDevice);
+    prisma.patientDevice.update = jest.fn().mockResolvedValue({
+      ...pendingDevice,
+      status: PatientDeviceStatus.APPROVED,
+      approvedAt: new Date(),
+    });
+
+    const result = await service.getMe({
+      sub: 'uuid-test',
+      patientId: 'Q4CMEZM8',
+      accountType: 'PATIENT',
+      deviceId: 'device-1',
+    });
+
+    expect(prisma.patientDevice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'device-1' },
+        data: expect.objectContaining({
+          status: PatientDeviceStatus.APPROVED,
+        }),
+      }),
+    );
+    expect(result.device?.status).toBe(PatientDeviceStatus.APPROVED);
+  });
 });

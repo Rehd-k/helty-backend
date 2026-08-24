@@ -140,4 +140,26 @@ describe('ApprovedDeviceGuard', () => {
       ),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
+
+  it('skips device verification for the exempt test patient', async () => {
+    (reflector.getAllAndOverride as jest.Mock).mockImplementation((key) => {
+      if (key === 'isPublic') return false;
+      if (key === 'accountTypes') return ['PATIENT'];
+      if (key === 'allowPendingDevice') return false;
+      return undefined;
+    });
+
+    await expect(
+      guard.canActivate(
+        mockContext({
+          accountType: 'PATIENT',
+          sub: 'p1',
+          patientId: 'q4cmezm8',
+          deviceId: 'd1',
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(prisma.patientDevice.findUnique).not.toHaveBeenCalled();
+  });
 });

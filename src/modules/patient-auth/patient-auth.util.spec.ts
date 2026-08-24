@@ -1,3 +1,4 @@
+import { isDeviceVerificationExempt } from './patient-auth.constants';
 import { dobMatches, toCalendarDateString } from './patient-auth.util';
 
 describe('patient-auth.util', () => {
@@ -20,5 +21,19 @@ describe('patient-auth.util', () => {
     const stored = new Date('2026-05-11T23:00:00.000Z');
     expect(dobMatches(stored, '2026-05-12')).toBe(true);
     expect(dobMatches(stored, '2026-05-11')).toBe(false);
+  });
+});
+
+describe('isDeviceVerificationExempt', () => {
+  it('matches the QA patient ID case-insensitively', () => {
+    expect(isDeviceVerificationExempt('Q4CMEZM8')).toBe(true);
+    expect(isDeviceVerificationExempt('q4cmezm8')).toBe(true);
+    expect(isDeviceVerificationExempt('  Q4CMEZM8  ')).toBe(true);
+  });
+
+  it('does not exempt other patients', () => {
+    expect(isDeviceVerificationExempt('AB12CD34')).toBe(false);
+    expect(isDeviceVerificationExempt(null)).toBe(false);
+    expect(isDeviceVerificationExempt('')).toBe(false);
   });
 });

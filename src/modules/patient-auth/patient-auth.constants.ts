@@ -2,6 +2,18 @@ import { Prisma } from '@prisma/client';
 
 export const PATIENT_ACCOUNT_TYPE = 'PATIENT' as const;
 
+/** QA / demo hospital patient ID — devices are auto-approved, no frontdesk check. */
+export const DEVICE_VERIFICATION_EXEMPT_PATIENT_ID = 'Q4CMEZM8';
+
+export function isDeviceVerificationExempt(
+  patientId?: string | null,
+): boolean {
+  if (!patientId) return false;
+  return (
+    patientId.trim().toUpperCase() === DEVICE_VERIFICATION_EXEMPT_PATIENT_ID
+  );
+}
+
 export const PATIENT_AUTH_SELECT = {
   id: true,
   patientId: true,

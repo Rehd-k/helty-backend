@@ -160,7 +160,7 @@ export class PatientService {
     const opd = wards.find((w) => w.name?.trim().toUpperCase() === 'OPD');
     if (!opd) {
       throw new BadRequestException(
-        'No ward named "OPD" exists. Create it before using listStatusFilter.',
+        'No ward named "OPD" exists. Create it before registering patients.',
       );
     }
     return opd.id;
@@ -172,16 +172,18 @@ export class PatientService {
     options?: { forceCreate?: boolean },
   ) {
     const staffId = req.user.sub;
-    const wardId = createPatientDto.wardId;
+    let wardId = createPatientDto.wardId?.trim() || undefined;
     const hmoId = createPatientDto.hmoId;
     const forceCreate =
       options?.forceCreate === true || createPatientDto.forceCreate === true;
 
+    if (!wardId) {
+      wardId = await this.resolveOpdWardId();
+    }
+
     const [staff, ward, hmo] = await Promise.all([
       this.prisma.staff.findUnique({ where: { id: staffId } }),
-      wardId
-        ? this.prisma.ward.findUnique({ where: { id: wardId } })
-        : Promise.resolve(null),
+      this.prisma.ward.findUnique({ where: { id: wardId } }),
       hmoId
         ? this.prisma.hmo.findUnique({ where: { id: hmoId } })
         : Promise.resolve(null),
@@ -249,7 +251,7 @@ export class PatientService {
       permanentAddress: createPatientDto.permanentAddress || '',
       createdById: staffId,
       updatedById: staffId,
-      wardId: wardId ?? null,
+      wardId,
       hmoId: hmoId ?? null,
       hmo: !hmoId && createPatientDto.hmo ? createPatientDto.hmo : null,
     };

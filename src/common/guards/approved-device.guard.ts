@@ -14,7 +14,10 @@ import {
   IS_PUBLIC_KEY,
   REQUIRE_APPROVED_DEVICE_KEY,
 } from '../decorators';
-import { PATIENT_ACCOUNT_TYPE } from '../../modules/patient-auth/patient-auth.constants';
+import {
+  PATIENT_ACCOUNT_TYPE,
+  isDeviceVerificationExempt,
+} from '../../modules/patient-auth/patient-auth.constants';
 
 export const DEVICE_PENDING_APPROVAL = 'DEVICE_PENDING_APPROVAL';
 
@@ -22,6 +25,7 @@ type PatientJwtUser = {
   sub?: string;
   deviceId?: string;
   accountType?: string;
+  patientId?: string;
 };
 
 @Injectable()
@@ -60,6 +64,10 @@ export class ApprovedDeviceGuard implements CanActivate {
       !!allowedAccountTypes?.includes(PATIENT_ACCOUNT_TYPE);
 
     if (!isPatientRoute) {
+      return true;
+    }
+
+    if (isDeviceVerificationExempt(user.patientId)) {
       return true;
     }
 

@@ -133,6 +133,7 @@ export class InvoiceDrugService {
       select: { id: true, firstName: true, lastName: true },
     },
     invoiceItems: {
+      orderBy: { createdAt: 'desc' },
       include: InvoiceDrugService.invoiceDrugItemInclude,
     },
     patient: {
@@ -280,7 +281,7 @@ export class InvoiceDrugService {
         where,
         skip: Number(skip),
         take: Number(take),
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         include: InvoiceDrugService.invoiceDrugInclude,
       }),
       this.prisma.invoice.count({ where }),

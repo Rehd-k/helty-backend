@@ -54,7 +54,7 @@ export class InvoiceCoverageController {
 
   @Delete(':coverageId')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reverse (void) an applied invoice coverage' })
+      @ApiOperation({ summary: 'Reverse (void) an applied invoice coverage. HMO coverage can only be reversed within 24 hours of apply, including when the invoice became PAID from that cover.' })
   @AccountTypes('HMO', 'BILLS', 'BILLING', 'CMD', 'CMAC', 'SUPER_ADMIN')
   reverse(
     @Param('invoiceId') invoiceId: string,

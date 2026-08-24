@@ -175,12 +175,18 @@ export class InvoiceCoverageService {
       }
 
       const existingHmoCoverage = await tx.invoiceCoverage.findFirst({
-        where: { invoiceId, kind: InvoiceCoverageKind.HMO },
+        where: {
+          invoiceId,
+          kind: InvoiceCoverageKind.HMO,
+          status: {
+            in: [InvoiceCoverageStatus.APPLIED, InvoiceCoverageStatus.SETTLED],
+          },
+        },
         select: { id: true },
       });
       if (existingHmoCoverage) {
         throw new BadRequestException(
-          'HMO coverage has already been applied to this invoice. Only one HMO coverage is allowed per invoice.',
+          'HMO coverage is already applied to this invoice. Reverse it within 24 hours to re-apply.',
         );
       }
 
@@ -374,7 +380,6 @@ export class InvoiceCoverageService {
 
   async reverseCoverage(invoiceId: string, coverageId: string, staffId: string, reason?: string) {
     const alreadyReversed = await this.prisma.$transaction(async (tx) => {
-      await this.assertInvoiceOpen(tx, invoiceId);
       const coverage = await tx.invoiceCoverage.findFirst({
         where: { id: coverageId, invoiceId },
       });
@@ -388,6 +393,23 @@ export class InvoiceCoverageService {
         throw new BadRequestException('Cannot reverse a settled coverage.');
       }
 
+      const isHmo = coverage.kind === InvoiceCoverageKind.HMO;
+      if (isHmo) {
+        const ageMs = Date.now() - new Date(coverage.createdAt).getTime();
+        if (ageMs > this.dayMs) {
+          throw new BadRequestException(
+            'HMO coverage can only be reversed within 24 hours of apply.',
+          );
+        }
+        const invoice = await tx.invoice.findUnique({
+          where: { id: invoiceId },
+          select: { id: true },
+        });
+        if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+      } else {
+        await this.assertInvoiceOpen(tx, invoiceId);
+      }
+
       await tx.invoiceCoverage.update({
         where: { id: coverage.id },
         data: {
@@ -398,7 +420,10 @@ export class InvoiceCoverageService {
         },
       });
 
-      await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
+      const updated = await this.invoiceService.recalculateInvoiceTotals(invoiceId, tx);
+      if (isHmo && updated.status !== InvoiceStatus.PAID) {
+        await this.invoiceService.clearUnusedConsultationCredit(tx, invoiceId);
+      }
       await this.logInvoiceAudit(tx, {
         invoiceId,
         action: InvoiceAuditAction.COVERAGE_REVERSED,

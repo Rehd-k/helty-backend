@@ -562,6 +562,27 @@ export class InvoiceService {
   }
 
   /**
+   * Drop unused OPD consultation credit after HMO coverage is reversed and the
+   * invoice is no longer PAID, so a mistaken cover cannot keep free visits.
+   */
+  async clearUnusedConsultationCredit(
+    tx: Prisma.TransactionClient,
+    invoiceId: string,
+  ): Promise<void> {
+    await tx.invoiceItem.updateMany({
+      where: {
+        invoiceId,
+        consultationVisitsConsumed: 0,
+        consultationCreditExpiresAt: { not: null },
+        service: {
+          category: InvoiceService.consultationCategoryWhere(),
+        },
+      },
+      data: { consultationCreditExpiresAt: null },
+    });
+  }
+
+  /**
    * Consumes one OPD visit from consultation credit lines on the encounter invoice.
    * After the first visit, clears invoice.encounterId so the credit can be selected again.
    */

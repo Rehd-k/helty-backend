@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PatientDeviceStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isDeviceVerificationExempt } from '../patient-auth/patient-auth.constants';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { UpdateCurrentFcmTokenDto } from './dto/update-current-fcm-token.dto';
 
@@ -42,6 +44,22 @@ export class PatientDeviceService {
     if (!device) {
       throw new NotFoundException('Current device not found');
     }
+
+    if (
+      device.status !== PatientDeviceStatus.APPROVED &&
+      isDeviceVerificationExempt(user.patientId)
+    ) {
+      const approved = await this.prisma.patientDevice.update({
+        where: { id: device.id },
+        data: {
+          status: PatientDeviceStatus.APPROVED,
+          approvedAt: device.approvedAt ?? new Date(),
+        },
+        select: DEVICE_LIST_SELECT,
+      });
+      return { device: approved, isCurrent: true };
+    }
+
     return { device, isCurrent: true };
   }
 

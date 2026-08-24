@@ -12,6 +12,7 @@ import {
   PATIENT_ACCOUNT_TYPE,
   PATIENT_AUTH_SELECT,
   PatientAuthRecord,
+  isDeviceVerificationExempt,
 } from './patient-auth.constants';
 import { dobMatches, toPatientPortalDto } from './patient-auth.util';
 
@@ -49,7 +50,11 @@ export class PatientAuthService {
     const patient = await this.findPatientForAuth(dto.patientId);
     this.validatePatientCredentials(patient, dto.dob);
 
-    const device = await this.upsertDeviceForLogin(patient.id, dto);
+    const device = await this.upsertDeviceForLogin(
+      patient.id,
+      patient.patientId,
+      dto,
+    );
 
     const payload: PatientJwtPayload = {
       sub: patient.id,
@@ -75,12 +80,7 @@ export class PatientAuthService {
       throw new NotFoundException('Patient not found');
     }
 
-    const device = user.deviceId
-      ? await this.prisma.patientDevice.findUnique({
-          where: { id: user.deviceId },
-          select: DEVICE_SELECT,
-        })
-      : null;
+    const device = await this.resolveDeviceForUser(user);
 
     return {
       patient: toPatientPortalDto(patient),
@@ -102,8 +102,42 @@ export class PatientAuthService {
     }
   }
 
+  private async resolveDeviceForUser(user: PatientJwtPayload) {
+    if (!user.deviceId) return null;
+
+    const device = await this.prisma.patientDevice.findUnique({
+      where: { id: user.deviceId },
+      select: DEVICE_SELECT,
+    });
+
+    return this.autoApproveExemptDevice(user.patientId, device);
+  }
+
+  private async autoApproveExemptDevice(
+    hospitalPatientId: string,
+    device: {
+      id: string;
+      status: PatientDeviceStatus;
+      approvedAt: Date | null;
+    } | null,
+  ) {
+    if (!device) return null;
+    if (device.status === PatientDeviceStatus.APPROVED) return device;
+    if (!isDeviceVerificationExempt(hospitalPatientId)) return device;
+
+    return this.prisma.patientDevice.update({
+      where: { id: device.id },
+      data: {
+        status: PatientDeviceStatus.APPROVED,
+        approvedAt: device.approvedAt ?? new Date(),
+      },
+      select: DEVICE_SELECT,
+    });
+  }
+
   private async upsertDeviceForLogin(
     patientId: string,
+    hospitalPatientId: string,
     dto: PatientLoginDto,
   ) {
     const deviceKey = dto.deviceKey.trim();
@@ -115,6 +149,10 @@ export class PatientAuthService {
     const deviceLabel = dto.deviceLabel?.trim() || null;
     const fcmToken = dto.fcmToken?.trim() || null;
     const now = new Date();
+    const skipVerification = isDeviceVerificationExempt(hospitalPatientId);
+    const approvedStatus = skipVerification
+      ? PatientDeviceStatus.APPROVED
+      : PatientDeviceStatus.PENDING;
 
     const existing = await this.prisma.patientDevice.findUnique({
       where: { deviceKey },
@@ -138,8 +176,8 @@ export class PatientAuthService {
         where: { id: existing.id },
         data: {
           patientId,
-          status: PatientDeviceStatus.PENDING,
-          approvedAt: null,
+          status: approvedStatus,
+          approvedAt: skipVerification ? now : null,
           approvedById: null,
           platform,
           deviceLabel,
@@ -158,6 +196,9 @@ export class PatientAuthService {
           deviceLabel,
           ...(fcmToken ? { fcmToken } : {}),
           lastSeenAt: now,
+          ...(skipVerification && existing.status !== PatientDeviceStatus.APPROVED
+            ? { status: PatientDeviceStatus.APPROVED, approvedAt: now }
+            : {}),
         },
         select: DEVICE_SELECT,
       });
@@ -170,7 +211,8 @@ export class PatientAuthService {
         platform,
         deviceLabel,
         fcmToken,
-        status: PatientDeviceStatus.PENDING,
+        status: approvedStatus,
+        ...(skipVerification ? { approvedAt: now } : {}),
         lastSeenAt: now,
       },
       select: DEVICE_SELECT,
