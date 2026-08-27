@@ -7,6 +7,7 @@ import {
   AdmissionStatus,
   BedStatus,
   ConsumableUsageSource,
+  Prisma,
   SurgeryRequestStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -17,10 +18,13 @@ import {
   BillSurgeryDto,
   TransferAfterSurgeryDto,
   UpdateTheatreCaseDto,
+  UpsertTheatreOperativeNoteDto,
 } from './dto/theatre.dto';
+import { composeOperativeNoteSummary } from './operative-note.util';
 import {
   surgeryRequestSummaryInclude,
   theatreCaseConsumableInclude,
+  theatreOperativeNoteInclude,
 } from './surgery-request-includes';
 
 @Injectable()
@@ -177,6 +181,109 @@ export class TheatreCaseService {
         },
       },
     });
+  }
+
+  private assertOperativeNotesWritable(status: SurgeryRequestStatus) {
+    if (
+      status !== SurgeryRequestStatus.IN_PROGRESS &&
+      status !== SurgeryRequestStatus.COMPLETED
+    ) {
+      throw new BadRequestException(
+        'Operative notes can only be added while surgery is in progress or completed.',
+      );
+    }
+  }
+
+  private async syncCaseSummaryFromLatestNote(theatreCaseId: string) {
+    const latest = await this.prisma.theatreOperativeNote.findFirst({
+      where: { theatreCaseId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!latest) return;
+
+    const summary = composeOperativeNoteSummary(latest);
+    await this.prisma.theatreCase.update({
+      where: { id: theatreCaseId },
+      data: {
+        operativeNotes: summary.operativeNotes,
+        ...(summary.findings != null ? { findings: summary.findings } : {}),
+        ...(summary.complications != null
+          ? { complications: summary.complications }
+          : {}),
+      },
+    });
+  }
+
+  async listOperativeNotes(surgeryRequestId: string) {
+    const request = await this.getRequestOrThrow(surgeryRequestId);
+    if (!request.case) return [];
+    return this.prisma.theatreOperativeNote.findMany({
+      where: { theatreCaseId: request.case.id },
+      include: theatreOperativeNoteInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createOperativeNote(
+    surgeryRequestId: string,
+    dto: UpsertTheatreOperativeNoteDto,
+    staffId: string,
+  ) {
+    const request = await this.getRequestOrThrow(surgeryRequestId);
+    this.assertOperativeNotesWritable(request.status);
+    const theatreCase = await this.ensureCase(surgeryRequestId, staffId);
+
+    const note = await this.prisma.theatreOperativeNote.create({
+      data: {
+        theatreCaseId: theatreCase.id,
+        authoredById: staffId,
+        schemaVersion: dto.schemaVersion ?? 1,
+        answersJson: dto.answersJson as Prisma.InputJsonValue,
+        narrative: dto.narrative ?? '',
+        additionalNotes: dto.additionalNotes?.trim()
+          ? dto.additionalNotes.trim()
+          : null,
+      },
+      include: theatreOperativeNoteInclude,
+    });
+
+    await this.syncCaseSummaryFromLatestNote(theatreCase.id);
+    return note;
+  }
+
+  async updateOperativeNote(
+    surgeryRequestId: string,
+    noteId: string,
+    dto: UpsertTheatreOperativeNoteDto,
+    staffId: string,
+  ) {
+    const request = await this.getRequestOrThrow(surgeryRequestId);
+    this.assertOperativeNotesWritable(request.status);
+    const theatreCase = await this.ensureCase(surgeryRequestId, staffId);
+
+    const existing = await this.prisma.theatreOperativeNote.findFirst({
+      where: { id: noteId, theatreCaseId: theatreCase.id },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Operative note "${noteId}" not found.`);
+    }
+
+    const note = await this.prisma.theatreOperativeNote.update({
+      where: { id: noteId },
+      data: {
+        updatedById: staffId,
+        schemaVersion: dto.schemaVersion ?? existing.schemaVersion,
+        answersJson: dto.answersJson as Prisma.InputJsonValue,
+        narrative: dto.narrative ?? '',
+        additionalNotes: dto.additionalNotes?.trim()
+          ? dto.additionalNotes.trim()
+          : null,
+      },
+      include: theatreOperativeNoteInclude,
+    });
+
+    await this.syncCaseSummaryFromLatestNote(theatreCase.id);
+    return note;
   }
 
   async complete(surgeryRequestId: string) {

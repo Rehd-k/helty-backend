@@ -7,6 +7,7 @@ import { SurgeryRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { parseDateRange } from '../../common/utils/date-range';
+import { getPatientAdmissionContext } from '../../common/utils/patient-admission-context.util';
 import {
   CreateSurgeryRequestDto,
   ListSurgeryRequestsQueryDto,
@@ -49,9 +50,17 @@ export class SurgeryRequestService {
       dto.serviceId,
     );
 
+    let admissionId: string | null = dto.admissionId ?? null;
+    let wardId: string | null = null;
     if (dto.admissionId) {
       const admission = await this.prisma.admission.findUnique({
         where: { id: dto.admissionId },
+        select: {
+          id: true,
+          patientId: true,
+          dischargeDate: true,
+          wardId: true,
+        },
       });
       if (!admission) {
         throw new NotFoundException(
@@ -68,6 +77,14 @@ export class SurgeryRequestService {
           'Cannot link surgery to a discharged admission.',
         );
       }
+      wardId = admission.wardId;
+    } else {
+      const admissionCtx = await getPatientAdmissionContext(
+        this.prisma,
+        dto.patientId,
+      );
+      admissionId = admissionCtx.admissionId;
+      wardId = admissionCtx.wardId;
     }
 
     return this.prisma.surgeryRequest.create({
@@ -76,7 +93,8 @@ export class SurgeryRequestService {
         patientId: dto.patientId,
         requestedById: dto.requestedById,
         serviceId: dto.serviceId,
-        admissionId: dto.admissionId ?? null,
+        admissionId,
+        wardId,
         priority: dto.priority,
         clinicalNotes: dto.clinicalNotes ?? null,
         preferredDate: dto.preferredDate

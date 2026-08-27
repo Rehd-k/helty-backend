@@ -40,6 +40,7 @@ export const medicationRequestWithDetailsInclude = {
   patient: {
     select: patientNameFieldsSelect,
   },
+  ward: { select: { id: true, name: true } },
   requestedByNurse: { select: staffNameSelect },
   billedBy: { select: staffNameSelect },
   medicationOrder: {

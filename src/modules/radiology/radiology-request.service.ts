@@ -134,6 +134,7 @@ export class RadiologyRequestService {
         select: patientNameFieldsSelect,
       },
       encounter: { select: { id: true, encounterType: true, status: true } },
+      ward: { select: { id: true, name: true } },
       requestedBy: {
         select: { id: true, firstName: true, lastName: true, staffId: true },
       },
@@ -306,6 +307,7 @@ export class RadiologyRequestService {
           patient: {
             select: patientNameFieldsSelect,
           },
+          ward: { select: { id: true, name: true } },
           requestedBy: {
             select: { id: true, firstName: true, lastName: true },
           },

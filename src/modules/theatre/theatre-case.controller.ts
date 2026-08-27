@@ -18,6 +18,7 @@ import {
   THEATRE_BILLING_ACCESS,
   THEATRE_CASE_READ_ACCESS,
   THEATRE_CLINICAL_ACCESS,
+  OPERATIVE_NOTE_WRITE_ACCESS,
 } from './theatre.constants';
 import { TheatreCaseService } from './theatre-case.service';
 import { SurgeryRequestService } from './surgery-request.service';
@@ -26,6 +27,7 @@ import {
   BillSurgeryDto,
   TransferAfterSurgeryDto,
   UpdateTheatreCaseDto,
+  UpsertTheatreOperativeNoteDto,
 } from './dto/theatre.dto';
 
 type ReqUser = { user: { sub: string } };
@@ -44,6 +46,46 @@ export class TheatreCaseController {
   @ApiOperation({ summary: 'Get surgery request with case details' })
   findOne(@Param('surgeryRequestId') surgeryRequestId: string) {
     return this.surgeryRequestService.findOne(surgeryRequestId);
+  }
+
+  @Get(':surgeryRequestId/operative-notes')
+  @AccountTypes(...THEATRE_CASE_READ_ACCESS)
+  @ApiOperation({ summary: 'List structured operative notes for a case' })
+  listOperativeNotes(@Param('surgeryRequestId') surgeryRequestId: string) {
+    return this.theatreCaseService.listOperativeNotes(surgeryRequestId);
+  }
+
+  @Post(':surgeryRequestId/operative-notes')
+  @HttpCode(HttpStatus.CREATED)
+  @AccountTypes(...OPERATIVE_NOTE_WRITE_ACCESS)
+  @ApiOperation({ summary: 'Add a structured operative note' })
+  createOperativeNote(
+    @Param('surgeryRequestId') surgeryRequestId: string,
+    @Body() dto: UpsertTheatreOperativeNoteDto,
+    @Req() req: ReqUser,
+  ) {
+    return this.theatreCaseService.createOperativeNote(
+      surgeryRequestId,
+      dto,
+      req.user.sub,
+    );
+  }
+
+  @Patch(':surgeryRequestId/operative-notes/:noteId')
+  @AccountTypes(...OPERATIVE_NOTE_WRITE_ACCESS)
+  @ApiOperation({ summary: 'Update a structured operative note' })
+  updateOperativeNote(
+    @Param('surgeryRequestId') surgeryRequestId: string,
+    @Param('noteId') noteId: string,
+    @Body() dto: UpsertTheatreOperativeNoteDto,
+    @Req() req: ReqUser,
+  ) {
+    return this.theatreCaseService.updateOperativeNote(
+      surgeryRequestId,
+      noteId,
+      dto,
+      req.user.sub,
+    );
   }
 
   @Post(':surgeryRequestId/start')

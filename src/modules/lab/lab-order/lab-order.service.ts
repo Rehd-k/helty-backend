@@ -11,7 +11,10 @@ import { invoiceLinkException } from '../../../common/exceptions/invoice-link.ex
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { patientNameFieldsSelect } from '../../../common/utils/patient-display-name.util';
+import { getPatientAdmissionContext } from '../../../common/utils/patient-admission-context.util';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+
+const wardSelect = { select: { id: true, name: true } } as const;
 
 @Injectable()
 export class LabOrderService {
@@ -53,6 +56,7 @@ export class LabOrderService {
       doctor: {
         select: { id: true, firstName: true, lastName: true, staffId: true },
       },
+      ward: wardSelect,
       invoiceItem: {
         select: { id: true, invoiceId: true, serviceId: true },
       },
@@ -91,12 +95,29 @@ export class LabOrderService {
           },
           { requirePayment: false },
         );
+        const linkedRequest = await tx.labRequest.findFirst({
+          where: {
+            invoiceItemId: dto.invoiceItemId!,
+            status: { not: LabRequestStatus.CANCELLED },
+          },
+          select: { admissionId: true, wardId: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        const admissionCtx =
+          linkedRequest?.admissionId || linkedRequest?.wardId
+            ? {
+                admissionId: linkedRequest.admissionId,
+                wardId: linkedRequest.wardId,
+              }
+            : await getPatientAdmissionContext(tx, dto.patientId);
         const order = await tx.labOrder.create({
           data: {
             patientId: dto.patientId,
             doctorId: dto.doctorId,
             status: 'PENDING',
             invoiceItemId: dto.invoiceItemId!,
+            admissionId: admissionCtx.admissionId,
+            wardId: admissionCtx.wardId,
             items: {
               create: dto.items.map((item) => ({
                 testVersionId: item.testVersionId,
@@ -118,11 +139,17 @@ export class LabOrderService {
       });
     }
 
+    const admissionCtx = await getPatientAdmissionContext(
+      this.prisma,
+      dto.patientId,
+    );
     return this.prisma.labOrder.create({
       data: {
         patientId: dto.patientId,
         doctorId: dto.doctorId,
         status: 'PENDING',
+        admissionId: admissionCtx.admissionId,
+        wardId: admissionCtx.wardId,
         items: {
           create: dto.items.map((item) => ({
             testVersionId: item.testVersionId,
@@ -158,6 +185,7 @@ export class LabOrderService {
             select: patientNameFieldsSelect,
           },
           doctor: { select: { id: true, firstName: true, lastName: true } },
+          ward: wardSelect,
           invoiceItem: {
             select: { id: true, invoiceId: true, serviceId: true },
           },
@@ -185,6 +213,7 @@ export class LabOrderService {
         doctor: {
           select: { id: true, firstName: true, lastName: true, staffId: true, accountType: true },
         },
+        ward: wardSelect,
         invoiceItem: {
           select: { id: true, invoiceId: true, serviceId: true },
         },
@@ -238,6 +267,7 @@ export class LabOrderService {
       include: {
         patient: { select: patientNameFieldsSelect },
         doctor: { select: { id: true, firstName: true, lastName: true } },
+        ward: wardSelect,
         invoiceItem: {
           select: { id: true, invoiceId: true, serviceId: true },
         },

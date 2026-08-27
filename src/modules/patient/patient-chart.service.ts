@@ -257,7 +257,18 @@ export class PatientChartService {
                 testVersion: {
                   include: { test: { select: { id: true, name: true } } },
                 },
-                results: true,
+                results: {
+                  include: {
+                    field: {
+                      select: {
+                        id: true,
+                        label: true,
+                        unit: true,
+                        referenceRange: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },

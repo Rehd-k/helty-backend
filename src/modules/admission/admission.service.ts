@@ -747,6 +747,14 @@ export class AdmissionService {
         encounter: {
           select: {
             id: true,
+            encounterType: true,
+            status: true,
+            startTime: true,
+            endTime: true,
+            chiefComplaint: true,
+            visitType: true,
+            primaryIcdCode: true,
+            primaryIcdDescription: true,
             medicationOrders: true,
           },
         },

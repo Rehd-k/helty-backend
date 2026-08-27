@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -35,23 +36,24 @@ function toWardRoundNoteResponse(note: WardRoundNote) {
 export class WardRoundNotesService {
   constructor(private prisma: PrismaService) { }
 
-  async create(dto: CreateWardRoundNoteDto) {
+  async create(dto: CreateWardRoundNoteDto, actorStaffId: string) {
     if (!hasAtLeastOneSoapField(dto)) {
       throw new BadRequestException(
         'At least one of subjective, objective, assessment, or plan must be non-empty.',
       );
     }
 
+    const doctorId = actorStaffId;
     const [admission, doctor] = await Promise.all([
       this.prisma.admission.findUnique({ where: { id: dto.admissionId } }),
-      this.prisma.staff.findUnique({ where: { id: dto.doctorId } }),
+      this.prisma.staff.findUnique({ where: { id: doctorId } }),
     ]);
 
     if (!admission) {
       throw new NotFoundException(`Admission "${dto.admissionId}" not found.`);
     }
     if (!doctor) {
-      throw new NotFoundException(`Staff/doctor "${dto.doctorId}" not found.`);
+      throw new NotFoundException(`Staff/doctor "${doctorId}" not found.`);
     }
 
     const roundDate = new Date(dto.roundDate);
@@ -60,7 +62,7 @@ export class WardRoundNotesService {
     const note = await this.prisma.wardRoundNote.create({
       data: {
         admissionId: dto.admissionId,
-        doctorId: dto.doctorId,
+        doctorId,
         roundDate,
         subjective: dto.subjective?.trim() || null,
         objective: dto.objective?.trim() || null,
@@ -71,12 +73,17 @@ export class WardRoundNotesService {
     return toWardRoundNoteResponse(note);
   }
 
-  async update(id: string, dto: UpdateWardRoundNoteDto) {
+  async update(id: string, dto: UpdateWardRoundNoteDto, actorStaffId: string) {
     const existing = await this.prisma.wardRoundNote.findUnique({
       where: { id },
     });
     if (!existing) {
       throw new NotFoundException(`Ward round note "${id}" not found.`);
+    }
+    if (existing.doctorId !== actorStaffId) {
+      throw new ForbiddenException(
+        'Only the doctor who recorded this ward round note can edit it.',
+      );
     }
 
     const merged = {

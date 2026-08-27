@@ -13,6 +13,7 @@ export const surgeryRequestSummaryInclude = {
       wardEntity: { select: { id: true, name: true } },
     },
   },
+  ward: { select: { id: true, name: true } },
   requestedBy: {
     select: { id: true, firstName: true, lastName: true, staffId: true },
   },
@@ -55,6 +56,17 @@ export const surgeryRequestSummaryInclude = {
           },
         },
       },
+      operativeNoteRecords: {
+        include: {
+          authoredBy: {
+            select: { id: true, firstName: true, lastName: true, staffId: true },
+          },
+          updatedBy: {
+            select: { id: true, firstName: true, lastName: true, staffId: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' as const },
+      },
     },
   },
 } as const;
@@ -63,6 +75,15 @@ export const theatreCaseConsumableInclude = {
   consumable: { select: { id: true, name: true } },
   storeLocation: { select: { id: true, name: true, code: true } },
   createdBy: { select: staffBriefSelect },
+} as const;
+
+export const theatreOperativeNoteInclude = {
+  authoredBy: {
+    select: { id: true, firstName: true, lastName: true, staffId: true },
+  },
+  updatedBy: {
+    select: { id: true, firstName: true, lastName: true, staffId: true },
+  },
 } as const;
 
 export const theatreScheduleListInclude = {

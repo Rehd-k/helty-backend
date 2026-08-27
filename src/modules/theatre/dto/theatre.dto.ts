@@ -6,6 +6,7 @@ import {
   IsInt,
   IsBoolean,
   IsDateString,
+  IsObject,
   Min,
   IsEnum,
 } from 'class-validator';
@@ -212,4 +213,29 @@ export class TransferAfterSurgeryDto {
   @IsString()
   @IsOptional()
   transferNotes?: string;
+}
+
+export class UpsertTheatreOperativeNoteDto {
+  @ApiPropertyOptional({
+    description: 'Structured questionnaire answers keyed by section id',
+    type: Object,
+    additionalProperties: true,
+  })
+  @IsObject()
+  answersJson: Record<string, unknown>;
+
+  @ApiProperty({ description: 'Compiled clinical narrative from the questionnaire' })
+  @IsString()
+  narrative: string;
+
+  @ApiPropertyOptional({ description: 'Free-hand notes not covered by the form' })
+  @IsString()
+  @IsOptional()
+  additionalNotes?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  schemaVersion?: number;
 }

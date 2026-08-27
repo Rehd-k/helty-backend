@@ -379,6 +379,7 @@ model Admission {
   infectionCases        InfectionCase[]
   prescriptions         Prescription[]
   labRequests           LabRequest[]
+  labOrders             LabOrder[]
   radiologyOrders       RadiologyOrder[]
   medicationRequests    MedicationRequest[]
 
@@ -2595,6 +2596,8 @@ model Staff {
   theatreCasesPerformed               TheatreCase[]               @relation("TheatreCasePerformedBy")
   theatreCaseConsumablesCreated       TheatreCaseConsumable[]     @relation("TheatreCaseConsumableCreatedBy")
   theatreCaseStaffAssignments         TheatreCaseStaff[]
+  theatreOperativeNotesAuthored       TheatreOperativeNote[]      @relation("TheatreOperativeNoteAuthoredBy")
+  theatreOperativeNotesUpdated        TheatreOperativeNote[]      @relation("TheatreOperativeNoteUpdatedBy")
   labSamplesCollected                 LabSample[]                 @relation("LabSampleCollectedBy")
   labResultsEntered                   LabResult[]                 @relation("LabResultEnteredBy")
   labAstResultsEntered                LabAstResult[]              @relation("LabAstResultEnteredBy")
@@ -3245,9 +3248,11 @@ model Ward {
   wardHistoryFrom      AdmissionWardHistory[] @relation("AdmissionWardHistoryFrom")
   wardHistoryTo        AdmissionWardHistory[] @relation("AdmissionWardHistoryTo")
   labRequests          LabRequest[]           @relation("LabRequestWard")
+  labOrders            LabOrder[]             @relation("LabOrderWard")
   radiologyOrders      RadiologyOrder[]       @relation("RadiologyOrderWard")
   prescriptions        Prescription[]         @relation("PrescriptionRequestWard")
   medicationRequests   MedicationRequest[]    @relation("MedicationRequestWard")
+  surgeryRequests      SurgeryRequest[]       @relation("SurgeryRequestWard")
 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -3778,6 +3783,10 @@ model LabOrder {
   patientId         String
   doctorId          String
   status            LabOrderStatus @default(PENDING)
+  admission         Admission?     @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  admissionId       String?
+  ward              Ward?          @relation("LabOrderWard", fields: [wardId], references: [id], onDelete: SetNull)
+  wardId            String?
   invoiceItem       InvoiceItem?   @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
   invoiceItemId     String?        @unique
   sampleCollectedAt DateTime?
@@ -3794,6 +3803,8 @@ model LabOrder {
   @@index([status])
   @@index([invoiceItemId])
   @@index([completedAt])
+  @@index([admissionId])
+  @@index([wardId])
 }
 
 model DialysisSession {
@@ -4520,6 +4531,8 @@ model SurgeryRequest {
   encounterId   String
   admission     Admission?           @relation(fields: [admissionId], references: [id], onDelete: SetNull)
   admissionId   String?
+  ward          Ward?                @relation("SurgeryRequestWard", fields: [wardId], references: [id], onDelete: SetNull)
+  wardId        String?
   requestedBy   Staff                @relation("SurgeryRequestRequestedBy", fields: [requestedById], references: [id])
   requestedById String
   service       Service              @relation(fields: [serviceId], references: [id])
@@ -4541,6 +4554,7 @@ model SurgeryRequest {
   @@index([encounterId])
   @@index([patientId])
   @@index([admissionId])
+  @@index([wardId])
   @@index([status])
   @@index([createdAt])
   @@index([invoiceItemId])
@@ -4585,8 +4599,29 @@ model TheatreCase {
 
   consumables TheatreCaseConsumable[]
   staff       TheatreCaseStaff[]
+  operativeNoteRecords TheatreOperativeNote[]
 
   @@index([startedAt])
+}
+
+model TheatreOperativeNote {
+  id              String      @id @default(uuid())
+  theatreCase     TheatreCase @relation(fields: [theatreCaseId], references: [id], onDelete: Cascade)
+  theatreCaseId   String
+  authoredBy      Staff       @relation("TheatreOperativeNoteAuthoredBy", fields: [authoredById], references: [id])
+  authoredById    String
+  updatedBy       Staff?      @relation("TheatreOperativeNoteUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedById     String?
+  schemaVersion   Int         @default(1)
+  answersJson     Json
+  narrative       String      @default("")
+  additionalNotes String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([theatreCaseId])
+  @@index([authoredById])
+  @@index([createdAt])
 }
 
 model TheatreCaseConsumable {

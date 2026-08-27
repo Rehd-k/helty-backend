@@ -27,6 +27,14 @@ export const THEATRE_BILLING_ACCESS = [
   'SUPER_ADMIN',
 ] as const;
 
+/** Doctors and theatre clinical staff may write structured OP notes. */
+export const OPERATIVE_NOTE_WRITE_ACCESS = [
+  ...THEATRE_CLINICAL_ACCESS,
+  'ONG',
+  'CONSULTANT',
+  'INPATIENT_DOCTOR',
+] as const;
+
 /** Patient-care read access for surgery requests and theatre cases. */
 export const SURGERY_REQUEST_READ_ACCESS = [...CLINICAL_READ_ACCESS] as const;
 

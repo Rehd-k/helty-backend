@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   HttpCode,
   HttpStatus,
   UseGuards,
@@ -18,6 +19,8 @@ import { CreateWardRoundNoteDto } from './dto/create-ward-round-note.dto';
 import { UpdateWardRoundNoteDto } from './dto/update-ward-round-note.dto';
 import { ListWardRoundNotesQueryDto } from './dto/list-ward-round-notes-query.dto';
 
+type ReqUser = { user: { sub: string } };
+
 @ApiTags('Ward round notes')
 @Controller('ward-round-notes')
 @UseGuards(JwtAuthGuard, AccessGuard)
@@ -28,8 +31,8 @@ export class WardRoundNotesController {
   @HttpCode(HttpStatus.CREATED)
   @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT')
   @ApiOperation({ summary: 'Create a ward round (progress) note' })
-  create(@Body() dto: CreateWardRoundNoteDto) {
-    return this.wardRoundNotesService.create(dto);
+  create(@Body() dto: CreateWardRoundNoteDto, @Req() req: ReqUser) {
+    return this.wardRoundNotesService.create(dto, req.user.sub);
   }
 
   @Get()
@@ -42,7 +45,11 @@ export class WardRoundNotesController {
   @AccountTypes('INPATIENT_DOCTOR', 'CONSULTANT')
   @ApiOperation({ summary: 'Update a ward round (progress) note' })
   @ApiParam({ name: 'id', description: 'Ward round note ID' })
-  update(@Param('id') id: string, @Body() dto: UpdateWardRoundNoteDto) {
-    return this.wardRoundNotesService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateWardRoundNoteDto,
+    @Req() req: ReqUser,
+  ) {
+    return this.wardRoundNotesService.update(id, dto, req.user.sub);
   }
 }
