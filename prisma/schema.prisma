@@ -226,6 +226,25 @@ model HealthNewsArticle {
   @@index([expiresAt])
 }
 
+model SystemAnnouncement {
+  id          String    @id @default(uuid())
+  title       String
+  description String
+  iconKey     String    @default("info")
+  isActive    Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   Staff     @relation("SystemAnnouncementCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?    @relation("SystemAnnouncementUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  @@index([isActive, sortOrder])
+  @@index([expiresAt])
+}
+
 model CustomPushNotification {
   id            String               @id @default(uuid())
   title         String
@@ -2572,6 +2591,8 @@ model Staff {
   healthCampaignsUpdated                HealthCampaign[]            @relation("HealthCampaignUpdatedBy")
   healthNewsArticlesCreated             HealthNewsArticle[]         @relation("HealthNewsArticleCreatedBy")
   healthNewsArticlesUpdated             HealthNewsArticle[]         @relation("HealthNewsArticleUpdatedBy")
+  systemAnnouncementsCreated            SystemAnnouncement[]        @relation("SystemAnnouncementCreatedBy")
+  systemAnnouncementsUpdated            SystemAnnouncement[]        @relation("SystemAnnouncementUpdatedBy")
   wardRoundNotes                      WardRoundNote[]
   pregnanciesCreated                  Pregnancy[]                 @relation("PregnancyCreatedBy")
   pregnanciesUpdated                  Pregnancy[]                 @relation("PregnancyUpdatedBy")

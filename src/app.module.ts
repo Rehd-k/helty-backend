@@ -76,6 +76,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { TheatreModule } from './modules/theatre/theatre.module';
 import { FcmModule } from './modules/fcm/fcm.module';
 import { HealthContentModule } from './modules/health-content/health-content.module';
+import { SystemAnnouncementsModule } from './modules/system-announcements/system-announcements.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { DbBackupModule } from './modules/db-backup/db-backup.module';
 
@@ -169,6 +170,7 @@ import { DbBackupModule } from './modules/db-backup/db-backup.module';
     AccountsModule,
     TheatreModule,
     HealthContentModule,
+    SystemAnnouncementsModule,
     ReportingModule,
     DbBackupModule,
   ],
