@@ -3633,8 +3633,10 @@ model PatientFeedback {
 
 model EmergencyRequest {
   id              String                  @id @default(uuid())
-  patient         Patient                 @relation(fields: [patientId], references: [id], onDelete: Restrict)
-  patientId       String
+  patient         Patient?                @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId       String?
+  guestName       String?
+  guestPhone      String?
   status          EmergencyRequestStatus  @default(SUBMITTED)
   latitude        Float
   longitude       Float

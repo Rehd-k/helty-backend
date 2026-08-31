@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import {
   CreateEmergencyRequestDto,
+  CreateGuestEmergencyRequestDto,
   ListEmergencyRequestQueryDto,
 } from './dto/patient-emergency.dto';
 import { EmergencyRequestStorageService } from './emergency-request-storage.service';
@@ -30,7 +31,52 @@ export class PatientEmergencyService {
     dto: CreateEmergencyRequestDto,
     files: { voice?: Express.Multer.File; video?: Express.Multer.File },
   ) {
-    const description = dto.description?.trim() || null;
+    return this.persistRequest(
+      {
+        patientId: user.sub,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        accuracyMeters: dto.accuracyMeters,
+        addressText: dto.addressText?.trim() || null,
+        description: dto.description?.trim() || null,
+      },
+      files,
+    );
+  }
+
+  async createGuest(
+    dto: CreateGuestEmergencyRequestDto,
+    files: { voice?: Express.Multer.File; video?: Express.Multer.File },
+  ) {
+    return this.persistRequest(
+      {
+        patientId: null,
+        guestName: dto.guestName?.trim() || null,
+        guestPhone: dto.guestPhone?.trim() || null,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        accuracyMeters: dto.accuracyMeters,
+        addressText: dto.addressText?.trim() || null,
+        description: dto.description?.trim() || null,
+      },
+      files,
+    );
+  }
+
+  private async persistRequest(
+    data: {
+      patientId: string | null;
+      guestName?: string | null;
+      guestPhone?: string | null;
+      latitude: number;
+      longitude: number;
+      accuracyMeters?: number;
+      addressText: string | null;
+      description: string | null;
+    },
+    files: { voice?: Express.Multer.File; video?: Express.Multer.File },
+  ) {
+    const description = data.description;
     const hasText = !!description;
     const hasVoice = !!files.voice?.buffer?.length;
     const hasVideo = !!files.video?.buffer?.length;
@@ -42,10 +88,10 @@ export class PatientEmergencyService {
     }
 
     if (
-      typeof dto.latitude !== 'number' ||
-      Number.isNaN(dto.latitude) ||
-      typeof dto.longitude !== 'number' ||
-      Number.isNaN(dto.longitude)
+      typeof data.latitude !== 'number' ||
+      Number.isNaN(data.latitude) ||
+      typeof data.longitude !== 'number' ||
+      Number.isNaN(data.longitude)
     ) {
       throw new BadRequestException('Valid latitude and longitude are required.');
     }
@@ -65,11 +111,13 @@ export class PatientEmergencyService {
       return await this.prisma.emergencyRequest.create({
         data: {
           id: requestId,
-          patientId: user.sub,
-          latitude: dto.latitude,
-          longitude: dto.longitude,
-          accuracyMeters: dto.accuracyMeters,
-          addressText: dto.addressText?.trim() || null,
+          patientId: data.patientId,
+          guestName: data.guestName ?? null,
+          guestPhone: data.guestPhone ?? null,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          accuracyMeters: data.accuracyMeters,
+          addressText: data.addressText,
           description,
           voiceUrl,
           videoUrl,

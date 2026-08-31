@@ -141,17 +141,19 @@ export class EmergencyRequestsService {
       include: STAFF_INCLUDE,
     });
 
-    void this.fcm
-      .sendToPatient(updated.patientId, {
-        title: 'Emergency request update',
-        body: `Your emergency request was ${STATUS_LABELS[updated.status]}.`,
-        data: {
-          type: 'EMERGENCY_REQUEST',
-          emergencyRequestId: updated.id,
-          status: updated.status,
-        },
-      })
-      .catch(() => undefined);
+    void (updated.patientId
+      ? this.fcm
+          .sendToPatient(updated.patientId, {
+            title: 'Emergency request update',
+            body: `Your emergency request was ${STATUS_LABELS[updated.status]}.`,
+            data: {
+              type: 'EMERGENCY_REQUEST',
+              emergencyRequestId: updated.id,
+              status: updated.status,
+            },
+          })
+          .catch(() => undefined)
+      : undefined);
 
     return updated;
   }

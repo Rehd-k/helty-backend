@@ -63,6 +63,22 @@ export class CreateEmergencyRequestDto {
   description?: string;
 }
 
+export class CreateGuestEmergencyRequestDto extends CreateEmergencyRequestDto {
+  @ApiPropertyOptional({ description: 'Caller name when not signed in' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(120)
+  guestName?: string;
+
+  @ApiPropertyOptional({ description: 'Caller phone when not signed in' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(40)
+  guestPhone?: string;
+}
+
 export class ListEmergencyRequestQueryDto {
   @ApiPropertyOptional({ enum: EmergencyRequestStatus })
   @IsOptional()
