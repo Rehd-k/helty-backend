@@ -3570,14 +3570,8 @@ export class InvoiceService {
       });
     }
     if (patientName?.trim()) {
-      const pn = patientName.trim();
       andExtra.push({
-        patient: {
-          OR: [
-            { firstName: { contains: pn, mode: 'insensitive' } },
-            { surname: { contains: pn, mode: 'insensitive' } },
-          ],
-        },
+        patient: buildPatientNameSearchWhere(patientName.trim()),
       });
     }
     if (search?.trim()) {
@@ -3590,11 +3584,18 @@ export class InvoiceService {
       invoiceItems: { some: itemMatchWhere },
       ...(andExtra.length ? { AND: andExtra } : {}),
     };
+
+    const safeSkip = Math.max(0, Math.floor(Number(skip) || 0));
+    const safeTake = Math.min(
+      20,
+      Math.max(1, Math.floor(Number(take) || 20)),
+    );
+
     const [invoices, total] = await Promise.all([
       this.prisma.invoice.findMany({
         where,
-        skip: Number(skip),
-        take: Number(take),
+        skip: safeSkip,
+        take: safeTake,
         orderBy: { createdAt: 'desc' },
         include: {
           patient: {
@@ -3696,8 +3697,9 @@ export class InvoiceService {
 
     return {
       total,
-      skip: Number(skip),
-      take: Number(take),
+      skip: safeSkip,
+      take: safeTake,
+      hasMore: rows.length === safeTake && safeSkip + rows.length < total,
       categories: normalized,
       rows,
     };

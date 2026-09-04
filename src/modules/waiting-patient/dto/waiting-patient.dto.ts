@@ -8,6 +8,7 @@ import {
   IsPositive,
   IsString,
   IsUUID,
+  Max,
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
@@ -114,19 +115,32 @@ export class QueryWaitingPatientDto {
   q?: string;
 
   @ApiPropertyOptional({ description: 'Number of records to skip', example: 0 })
-  @Type(() => Number)
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return 0;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return Math.floor(n);
+  })
   @IsInt()
   @Min(0)
   @IsOptional()
   skip?: number = 0;
 
   @ApiPropertyOptional({
-    description: 'Number of records to return',
+    description:
+      'Page size (max 20). Each request returns at most 20 queue rows.',
     example: 20,
+    maximum: 20,
   })
-  @Type(() => Number)
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return 20;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 1) return 20;
+    return Math.min(20, Math.floor(n));
+  })
   @IsInt()
   @IsPositive()
+  @Max(20)
   @IsOptional()
   take?: number = 20;
 

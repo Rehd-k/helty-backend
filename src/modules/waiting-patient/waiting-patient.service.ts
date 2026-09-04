@@ -164,12 +164,14 @@ export class WaitingPatientService {
       unassignedOnly,
       unregisteredOnly,
       seen,
-      skip = 0,
-      take = 20,
       toDate,
       fromDate,
       q,
     } = query;
+
+    // Always page in fixed chunks of at most 20.
+    const skip = Math.max(0, Math.floor(Number(query.skip) || 0));
+    const take = Math.min(20, Math.max(1, Math.floor(Number(query.take) || 20)));
 
     const dateRange =
       fromDate || toDate ? parseDateRange(fromDate, toDate) : undefined;
@@ -202,7 +204,15 @@ export class WaitingPatientService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
-    return { data: rows.map((r) => this.toQueueRow(r)), total, skip, take };
+    const data = rows.map((r) => this.toQueueRow(r));
+    return {
+      data,
+      total,
+      skip,
+      take,
+      /** True when this page is full — client should enable Next. */
+      hasMore: data.length === take && skip + data.length < total,
+    };
   }
 
   async findOne(id: string) {
