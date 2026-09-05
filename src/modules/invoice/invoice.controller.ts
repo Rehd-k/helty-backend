@@ -34,6 +34,7 @@ import {
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
   WalletDepositDto,
+  WalletAdjustDto,
   ListInvoicesByCategoryQueryDto,
   ListInvoicePaymentsQueryDto,
   SplitInvoiceDto,
@@ -460,6 +461,27 @@ export class InvoiceController {
   ) {
     const staffId = dto.staffId ?? req?.user?.sub;
     return this.invoiceService.depositToWallet(patientId, dto, staffId);
+  }
+
+  @Post('wallets/:patientId/adjustments')
+  @AccountTypes(
+    'SUPER_ADMIN',
+    'BILLING_HEAD',
+    'ACCOUNT_HEAD',
+    'ACCOUNTING_HEAD',
+  )
+  @ApiOperation({
+    summary: 'Manually adjust patient wallet balance',
+    description:
+      'Privileged CREDIT or DEBIT with a required reason. Allowed for Super Admin, Billing Head, and Account Head only.',
+  })
+  adjustWallet(
+    @Param('patientId') patientId: string,
+    @Body() dto: WalletAdjustDto,
+    @Req() req: any,
+  ) {
+    const staffId = dto.staffId ?? req?.user?.sub;
+    return this.invoiceService.adjustWallet(patientId, dto, staffId);
   }
 
   @Get('wallets/:patientId')

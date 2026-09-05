@@ -21,6 +21,7 @@ import {
   InvoicePaymentMethod,
   InvoicePaymentSource,
   InvoiceStatus,
+  WalletTransactionType,
 } from '@prisma/client';
 
 // ─── Invoice DTOs ──────────────────────────────────────────────────────────────
@@ -517,6 +518,37 @@ export class WalletDepositDto {
   @ApiPropertyOptional({
     description:
       'Staff UUID recording the deposit (optional if the server sets it from the auth token)',
+  })
+  @IsUUID()
+  @IsOptional()
+  staffId?: string;
+}
+
+export class WalletAdjustDto {
+  @ApiProperty({ example: 5000 })
+  @IsNumber()
+  @IsPositive()
+  amount!: number;
+
+  @ApiProperty({
+    enum: WalletTransactionType,
+    description: 'CREDIT to add funds, DEBIT to subtract',
+    example: WalletTransactionType.CREDIT,
+  })
+  @IsEnum(WalletTransactionType)
+  type!: WalletTransactionType;
+
+  @ApiProperty({
+    description: 'Required reason / reference for the adjustment',
+    example: 'Correction: duplicate deposit',
+  })
+  @IsString()
+  @IsNotEmpty()
+  reference!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Staff UUID recording the adjustment (optional if the server sets it from the auth token)',
   })
   @IsUUID()
   @IsOptional()

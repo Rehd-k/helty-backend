@@ -33,6 +33,7 @@ import {
   UpdateInvoiceDto,
   UpdateInvoiceItemDto,
   WalletDepositDto,
+  WalletAdjustDto,
   ListInvoicesByCategoryQueryDto,
   ListInvoicePaymentsQueryDto,
   SplitInvoiceDto,
@@ -3914,6 +3915,55 @@ export class InvoiceService {
       const updatedWallet = await tx.patientWallet.update({
         where: { id: wallet.id },
         data: { balance: wallet.balance.add(amount) },
+      });
+
+      return { wallet: updatedWallet, transaction };
+    });
+  }
+
+  async adjustWallet(
+    patientId: string,
+    dto: WalletAdjustDto,
+    createdByStaffId?: string,
+  ) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: patientId },
+    });
+    if (!patient) throw new NotFoundException(`Patient ${patientId} not found`);
+
+    const reference = dto.reference?.trim();
+    if (!reference) {
+      throw new BadRequestException('A reason / reference is required for wallet adjustments');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const wallet = await this.ensureWallet(patientId, tx);
+      const amount = this.asDecimal(dto.amount);
+      const isDebit = dto.type === WalletTransactionType.DEBIT;
+
+      if (isDebit && wallet.balance.lt(amount)) {
+        throw new BadRequestException(
+          `Insufficient wallet balance (₦${wallet.balance.toFixed(2)}) for debit of ₦${amount.toFixed(2)}`,
+        );
+      }
+
+      const transaction = await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: dto.type,
+          amount,
+          reference,
+          ...(createdByStaffId ? { createdById: createdByStaffId } : {}),
+        },
+      });
+
+      const updatedWallet = await tx.patientWallet.update({
+        where: { id: wallet.id },
+        data: {
+          balance: isDebit
+            ? wallet.balance.sub(amount)
+            : wallet.balance.add(amount),
+        },
       });
 
       return { wallet: updatedWallet, transaction };
