@@ -6,6 +6,9 @@
 /uploads
 /prisma/error
 
+# Local pnpm workspace config (do not commit)
+pnpm-workspace.yaml
+
 # Logs
 logs
 *.log
