@@ -24,6 +24,7 @@ export class LabAstResultController {
       'Order item must have astRequested=true. Each antibiotic may appear once per order item.',
   })
   createBatch(@Body() dto: CreateLabAstResultBatchDto) {
+    console.log('dto', dto); 
     return this.labAstResultService.createBatch(dto);
   }
 
