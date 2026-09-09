@@ -43,19 +43,22 @@ export class LabAstResultService {
     antibioticIds: string[],
     resultOptionIds: string[],
   ) {
+    const uniqueAntibioticIds = [...new Set(antibioticIds)];
     const antibiotics = await this.prisma.labAntibiotic.findMany({
-      where: { id: { in: antibioticIds }, isActive: true },
+      where: { id: { in: uniqueAntibioticIds }, isActive: true },
     });
-    if (antibiotics.length !== antibioticIds.length) {
+    if (antibiotics.length !== uniqueAntibioticIds.length) {
       throw new BadRequestException(
         'One or more antibiotics are invalid or inactive.',
       );
     }
 
+    // Many antibiotics share the same S/I/R option; compare unique IDs only.
+    const uniqueOptionIds = [...new Set(resultOptionIds)];
     const options = await this.prisma.labAstResultOption.findMany({
-      where: { id: { in: resultOptionIds }, isActive: true },
+      where: { id: { in: uniqueOptionIds }, isActive: true },
     });
-    if (options.length !== resultOptionIds.length) {
+    if (options.length !== uniqueOptionIds.length) {
       throw new BadRequestException(
         'One or more AST result options are invalid or inactive.',
       );
