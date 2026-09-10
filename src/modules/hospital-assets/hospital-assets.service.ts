@@ -15,6 +15,7 @@ import { staffBriefSelect } from '../../common/constants/staff-select.constants'
 import {
   headedAccountTypeForRole,
   isHospitalWideInventoryRole,
+  isOperationalInventoryDepartment,
 } from '../../common/constants/department-head.constants';
 import {
   CreateHospitalAssetDto,
@@ -72,15 +73,22 @@ export class HospitalAssetsService {
       where: { staffId: actor.id },
     });
 
+    const ownDept = isOperationalInventoryDepartment(actor.accountType)
+      ? actor.accountType
+      : null;
+
     const view = new Set<AccountType>();
     const log = new Set<AccountType>();
     const manage = new Set<AccountType>();
+    if (ownDept) view.add(ownDept);
     if (headed) {
-      view.add(headed);
       log.add(headed);
       manage.add(headed);
     }
     for (const g of grants) {
+      // Grants never open another department's inventory.
+      if (ownDept && g.accountType !== ownDept) continue;
+      if (!ownDept) continue;
       if (g.canView || g.canLog) view.add(g.accountType);
       if (g.canLog) log.add(g.accountType);
     }
@@ -156,7 +164,14 @@ export class HospitalAssetsService {
       }
       return headed;
     }
-    if (requested) return requested;
+    if (isOperationalInventoryDepartment(actor.accountType)) {
+      if (requested && requested !== actor.accountType) {
+        throw new ForbiddenException(
+          'You may only access your own department inventory.',
+        );
+      }
+      return actor.accountType;
+    }
     throw new ForbiddenException('No inventory department assigned.');
   }
 
@@ -409,10 +424,20 @@ export class HospitalAssetsService {
   async listAccess(actorId: string, accountType?: AccountType) {
     const actor = await this.loadActor(actorId);
     const access = await this.resolveAccess(actor);
-    const scoped = this.defaultAccountType(actor, accountType);
-    this.assertManage(access, scoped);
+    const where: Prisma.HospitalAssetAccessGrantWhereInput = {};
+    if (isHospitalWideInventoryRole(actor) && !accountType) {
+      if (access.manageAccountTypes !== 'ALL') {
+        throw new ForbiddenException(
+          'Only the department head can manage this inventory.',
+        );
+      }
+    } else {
+      const scoped = this.defaultAccountType(actor, accountType);
+      this.assertManage(access, scoped);
+      where.accountType = scoped;
+    }
     return this.prisma.hospitalAssetAccessGrant.findMany({
-      where: { accountType: scoped },
+      where,
       include: {
         staff: {
           select: {
@@ -438,9 +463,14 @@ export class HospitalAssetsService {
 
     const target = await this.prisma.staff.findUnique({
       where: { id: dto.staffId },
-      select: { id: true },
+      select: { id: true, accountType: true },
     });
     if (!target) throw new NotFoundException('Staff member not found.');
+    if (target.accountType !== accountType) {
+      throw new ForbiddenException(
+        'Inventory access can only be granted to staff in that department.',
+      );
+    }
 
     const canLog = dto.canLog ?? false;
     const canView = canLog ? true : (dto.canView ?? true);

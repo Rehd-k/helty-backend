@@ -54,15 +54,30 @@ export function isHospitalWideInventoryRole(input: {
   accountType?: string | null;
   staffRole?: string | null;
 }): boolean {
-  const at = input.accountType;
-  const role = input.staffRole;
+  const at = (input.accountType ?? '').toUpperCase().replace(/-/g, '_');
+  const role = (input.staffRole ?? '').toUpperCase().replace(/-/g, '_');
   return (
     at === AccountType.CMD ||
     at === AccountType.CMAC ||
     at === AccountType.SUPER_ADMIN ||
     role === StaffRole.CMD ||
     role === StaffRole.CMAC ||
-    role === StaffRole.SUPER_ADMIN
+    role === StaffRole.SUPER_ADMIN ||
+    // Director of Admin — coming soon; treat as hospital-wide when present.
+    at === 'DA' ||
+    at === 'DIRECTOR_OF_ADMIN' ||
+    at === 'DIRECTOR_ADMIN' ||
+    role === 'DA' ||
+    role === 'DIRECTOR_OF_ADMIN' ||
+    role === 'DIRECTOR_ADMIN'
+  );
+}
+
+export function isOperationalInventoryDepartment(
+  accountType?: string | null,
+): accountType is HeadedAccountType {
+  return (DEPARTMENT_HEAD_ACCOUNT_TYPES as readonly string[]).includes(
+    accountType ?? '',
   );
 }
 

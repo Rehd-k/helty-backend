@@ -27,6 +27,15 @@ describe('department-head constants', () => {
     expect(isHospitalWideInventoryRole({ accountType: AccountType.CMD })).toBe(
       true,
     );
+    expect(isHospitalWideInventoryRole({ accountType: AccountType.CMAC })).toBe(
+      true,
+    );
+    expect(
+      isHospitalWideInventoryRole({
+        accountType: 'DA',
+        staffRole: 'DIRECTOR_OF_ADMIN',
+      }),
+    ).toBe(true);
   });
 
   it('recognizes existing heads', () => {
