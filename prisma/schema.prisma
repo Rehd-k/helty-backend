@@ -2093,6 +2093,7 @@ enum AccountType {
   PURCHASES
   DIALYSIS
   THEATRE
+  JANITOR
   SUPER_ADMIN
 }
 
@@ -2121,12 +2122,16 @@ enum StaffRole {
   ICU_NURSE
   ONG_NURSE
   // Physician
+  PHYSICIAN_HEAD
   CONSULTANT
+  SPECIALIST
   RESIDENT
   INTERN
   JUNIOR_RESIDENT
   SENIOR_RESIDENT
   CHIEF_RESIDENT
+  HOUSE_OFFICER
+  MEDICAL_OFFICER
   MEDICAL_STUDENT
   // Laboratory
   LAB_HEAD
@@ -2138,14 +2143,18 @@ enum StaffRole {
   HEAD_OF_STORE
   STOREKEEPER
   // Medical records
+  MEDICAL_RECORDS_HEAD
   MEDICAL_RECORDS
   // Front desk
+  FRONT_DESK_HEAD
   FRONT_DESK
   // ICT / executive / admin (single-role categories)
+  ICT_HEAD
   ICT_STAFF
   CMD
   CMAC
   // HMO (insurance liaison / portal users)
+  HMO_HEAD
   HMO_STAFF
   // Purchases
   PURCHASES_STORE
@@ -2162,6 +2171,8 @@ enum StaffRole {
   THEATRE_SCRUB
   THEATRE_ANAESTHETIST
   THEATRE_RECEPTIONIST
+  // Housekeeping
+  JANITOR_HEAD
   SUPER_ADMIN
 }
 
@@ -2337,6 +2348,45 @@ enum ShiftType {
   MORNING
   AFTERNOON
   NIGHT
+}
+
+enum HospitalAssetKind {
+  EQUIPMENT
+  MACHINERY
+  VEHICLE
+  FURNITURE
+  OTHER
+}
+
+enum HospitalAssetStatus {
+  IN_USE
+  UNDER_REPAIR
+  DECOMMISSIONED
+  TRANSFERRED
+}
+
+enum HospitalAssetLogType {
+  CREATED
+  USAGE
+  MOVEMENT
+  MAINTENANCE
+  STATUS_CHANGE
+  TRANSFER
+}
+
+enum HousekeepingAreaKind {
+  ROOM
+  WARD
+  CORRIDOR
+  TOILET
+  GROUNDS
+  OTHER
+}
+
+enum HousekeepingSupplyAction {
+  ISSUED
+  USED
+  RESTOCKED
 }
 
 enum NursingUnit {
@@ -2714,7 +2764,22 @@ model Staff {
   patientDevicesApproved             PatientDevice[]                @relation("PatientDeviceApprovedBy")
   familyLinksCreated                 PatientFamilyLink[]            @relation("FamilyLinkCreatedBy")
 
+  departmentShiftRosters             DepartmentShiftRoster[]        @relation("DepartmentShiftRosterStaff")
+  departmentShiftRostersAssigned     DepartmentShiftRoster[]        @relation("DepartmentShiftRosterAssignedBy")
+  hospitalAssetsCreated              HospitalAsset[]                @relation("HospitalAssetCreatedBy")
+  hospitalAssetsUpdated              HospitalAsset[]                @relation("HospitalAssetUpdatedBy")
+  hospitalAssetLogsCreated           HospitalAssetLog[]             @relation("HospitalAssetLogCreatedBy")
+  hospitalAssetAccessGrants          HospitalAssetAccessGrant[]     @relation("HospitalAssetAccessGrantStaff")
+  hospitalAssetAccessGrantsGranted   HospitalAssetAccessGrant[]     @relation("HospitalAssetAccessGrantGrantedBy")
+  housekeepingWorkersCreated         HousekeepingWorker[]           @relation("HousekeepingWorkerCreatedBy")
+  housekeepingWorkersUpdated         HousekeepingWorker[]           @relation("HousekeepingWorkerUpdatedBy")
+  housekeepingAreasCreated           HousekeepingArea[]             @relation("HousekeepingAreaCreatedBy")
+  housekeepingAreasUpdated           HousekeepingArea[]             @relation("HousekeepingAreaUpdatedBy")
+  housekeepingShiftsAssigned         HousekeepingShiftRoster[]      @relation("HousekeepingShiftRosterAssignedBy")
+  housekeepingSupplyLogsCreated      HousekeepingSupplyLog[]        @relation("HousekeepingSupplyLogCreatedBy")
+
   @@index([wardId])
+  @@index([accountType])
 }
 
 /// One-time 6-digit codes for staff password reset (plain `code` in DB for admin handoff until SMTP).
@@ -3214,6 +3279,7 @@ model ConsultingRoom {
   staffId         String?
   waitingPatients WaitingPatient[]
   invoices        Invoice[]
+  housekeepingAreas HousekeepingArea[]
 }
 
 model WaitingPatient {
@@ -3274,6 +3340,7 @@ model Ward {
   prescriptions        Prescription[]         @relation("PrescriptionRequestWard")
   medicationRequests   MedicationRequest[]    @relation("MedicationRequestWard")
   surgeryRequests      SurgeryRequest[]       @relation("SurgeryRequestWard")
+  housekeepingAreas    HousekeepingArea[]
 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -4542,6 +4609,7 @@ model TheatreRoom {
   updatedAt DateTime @updatedAt
 
   schedules TheatreSchedule[]
+  housekeepingAreas HousekeepingArea[]
 
   @@index([isActive])
 }
@@ -5392,4 +5460,183 @@ model PatientArchivedEncounterDocument {
   uploadedAt          DateTime                 @default(now())
 
   @@index([archivedEncounterId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEPARTMENT HEADS — generic shift roster (nursing keeps NurseShiftRoster)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DepartmentShiftRoster {
+  id           String      @id @default(uuid())
+  staff        Staff       @relation("DepartmentShiftRosterStaff", fields: [staffId], references: [id])
+  staffId      String
+  accountType  AccountType
+  shiftDate    DateTime
+  shiftType    ShiftType
+  assignedBy   Staff       @relation("DepartmentShiftRosterAssignedBy", fields: [assignedById], references: [id])
+  assignedById String
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([staffId, shiftDate, shiftType])
+  @@index([accountType, shiftDate])
+  @@index([shiftDate, shiftType])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOSPITAL PHYSICAL ASSETS (equipment, vehicles — not pharmacy/store stock)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model HospitalAsset {
+  id               String              @id @default(uuid())
+  name             String
+  assetTag         String              @unique
+  kind             HospitalAssetKind
+  status           HospitalAssetStatus @default(IN_USE)
+  accountType      AccountType
+  serialNumber     String?
+  manufacturer     String?
+  model            String?
+  locationNote     String?
+  acquiredAt       DateTime?
+  notes            String?
+  transferredToNote String?
+  createdBy        Staff               @relation("HospitalAssetCreatedBy", fields: [createdById], references: [id])
+  createdById      String
+  updatedBy        Staff?              @relation("HospitalAssetUpdatedBy", fields: [updatedById], references: [id])
+  updatedById      String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  logs             HospitalAssetLog[]
+
+  @@index([accountType, status])
+  @@index([kind])
+  @@index([status])
+}
+
+model HospitalAssetLog {
+  id              String               @id @default(uuid())
+  asset           HospitalAsset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetId         String
+  type            HospitalAssetLogType
+  fromStatus      HospitalAssetStatus?
+  toStatus        HospitalAssetStatus?
+  fromAccountType AccountType?
+  toAccountType   AccountType?
+  note            String?
+  createdBy       Staff                @relation("HospitalAssetLogCreatedBy", fields: [createdById], references: [id])
+  createdById     String
+  createdAt       DateTime             @default(now())
+
+  @@index([assetId, createdAt])
+}
+
+model HospitalAssetAccessGrant {
+  id          String      @id @default(uuid())
+  staff       Staff       @relation("HospitalAssetAccessGrantStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  staffId     String
+  accountType AccountType
+  canView     Boolean     @default(true)
+  canLog      Boolean     @default(false)
+  grantedBy   Staff       @relation("HospitalAssetAccessGrantGrantedBy", fields: [grantedById], references: [id])
+  grantedById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([staffId, accountType])
+  @@index([accountType])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOUSEKEEPING (janitor head + non-login workers)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model HousekeepingWorker {
+  id          String                    @id @default(uuid())
+  firstName   String
+  lastName    String
+  phone       String?
+  isActive    Boolean                   @default(true)
+  notes       String?
+  createdBy   Staff                     @relation("HousekeepingWorkerCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?                    @relation("HousekeepingWorkerUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  assignments HousekeepingAssignment[]
+  shifts      HousekeepingShiftRoster[]
+  supplyLogs  HousekeepingSupplyLog[]
+
+  @@index([isActive])
+}
+
+model HousekeepingArea {
+  id               String                    @id @default(uuid())
+  name             String
+  kind             HousekeepingAreaKind      @default(OTHER)
+  notes            String?
+  ward             Ward?                     @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  wardId           String?
+  consultingRoom   ConsultingRoom?           @relation(fields: [consultingRoomId], references: [id], onDelete: SetNull)
+  consultingRoomId String?
+  theatreRoom      TheatreRoom?              @relation(fields: [theatreRoomId], references: [id], onDelete: SetNull)
+  theatreRoomId    String?
+  isActive         Boolean                   @default(true)
+  createdBy        Staff                     @relation("HousekeepingAreaCreatedBy", fields: [createdById], references: [id])
+  createdById      String
+  updatedBy        Staff?                    @relation("HousekeepingAreaUpdatedBy", fields: [updatedById], references: [id])
+  updatedById      String?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  assignments      HousekeepingAssignment[]
+
+  @@index([kind])
+  @@index([isActive])
+}
+
+model HousekeepingAssignment {
+  id         String            @id @default(uuid())
+  worker     HousekeepingWorker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workerId   String
+  area       HousekeepingArea   @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  areaId     String
+  createdAt  DateTime           @default(now())
+
+  @@unique([workerId, areaId])
+  @@index([areaId])
+}
+
+model HousekeepingShiftRoster {
+  id           String             @id @default(uuid())
+  worker       HousekeepingWorker @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workerId     String
+  shiftDate    DateTime
+  shiftType    ShiftType
+  assignedBy   Staff              @relation("HousekeepingShiftRosterAssignedBy", fields: [assignedById], references: [id])
+  assignedById String
+  notes        String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([workerId, shiftDate, shiftType])
+  @@index([shiftDate, shiftType])
+}
+
+model HousekeepingSupplyLog {
+  id          String                   @id @default(uuid())
+  itemName    String
+  quantity    Decimal                  @db.Decimal(12, 2)
+  unit        String
+  action      HousekeepingSupplyAction
+  worker      HousekeepingWorker?      @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  workerId    String?
+  note        String?
+  createdBy   Staff                    @relation("HousekeepingSupplyLogCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime                 @default(now())
+
+  @@index([createdAt])
+  @@index([itemName])
 }

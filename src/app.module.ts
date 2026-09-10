@@ -79,6 +79,9 @@ import { HealthContentModule } from './modules/health-content/health-content.mod
 import { SystemAnnouncementsModule } from './modules/system-announcements/system-announcements.module';
 import { ReportingModule } from './modules/reporting/reporting.module';
 import { DbBackupModule } from './modules/db-backup/db-backup.module';
+import { DepartmentHeadModule } from './modules/department-head/department-head.module';
+import { HospitalAssetsModule } from './modules/hospital-assets/hospital-assets.module';
+import { HousekeepingModule } from './modules/housekeeping/housekeeping.module';
 
 @Module({
   imports: [
@@ -173,6 +176,9 @@ import { DbBackupModule } from './modules/db-backup/db-backup.module';
     SystemAnnouncementsModule,
     ReportingModule,
     DbBackupModule,
+    DepartmentHeadModule,
+    HospitalAssetsModule,
+    HousekeepingModule,
   ],
   controllers: [AppController],
   providers: [

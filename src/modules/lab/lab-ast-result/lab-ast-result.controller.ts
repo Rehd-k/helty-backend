@@ -11,7 +11,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { LabAstResultService } from './lab-ast-result.service';
 import { CreateLabAstResultBatchDto } from './dto/create-lab-ast-result-batch.dto';
 
-@ApiTags('Lab – AST results')
+@ApiTags('Lab - AST results')
 @Controller('lab/ast-results')
 export class LabAstResultController {
   constructor(private readonly labAstResultService: LabAstResultService) {}

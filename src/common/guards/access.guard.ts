@@ -21,6 +21,8 @@ const PHYSICIAN_TRAINEE_ROLES = new Set([
   'JUNIOR_RESIDENT',
   'SENIOR_RESIDENT',
   'CHIEF_RESIDENT',
+  'HOUSE_OFFICER',
+  'MEDICAL_OFFICER',
 ]);
 
 /**
@@ -56,12 +58,21 @@ export function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
       return user.accountType === 'BILLING';
     case 'FRONTDESK':
       return (
-        user.accountType === 'FRONT_DESK' && user.staffRole === 'FRONT_DESK'
+        user.accountType === 'FRONT_DESK' &&
+        (user.staffRole === 'FRONT_DESK' ||
+          user.staffRole === 'FRONT_DESK_HEAD')
       );
+    case 'FRONT_DESK':
+      return user.accountType === 'FRONT_DESK';
     case 'MEDICAL_RECORDS':
       return (
         user.accountType === 'MEDICAL_RECORDS' &&
-        user.staffRole === 'MEDICAL_RECORDS'
+        (user.staffRole === 'MEDICAL_RECORDS' ||
+          user.staffRole === 'MEDICAL_RECORDS_HEAD')
+      );
+    case 'JANITOR':
+      return (
+        user.accountType === 'JANITOR' || user.staffRole === 'JANITOR_HEAD'
       );
     case 'STORE':
       return user.accountType === 'STORE';
@@ -94,7 +105,11 @@ export function accountTypeTokenMatches(token: string, user: JwtUser): boolean {
     case 'THEATRE':
       return user.accountType === 'THEATRE';
     case 'HMO_DESK':
-      return user.accountType === 'HMO' || user.staffRole === 'HMO_STAFF';
+      return (
+        user.accountType === 'HMO' ||
+        user.staffRole === 'HMO_STAFF' ||
+        user.staffRole === 'HMO_HEAD'
+      );
     case 'PURCHASES':
       return user.accountType === 'PURCHASES';
     case 'PATIENT':
