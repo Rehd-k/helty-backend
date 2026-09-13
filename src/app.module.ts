@@ -26,6 +26,7 @@ import { PatientEmergencyModule } from './modules/patient-emergency/patient-emer
 import { EmergencyRequestsModule } from './modules/emergency-requests/emergency-requests.module';
 import { PatientProfileModule } from './modules/patient-profile/patient-profile.module';
 import { PatientFamilyModule } from './modules/patient-family/patient-family.module';
+import { PatientCycleModule } from './modules/patient-cycle/patient-cycle.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LocalTimestampInterceptor } from './common/interceptors/local-timestamp.interceptor';
@@ -116,6 +117,7 @@ import { HousekeepingModule } from './modules/housekeeping/housekeeping.module';
     EmergencyRequestsModule,
     PatientProfileModule,
     PatientFamilyModule,
+    PatientCycleModule,
     DepartmentModule,
     InvoiceModule,
     LoggerModule.forRoot({

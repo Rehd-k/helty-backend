@@ -103,6 +103,8 @@ model Patient {
   devices                    PatientDevice[]
   childrenAsParent           PatientFamilyLink[] @relation("FamilyParent")
   parentsAsChild             PatientFamilyLink[] @relation("FamilyChild")
+  cycleSettings              PatientCycleSettings?
+  cyclePeriods               PatientCyclePeriod[]
 
   @@index([hmoId])
   @@index([searchName])
@@ -148,6 +150,38 @@ model PatientFamilyLink {
   @@unique([parentPatientId, childPatientId])
   @@index([parentPatientId])
   @@index([childPatientId])
+}
+
+enum PatientCycleFlow {
+  LIGHT
+  MEDIUM
+  HEAVY
+}
+
+model PatientCycleSettings {
+  id               String   @id @default(uuid())
+  patient          Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patientId        String   @unique
+  cycleLengthDays  Int      @default(28)
+  periodLengthDays Int      @default(5)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model PatientCyclePeriod {
+  id        String           @id @default(uuid())
+  patient   Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patientId String
+  startDate DateTime         @db.Date
+  endDate   DateTime?        @db.Date
+  flow      PatientCycleFlow?
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([patientId, startDate])
+  @@index([patientId])
+  @@index([patientId, startDate])
 }
 
 // ─── ICD-10 (optional: for diagnosis tab search; or use external API) ───────────

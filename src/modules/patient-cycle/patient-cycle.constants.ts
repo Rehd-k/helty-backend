@@ -1,0 +1,7 @@
+export const DEFAULT_CYCLE_LENGTH_DAYS = 28;
+export const DEFAULT_PERIOD_LENGTH_DAYS = 5;
+export const MIN_CYCLE_LENGTH_DAYS = 21;
+export const MAX_CYCLE_LENGTH_DAYS = 45;
+export const MIN_PERIOD_LENGTH_DAYS = 1;
+export const MAX_PERIOD_LENGTH_DAYS = 10;
+export const CYCLE_GAP_SAMPLE_SIZE = 6;
