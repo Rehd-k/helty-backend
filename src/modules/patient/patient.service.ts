@@ -815,6 +815,9 @@ export class PatientService {
         hmoProvider: {
           select: { id: true, name: true, code: true },
         },
+        allergies: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
   }

@@ -65,6 +65,24 @@ export class PatientMedicalRecordsController {
     return this.patientMedicalRecordsService.getVitalsTrend(req.user, query);
   }
 
+  @Get('medical-records/diagnoses')
+  @AccountTypes(PATIENT_ACCOUNT_TYPE)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List all doctor-entered diagnoses for the patient' })
+  @ApiResponse({
+    status: 403,
+    description: 'Staff token cannot access patient routes',
+  })
+  listDiagnoses(
+    @Request() req: { user: PatientJwtPayload },
+    @Query('forPatientId') forPatientId?: string,
+  ) {
+    return this.patientMedicalRecordsService.listDiagnoses(
+      req.user,
+      forPatientId,
+    );
+  }
+
   @Get('medical-records')
   @AccountTypes(PATIENT_ACCOUNT_TYPE)
   @ApiBearerAuth()

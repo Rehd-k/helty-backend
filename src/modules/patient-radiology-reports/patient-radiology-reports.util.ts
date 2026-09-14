@@ -222,13 +222,12 @@ export function buildStatistics(
 function buildPdfUrl(
   itemId: string,
   hasReport: boolean,
-  apiBaseUrl: string,
   canAccessResults: boolean,
 ): string | null {
-  if (!hasReport || !apiBaseUrl || !canAccessResults) {
+  if (!hasReport || !canAccessResults) {
     return null;
   }
-  return `${apiBaseUrl}/patient/radiology-reports/${itemId}/pdf`;
+  return `/patient/radiology-reports/${itemId}/pdf`;
 }
 
 function buildPatientImageFileUrl(
@@ -294,12 +293,7 @@ export function toRadiologyReportSummaryDto(
       : 'Pending assignment',
     referringDoctorName: formatDoctorName(item.order.requestedBy),
     status: mapReportStatus(item.status),
-    pdfUrl: buildPdfUrl(
-      item.id,
-      Boolean(item.report),
-      apiBaseUrl,
-      canAccessResults,
-    ),
+    pdfUrl: buildPdfUrl(item.id, Boolean(item.report), canAccessResults),
     dicomUrl: null,
     thumbnailUrl: resolveThumbnailUrl(item, apiBaseUrl, canAccessResults),
   };

@@ -21,8 +21,8 @@ export class MedicalRecordRecentDiagnosisDto {
   @ApiPropertyOptional()
   specialty?: string | null;
 
-  @ApiProperty()
-  status!: string;
+  @ApiPropertyOptional()
+  icdCode?: string | null;
 
   @ApiProperty()
   diagnosedAt!: Date;

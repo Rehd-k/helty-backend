@@ -64,6 +64,7 @@ model Patient {
   invoice                  Invoice[]
   patientVitals            PatientVitals[]
   allergies                PatientAllergy[]
+  immunizations            PatientImmunization[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2811,6 +2812,10 @@ model Staff {
   housekeepingAreasUpdated           HousekeepingArea[]             @relation("HousekeepingAreaUpdatedBy")
   housekeepingShiftsAssigned         HousekeepingShiftRoster[]      @relation("HousekeepingShiftRosterAssignedBy")
   housekeepingSupplyLogsCreated      HousekeepingSupplyLog[]        @relation("HousekeepingSupplyLogCreatedBy")
+  patientAllergiesCreated            PatientAllergy[]               @relation("PatientAllergyCreatedBy")
+  patientAllergiesUpdated            PatientAllergy[]               @relation("PatientAllergyUpdatedBy")
+  patientImmunizationsCreated        PatientImmunization[]          @relation("PatientImmunizationCreatedBy")
+  patientImmunizationsUpdated        PatientImmunization[]          @relation("PatientImmunizationUpdatedBy")
 
   @@index([wardId])
   @@index([accountType])
@@ -3349,6 +3354,35 @@ model PatientAllergy {
   notes    String?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   Staff?  @relation("PatientAllergyCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  updatedBy   Staff?  @relation("PatientAllergyUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  @@index([patientId])
+}
+
+model PatientImmunization {
+  id             String   @id @default(uuid())
+  patient        Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patientId      String
+  vaccineName    String
+  detail         String?
+  doseNumber     Int?
+  administeredAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy   Staff   @relation("PatientImmunizationCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  updatedBy   Staff?  @relation("PatientImmunizationUpdatedBy", fields: [updatedById], references: [id])
+  updatedById String?
+
+  @@index([patientId])
+  @@index([patientId, administeredAt])
 }
 
 model Ward {

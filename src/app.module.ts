@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { PatientModule } from './modules/patient/patient.module';
+import { PatientClinicalRecordsModule } from './modules/patient-clinical-records/patient-clinical-records.module';
 import { AppointmentModule } from './modules/appointment/appointment.module';
 import { AdmissionModule } from './modules/admission/admission.module';
 import { PaymentModule } from './modules/payment/payment.module';
@@ -94,6 +95,7 @@ import { HousekeepingModule } from './modules/housekeeping/housekeeping.module';
     PrismaModule,
     FcmModule,
     PatientModule,
+    PatientClinicalRecordsModule,
     AppointmentModule,
     AdmissionModule,
     PaymentModule,

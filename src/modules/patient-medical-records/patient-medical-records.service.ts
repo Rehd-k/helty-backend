@@ -6,6 +6,7 @@ import { ListMedicalRecordsQueryDto } from './dto/list-medical-records-query.dto
 import { VitalsTrendQueryDto } from './dto/vitals-trend-response.dto';
 import {
   toMedicalRecordAllergyDto,
+  toMedicalRecordImmunizationDto,
   toMedicalRecordLabResultDto,
   toMedicalRecordRecentDiagnosisDto,
   toEncounterDetailDto,
@@ -117,10 +118,12 @@ export class PatientMedicalRecordsService {
     );
     const [
       latestBloodGroupRecord,
-      latestHeightWeight,
+      latestHeight,
+      latestWeight,
       latestHomeVitalsRow,
       allergies,
       recentDiagnoses,
+      immunizations,
       recentLabResults,
     ] = await Promise.all([
       this.prisma.pregnancy.findFirst({
@@ -129,9 +132,14 @@ export class PatientMedicalRecordsService {
         select: { bloodGroup: true },
       }),
       this.prisma.patientVitals.findFirst({
-        where: { patientId: subjectPatientId },
+        where: { patientId: subjectPatientId, height: { not: null } },
         orderBy: { recordedAt: 'desc' },
-        select: { height: true, weight: true },
+        select: { height: true },
+      }),
+      this.prisma.patientVitals.findFirst({
+        where: { patientId: subjectPatientId, weight: { not: null } },
+        orderBy: { recordedAt: 'desc' },
+        select: { weight: true },
       }),
       this.findLatestHomeVitals(subjectPatientId),
       this.prisma.patientAllergy.findMany({
@@ -146,7 +154,6 @@ export class PatientMedicalRecordsService {
         include: {
           encounter: {
             select: {
-              status: true,
               doctor: {
                 select: {
                   firstName: true,
@@ -156,6 +163,16 @@ export class PatientMedicalRecordsService {
               },
             },
           },
+        },
+      }),
+      this.prisma.patientImmunization.findMany({
+        where: { patientId: subjectPatientId },
+        orderBy: { administeredAt: 'desc' },
+        take: 8,
+        select: {
+          vaccineName: true,
+          detail: true,
+          administeredAt: true,
         },
       }),
       this.prisma.labResult.findMany({
@@ -180,13 +197,41 @@ export class PatientMedicalRecordsService {
 
     return {
       bloodType,
-      heightCm: latestHeightWeight?.height ?? null,
-      weightKg: latestHeightWeight?.weight ?? null,
+      heightCm: latestHeight?.height ?? null,
+      weightKg: latestWeight?.weight ?? null,
       latestVitals: toLatestVitalsDto(latestHomeVitalsRow),
       allergies: allergies.map(toMedicalRecordAllergyDto),
       recentDiagnoses: recentDiagnoses.map(toMedicalRecordRecentDiagnosisDto),
-      immunizations: [],
+      immunizations: immunizations.map(toMedicalRecordImmunizationDto),
       recentLabResults: recentLabResults.map(toMedicalRecordLabResultDto),
+      subjectPatientId,
+    };
+  }
+
+  async listDiagnoses(user: PatientJwtPayload, forPatientId?: string) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+    const diagnoses = await this.prisma.encounterDiagnosis.findMany({
+      where: { encounter: { patientId: subjectPatientId } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        encounter: {
+          select: {
+            doctor: {
+              select: {
+                firstName: true,
+                lastName: true,
+                department: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    return {
+      data: diagnoses.map(toMedicalRecordRecentDiagnosisDto),
       subjectPatientId,
     };
   }

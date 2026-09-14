@@ -1,4 +1,5 @@
 import { EncounterStatus, LabAbnormalFlag } from '@prisma/client';
+
 import {
   EncounterDiagnosisDto,
   EncounterPrescriptionDto,
@@ -305,10 +306,10 @@ export function toEncounterDetailDto(
 
 type DashboardDiagnosisRow = {
   id: string;
+  primaryIcdCode: string | null;
   primaryIcdDescription: string | null;
   createdAt: Date;
   encounter: {
-    status: EncounterStatus;
     doctor: {
       firstName: string;
       lastName: string;
@@ -345,8 +346,20 @@ export function toMedicalRecordRecentDiagnosisDto(
     title: diagnosis.primaryIcdDescription ?? 'Diagnosis',
     doctorName: formatDoctorName(diagnosis.encounter.doctor),
     specialty: diagnosis.encounter.doctor.department?.name ?? null,
-    status: diagnosis.encounter.status,
+    icdCode: diagnosis.primaryIcdCode,
     diagnosedAt: diagnosis.createdAt,
+  };
+}
+
+export function toMedicalRecordImmunizationDto(row: {
+  vaccineName: string;
+  detail: string | null;
+  administeredAt: Date;
+}): { vaccineName: string; detail: string | null; date: Date } {
+  return {
+    vaccineName: row.vaccineName,
+    detail: row.detail,
+    date: row.administeredAt,
   };
 }
 
@@ -357,6 +370,6 @@ export function toMedicalRecordLabResultDto(
     testName: result.field.label,
     result: result.value,
     referenceRange: result.field.referenceRange,
-    status: result.abnormalFlag ?? 'UNKNOWN',
+    status: result.abnormalFlag ?? 'NORMAL',
   };
 }

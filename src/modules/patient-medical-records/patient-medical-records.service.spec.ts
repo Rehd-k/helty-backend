@@ -16,6 +16,9 @@ describe('PatientMedicalRecordsService', () => {
     patientAllergy: {
       findMany: jest.fn(),
     },
+    patientImmunization: {
+      findMany: jest.fn(),
+    },
     encounterDiagnosis: {
       findMany: jest.fn(),
     },
@@ -73,8 +76,15 @@ describe('PatientMedicalRecordsService', () => {
     fallbackVitals?: typeof homeVitalsNormal | null;
   }) {
     prisma.patientVitals.findFirst = jest.fn().mockImplementation((args) => {
-      if (args.select?.height !== undefined) {
-        return Promise.resolve(options.heightWeight ?? null);
+      if (args.where?.height !== undefined) {
+        return Promise.resolve(
+          options.heightWeight ? { height: options.heightWeight.height } : null,
+        );
+      }
+      if (args.where?.weight !== undefined) {
+        return Promise.resolve(
+          options.heightWeight ? { weight: options.heightWeight.weight } : null,
+        );
       }
       if (args.where?.encounterId) {
         return Promise.resolve(options.encounterVitals ?? null);
@@ -85,6 +95,7 @@ describe('PatientMedicalRecordsService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.patientImmunization.findMany = jest.fn().mockResolvedValue([]);
   });
 
   it('lists only the authenticated patient encounters with pagination', async () => {
@@ -210,10 +221,10 @@ describe('PatientMedicalRecordsService', () => {
     prisma.encounterDiagnosis.findMany = jest.fn().mockResolvedValue([
       {
         id: 'diag_1',
+        primaryIcdCode: 'I10',
         primaryIcdDescription: 'Hypertension (Stage 1)',
         createdAt: new Date('2021-02-11T10:00:00.000Z'),
         encounter: {
-          status: EncounterStatus.COMPLETED,
           doctor: {
             firstName: 'Amadi',
             lastName: '',
@@ -264,7 +275,7 @@ describe('PatientMedicalRecordsService', () => {
           title: 'Hypertension (Stage 1)',
           doctorName: 'Amadi',
           specialty: 'General Medicine',
-          status: EncounterStatus.COMPLETED,
+          icdCode: 'I10',
           diagnosedAt: new Date('2021-02-11T10:00:00.000Z'),
         },
       ],
@@ -322,7 +333,7 @@ describe('PatientMedicalRecordsService', () => {
       recordedAt: new Date('2026-06-15T09:30:00.000Z'),
       bloodPressureStatus: 'Normal',
     });
-    expect(prisma.patientVitals.findFirst).toHaveBeenCalledTimes(3);
+    expect(prisma.patientVitals.findFirst).toHaveBeenCalledTimes(4);
   });
 
   it('computes Elevated and High blood pressure status labels', async () => {
@@ -452,5 +463,123 @@ describe('PatientMedicalRecordsService', () => {
         take: 10,
       }),
     );
+  });
+
+  it('maps immunizations from the patient immunization store', async () => {
+    prisma.pregnancy.findFirst = jest.fn().mockResolvedValue(null);
+    mockDashboardVitals({});
+    prisma.patientAllergy.findMany = jest.fn().mockResolvedValue([]);
+    prisma.encounterDiagnosis.findMany = jest.fn().mockResolvedValue([]);
+    prisma.labResult.findMany = jest.fn().mockResolvedValue([]);
+    const administeredAt = new Date('2026-03-12T10:00:00.000Z');
+    prisma.patientImmunization.findMany = jest.fn().mockResolvedValue([
+      {
+        vaccineName: 'Tetanus toxoid',
+        detail: 'Dose 1 of 3',
+        administeredAt,
+      },
+    ]);
+
+    const result = await service.getDashboard(patientUser);
+
+    expect(prisma.patientImmunization.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { patientId: 'patient-uuid-1' },
+        take: 8,
+      }),
+    );
+    expect(result.immunizations).toEqual([
+      {
+        vaccineName: 'Tetanus toxoid',
+        detail: 'Dose 1 of 3',
+        date: administeredAt,
+      },
+    ]);
+  });
+
+  it('maps null lab abnormalFlag to NORMAL', async () => {
+    prisma.pregnancy.findFirst = jest.fn().mockResolvedValue(null);
+    mockDashboardVitals({});
+    prisma.patientAllergy.findMany = jest.fn().mockResolvedValue([]);
+    prisma.encounterDiagnosis.findMany = jest.fn().mockResolvedValue([]);
+    prisma.labResult.findMany = jest.fn().mockResolvedValue([
+      {
+        value: '4.9',
+        abnormalFlag: null,
+        createdAt: new Date('2026-08-14T00:00:00.000Z'),
+        field: { label: 'Potassium', referenceRange: '3.5–5.0' },
+      },
+    ]);
+
+    const result = await service.getDashboard(patientUser);
+
+    expect(result.recentLabResults[0].status).toBe('NORMAL');
+  });
+
+  it('reads height and weight from independent latest non-null vitals rows', async () => {
+    prisma.pregnancy.findFirst = jest.fn().mockResolvedValue(null);
+    prisma.patientAllergy.findMany = jest.fn().mockResolvedValue([]);
+    prisma.encounterDiagnosis.findMany = jest.fn().mockResolvedValue([]);
+    prisma.labResult.findMany = jest.fn().mockResolvedValue([]);
+    prisma.patientVitals.findFirst = jest.fn().mockImplementation((args) => {
+      if (args.where?.height !== undefined) {
+        return Promise.resolve({ height: 168 });
+      }
+      if (args.where?.weight !== undefined) {
+        return Promise.resolve({ weight: 81 });
+      }
+      return Promise.resolve(null);
+    });
+
+    const result = await service.getDashboard(patientUser);
+
+    expect(result.heightCm).toBe(168);
+    expect(result.weightKg).toBe(81);
+  });
+
+  it('lists the full diagnosis history without truncating', async () => {
+    prisma.encounterDiagnosis.findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'diag_1',
+        primaryIcdCode: 'I10',
+        primaryIcdDescription: 'Hypertension',
+        createdAt: new Date('2021-02-11T10:00:00.000Z'),
+        encounter: {
+          doctor: {
+            firstName: 'Amadi',
+            lastName: '',
+            department: { name: 'General Medicine' },
+          },
+        },
+      },
+      {
+        id: 'diag_2',
+        primaryIcdCode: 'E11',
+        primaryIcdDescription: 'Type 2 diabetes',
+        createdAt: new Date('2020-01-04T10:00:00.000Z'),
+        encounter: {
+          doctor: {
+            firstName: 'Bassey',
+            lastName: '',
+            department: { name: 'Endocrinology' },
+          },
+        },
+      },
+    ]);
+
+    const result = await service.listDiagnoses(patientUser);
+
+    expect(prisma.encounterDiagnosis.findMany).toHaveBeenCalledWith(
+      expect.not.objectContaining({ take: expect.anything() }),
+    );
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0]).toEqual(
+      expect.objectContaining({
+        id: 'diag_1',
+        icdCode: 'I10',
+        title: 'Hypertension',
+      }),
+    );
+    expect(result.data[0]).not.toHaveProperty('status');
   });
 });

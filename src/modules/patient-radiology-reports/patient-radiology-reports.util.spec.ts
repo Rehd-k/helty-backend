@@ -226,7 +226,7 @@ describe('patient-radiology-reports.util', () => {
         referringDoctorName: 'Jane Doe',
         status: RadiologyReportStatus.VERIFIED,
         pdfUrl:
-          'https://api.example.com/patient/radiology-reports/660e8400-e29b-41d4-a716-446655440001/pdf',
+          '/patient/radiology-reports/660e8400-e29b-41d4-a716-446655440001/pdf',
         dicomUrl: null,
         thumbnailUrl: null,
       });
@@ -264,7 +264,7 @@ describe('patient-radiology-reports.util', () => {
       expect(dto.recommendations).toBe('No follow-up needed.');
       expect(dto.severity).toBe(RadiologyReportSeverity.NORMAL);
       expect(dto.reportBody).toBeNull();
-      expect(dto.pdfUrl).toBeNull();
+      expect(dto.pdfUrl).toBe('/patient/radiology-reports/item-1/pdf');
     });
   });
 
