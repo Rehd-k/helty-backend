@@ -68,6 +68,20 @@ export function computeBloodPressureStatus(
   return null;
 }
 
+export function toVitalsTrendPointDto(vitals: HomeVitalsRow): {
+  recordedAt: Date;
+  pulseRate: number | null;
+  systolic: number | null;
+  diastolic: number | null;
+} {
+  return {
+    recordedAt: vitals.recordedAt,
+    pulseRate: vitals.pulseRate,
+    systolic: vitals.systolic,
+    diastolic: vitals.diastolic,
+  };
+}
+
 export function toLatestVitalsDto(
   vitals: HomeVitalsRow | null | undefined,
 ): LatestVitalsDto | null {

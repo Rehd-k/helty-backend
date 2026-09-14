@@ -15,6 +15,10 @@ import {
 import { MedicalRecordsDashboardResponseDto } from './dto/medical-records-dashboard-response.dto';
 import { ListMedicalRecordsQueryDto } from './dto/list-medical-records-query.dto';
 import { PatientMedicalRecordsService } from './patient-medical-records.service';
+import {
+  VitalsTrendQueryDto,
+  VitalsTrendResponseDto,
+} from './dto/vitals-trend-response.dto';
 
 @ApiTags('patient-portal')
 @Controller('patient')
@@ -40,6 +44,25 @@ export class PatientMedicalRecordsController {
       req.user,
       forPatientId,
     );
+  }
+
+  @Get('medical-records/vitals-trend')
+  @AccountTypes(PATIENT_ACCOUNT_TYPE)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Vitals trend points from clinic encounters and hospital admissions',
+  })
+  @ApiResponse({ status: 200, type: VitalsTrendResponseDto })
+  @ApiResponse({
+    status: 403,
+    description: 'Staff token cannot access patient routes',
+  })
+  getVitalsTrend(
+    @Request() req: { user: PatientJwtPayload },
+    @Query() query: VitalsTrendQueryDto,
+  ) {
+    return this.patientMedicalRecordsService.getVitalsTrend(req.user, query);
   }
 
   @Get('medical-records')

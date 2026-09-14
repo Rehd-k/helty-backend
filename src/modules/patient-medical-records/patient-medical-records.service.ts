@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { ListMedicalRecordsQueryDto } from './dto/list-medical-records-query.dto';
+import { VitalsTrendQueryDto } from './dto/vitals-trend-response.dto';
 import {
   toMedicalRecordAllergyDto,
   toMedicalRecordLabResultDto,
@@ -10,6 +11,7 @@ import {
   toEncounterDetailDto,
   toEncounterSummaryDto,
   toLatestVitalsDto,
+  toVitalsTrendPointDto,
 } from './patient-medical-records.util';
 
 const HOME_VITALS_SELECT = {
@@ -186,6 +188,30 @@ export class PatientMedicalRecordsService {
       immunizations: [],
       recentLabResults: recentLabResults.map(toMedicalRecordLabResultDto),
       subjectPatientId,
+    };
+  }
+
+  async getVitalsTrend(user: PatientJwtPayload, query: VitalsTrendQueryDto) {
+    const subjectPatientId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
+    const limit = query.limit ?? 40;
+    const rows = await this.prisma.patientVitals.findMany({
+      where: {
+        OR: [
+          { patientId: subjectPatientId },
+          { admission: { patientId: subjectPatientId } },
+        ],
+        AND: [{ OR: [...HOME_VITALS_OR] }],
+      },
+      orderBy: { recordedAt: 'desc' },
+      take: limit,
+      select: HOME_VITALS_SELECT,
+    });
+
+    return {
+      data: rows.reverse().map(toVitalsTrendPointDto),
     };
   }
 

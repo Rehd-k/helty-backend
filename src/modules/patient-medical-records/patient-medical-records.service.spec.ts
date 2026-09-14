@@ -11,6 +11,7 @@ describe('PatientMedicalRecordsService', () => {
     },
     patientVitals: {
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     patientAllergy: {
       findMany: jest.fn(),
@@ -376,5 +377,80 @@ describe('PatientMedicalRecordsService', () => {
       recordedAt: new Date('2026-06-15T09:30:00.000Z'),
       bloodPressureStatus: null,
     });
+  });
+
+  it('returns admission and encounter vitals oldest-first for the trend', async () => {
+    const newer = {
+      pulseRate: 88,
+      systolic: 130,
+      diastolic: 82,
+      recordedAt: new Date('2026-09-14T10:00:00.000Z'),
+    };
+    const older = {
+      pulseRate: 72,
+      systolic: 118,
+      diastolic: 76,
+      recordedAt: new Date('2026-09-12T08:00:00.000Z'),
+    };
+    prisma.patientVitals.findMany = jest.fn().mockResolvedValue([newer, older]);
+
+    const result = await service.getVitalsTrend(patientUser, { limit: 40 });
+
+    expect(prisma.patientVitals.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { patientId: 'patient-uuid-1' },
+            { admission: { patientId: 'patient-uuid-1' } },
+          ],
+          AND: [
+            {
+              OR: [
+                { pulseRate: { not: null } },
+                { systolic: { not: null } },
+                { diastolic: { not: null } },
+              ],
+            },
+          ],
+        },
+        orderBy: { recordedAt: 'desc' },
+        take: 40,
+      }),
+    );
+    expect(result.data).toEqual([
+      {
+        recordedAt: older.recordedAt,
+        pulseRate: 72,
+        systolic: 118,
+        diastolic: 76,
+      },
+      {
+        recordedAt: newer.recordedAt,
+        pulseRate: 88,
+        systolic: 130,
+        diastolic: 82,
+      },
+    ]);
+  });
+
+  it('resolves vitals trend for a linked family member', async () => {
+    prisma.patientVitals.findMany = jest.fn().mockResolvedValue([]);
+
+    await service.getVitalsTrend(patientUser, {
+      forPatientId: 'child-uuid-1',
+      limit: 10,
+    });
+
+    expect(prisma.patientVitals.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { patientId: 'child-uuid-1' },
+            { admission: { patientId: 'child-uuid-1' } },
+          ],
+        }),
+        take: 10,
+      }),
+    );
   });
 });
