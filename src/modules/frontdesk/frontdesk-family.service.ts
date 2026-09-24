@@ -34,6 +34,7 @@ export class FrontdeskFamilyService {
       data: links.map((link) => ({
         id: link.id,
         linkedAt: link.createdAt,
+        isPrincipal: link.isPrincipal,
         child: {
           id: link.child.id,
           patientId: link.child.patientId,
@@ -74,11 +75,26 @@ export class FrontdeskFamilyService {
     }
 
     try {
+      const existingPrincipal = await this.prisma.patientFamilyLink.findFirst({
+        where: { childPatientId: dto.childPatientId, isPrincipal: true },
+        select: { id: true },
+      });
+      const makePrincipal =
+        dto.isPrincipal === true || existingPrincipal == null;
+
+      if (makePrincipal && existingPrincipal) {
+        await this.prisma.patientFamilyLink.update({
+          where: { id: existingPrincipal.id },
+          data: { isPrincipal: false },
+        });
+      }
+
       const link = await this.prisma.patientFamilyLink.create({
         data: {
           parentPatientId,
           childPatientId: dto.childPatientId,
           createdById: staffId,
+          isPrincipal: makePrincipal,
         },
         include: {
           child: {
@@ -90,6 +106,7 @@ export class FrontdeskFamilyService {
       return {
         id: link.id,
         linkedAt: link.createdAt,
+        isPrincipal: link.isPrincipal,
         child: {
           id: link.child.id,
           patientId: link.child.patientId,

@@ -46,6 +46,9 @@ type DoseLogRow = {
 type ActivePrescriptionRow = {
   id: string;
   endDate: Date | null;
+  startDate?: Date | null;
+  patientScheduleStartAt?: Date | null;
+  scheduleConfirmedAt?: Date | null;
   refillsAllowed: number;
   items: PrescriptionItemRow[];
 };
@@ -223,6 +226,11 @@ export function toActivePrescriptionSummaryDto(
   const primaryItem = prescription.items[0];
   const { daysRemaining, supplyProgress, supplyStatus } =
     computeSupplyMetrics(prescription, now);
+  const scheduleStartAt =
+    prescription.patientScheduleStartAt ?? prescription.startDate ?? null;
+  const scheduleConfirmed = prescription.scheduleConfirmedAt != null;
+  // Patient must confirm (or set a deferred start) before adherence reminders begin.
+  const needsScheduleStart = !scheduleConfirmed;
 
   return {
     id: prescription.id,
@@ -232,6 +240,10 @@ export function toActivePrescriptionSummaryDto(
     refillsRemaining: prescription.refillsAllowed,
     supplyProgress,
     supplyStatus,
+    scheduleStartAt,
+    needsScheduleStart,
+    scheduleConfirmed,
+    endDate: prescription.endDate,
   };
 }
 

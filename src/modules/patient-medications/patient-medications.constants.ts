@@ -32,9 +32,11 @@ export const DOSE_LOG_INCLUDE = {
   },
 } as const;
 
+/** @deprecated Full-course generation replaces rolling horizon; kept for tests. */
 export const DOSE_HORIZON_DAYS = 7;
 
-export const MISSED_DOSE_GRACE_MS = 2 * 60 * 60 * 1000;
+/** Reminder throttle between FCM nags for the same due dose. */
+export const DOSE_REMINDER_INTERVAL_MS = 10 * 60 * 1000;
 
 export function buildActivePrescriptionWhere(
   patientId: string,
@@ -50,7 +52,17 @@ export function buildActivePrescriptionWhere(
         quantityDispensed: { gt: 0 },
       },
     },
-    startDate: { lte: todayEnd },
-    OR: [{ endDate: null }, { endDate: { gte: todayEnd } }],
+    AND: [
+      {
+        OR: [
+          { startDate: { lte: todayEnd } },
+          { patientScheduleStartAt: { not: null } },
+          { scheduleConfirmedAt: null },
+        ],
+      },
+      {
+        OR: [{ endDate: null }, { endDate: { gte: todayEnd } }],
+      },
+    ],
   };
 }

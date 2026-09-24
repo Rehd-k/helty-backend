@@ -62,6 +62,18 @@ export class ActivePrescriptionSummaryDto {
 
   @ApiProperty({ enum: PrescriptionSupplyStatus })
   supplyStatus!: PrescriptionSupplyStatus;
+
+  @ApiPropertyOptional({ nullable: true })
+  scheduleStartAt!: Date | null;
+
+  @ApiProperty()
+  needsScheduleStart!: boolean;
+
+  @ApiProperty()
+  scheduleConfirmed!: boolean;
+
+  @ApiPropertyOptional({ nullable: true })
+  endDate!: Date | null;
 }
 
 export class MedicationDashboardResponseDto {
@@ -73,6 +85,36 @@ export class MedicationDashboardResponseDto {
 
   @ApiProperty({ type: [ActivePrescriptionSummaryDto] })
   activePrescriptions!: ActivePrescriptionSummaryDto[];
+}
+
+export class MedicationCalendarResponseDto {
+  @ApiProperty({ type: [MedicationScheduleEntryDto] })
+  doses!: MedicationScheduleEntryDto[];
+}
+
+export class PrescriptionDosesResponseDto {
+  @ApiProperty()
+  prescriptionId!: string;
+
+  @ApiProperty()
+  displayName!: string;
+
+  @ApiProperty({ type: [MedicationScheduleEntryDto] })
+  doses!: MedicationScheduleEntryDto[];
+}
+
+export class ScheduleUpdateResponseDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  patientScheduleStartAt!: Date | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  scheduleConfirmedAt!: Date | null;
+
+  @ApiProperty()
+  dosesGenerated!: number;
 }
 
 export class MarkDoseTakenResponseDto {

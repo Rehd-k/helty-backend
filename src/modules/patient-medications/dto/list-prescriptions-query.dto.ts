@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PrescriptionStatus } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 const HISTORY_STATUSES = [
   PrescriptionStatus.COMPLETED,
@@ -35,6 +35,13 @@ export class ListPrescriptionsQueryDto {
   })
   @IsEnum(PrescriptionStatus, { each: true })
   status?: (typeof HISTORY_STATUSES)[number][];
+
+  @ApiPropertyOptional({
+    description: 'View as linked child patient UUID (parent accounts only)',
+  })
+  @IsOptional()
+  @IsUUID()
+  forPatientId?: string;
 }
 
 export const DEFAULT_HISTORY_STATUSES = [...HISTORY_STATUSES];

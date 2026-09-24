@@ -143,6 +143,7 @@ model PatientFamilyLink {
   parentPatientId String
   child           Patient  @relation("FamilyChild", fields: [childPatientId], references: [id], onDelete: Cascade)
   childPatientId  String
+  isPrincipal     Boolean  @default(false)
   createdBy       Staff    @relation("FamilyLinkCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdById     String
   createdAt       DateTime @default(now())
@@ -151,6 +152,7 @@ model PatientFamilyLink {
   @@unique([parentPatientId, childPatientId])
   @@index([parentPatientId])
   @@index([childPatientId])
+  @@index([childPatientId, isPrincipal])
 }
 
 enum PatientCycleFlow {
@@ -565,6 +567,11 @@ model Prescription {
   endDate     DateTime?
   notes       String?
 
+  /// Patient override when doctor instructs delayed start; used for dose generation when set.
+  patientScheduleStartAt DateTime?
+  /// Set when patient confirms schedule (immediate or after choosing start date).
+  scheduleConfirmedAt    DateTime?
+
   // Pharmacy domain extensions
   type     PrescriptionType   @default(OUTPATIENT)
   status   PrescriptionStatus @default(PENDING)
@@ -962,6 +969,8 @@ model PatientMedicationDoseLog {
   timeOfDay          MedicationTimeOfDay
   status             PatientMedicationDoseStatus @default(UPCOMING)
   takenAt            DateTime?
+  missedAt           DateTime?
+  lastReminderAt     DateTime?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
 
@@ -969,6 +978,7 @@ model PatientMedicationDoseLog {
   @@index([patientId, scheduledAt])
   @@index([prescriptionItemId])
   @@index([status])
+  @@index([status, scheduledAt])
 }
 
 model PrescriptionRefillRequest {

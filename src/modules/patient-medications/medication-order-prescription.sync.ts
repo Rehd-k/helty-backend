@@ -12,6 +12,7 @@ import {
   addDuration,
   parseDuration,
 } from '../medication-schedule/rx-schedule.utils';
+import { PatientMedicationDoseGeneratorService } from './patient-medication-dose.generator';
 
 const DISPENSED_ORDER_INCLUDE = {
   medicationRequests: {
@@ -28,7 +29,10 @@ type DispensedOrderRow = Prisma.MedicationOrderGetPayload<{
 
 @Injectable()
 export class MedicationOrderPrescriptionSyncService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly doseGenerator: PatientMedicationDoseGeneratorService,
+  ) {}
 
   async syncDispensedOutpatientOrdersForPatient(patientId: string): Promise<void> {
     const orders = await this.prisma.medicationOrder.findMany({
@@ -97,7 +101,7 @@ export class MedicationOrderPrescriptionSyncService {
       order.drug?.brandName ||
       order.drugName;
 
-    await client.prescription.create({
+    const created = await client.prescription.create({
       data: {
         patientId: order.patientId,
         encounterId: order.encounterId,
@@ -124,6 +128,8 @@ export class MedicationOrderPrescriptionSyncService {
         },
       },
     });
+
+    await this.doseGenerator.generateDosesForPrescription(created.id, client);
   }
 
   private sumDispensedQuantity(order: DispensedOrderRow): number {

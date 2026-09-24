@@ -29,6 +29,7 @@ export class PatientFamilyService {
       data: links.map((link) => ({
         id: link.id,
         linkedAt: link.createdAt,
+        isPrincipal: link.isPrincipal,
         child: {
           id: link.child.id,
           patientId: link.child.patientId,
@@ -88,5 +89,20 @@ export class PatientFamilyService {
       select: { parentPatientId: true },
     });
     return links.map((l) => l.parentPatientId);
+  }
+
+  /**
+   * Principal parent(s) for medication alerts.
+   * Falls back to all linked parents when none are flagged principal.
+   */
+  async findPrincipalParentIds(childPatientId: string): Promise<string[]> {
+    const principal = await this.prisma.patientFamilyLink.findMany({
+      where: { childPatientId, isPrincipal: true },
+      select: { parentPatientId: true },
+    });
+    if (principal.length) {
+      return principal.map((l) => l.parentPatientId);
+    }
+    return this.findParentIds(childPatientId);
   }
 }

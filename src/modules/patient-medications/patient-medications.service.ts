@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -11,6 +12,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import {
   DEFAULT_HISTORY_STATUSES,
   ListPrescriptionsQueryDto,
@@ -25,6 +27,7 @@ import {
 import { PatientMedicationDoseGeneratorService } from './patient-medication-dose.generator';
 import { MedicationOrderPrescriptionSyncService } from './medication-order-prescription.sync';
 import {
+  buildDisplayName,
   getHospitalDayEnd,
   getHospitalDayStart,
   toActivePrescriptionSummaryDto,
@@ -50,23 +53,30 @@ export class PatientMedicationsService {
     private readonly prisma: PrismaService,
     private readonly doseGenerator: PatientMedicationDoseGeneratorService,
     private readonly orderPrescriptionSync: MedicationOrderPrescriptionSyncService,
+    private readonly family: PatientFamilyService,
   ) {}
 
-  async getDashboard(user: PatientJwtPayload) {
+  async getDashboard(user: PatientJwtPayload, forPatientId?: string) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const now = new Date();
     const todayStart = getHospitalDayStart(now);
     const todayEnd = getHospitalDayEnd(now);
     const nextWindowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     await this.orderPrescriptionSync.syncDispensedOutpatientOrdersForPatient(
-      user.sub,
+      subjectId,
     );
 
     const [initialDoseData, activePrescriptions] = await Promise.all([
-      this.fetchDashboardDoseData(user.sub, todayStart, todayEnd, nextWindowEnd),
+      this.fetchDashboardDoseData(subjectId, todayStart, todayEnd, nextWindowEnd),
       this.prisma.prescription.findMany({
-        where: buildActivePrescriptionWhere(user.sub, todayEnd),
-        include: ACTIVE_PRESCRIPTION_INCLUDE,
+        where: buildActivePrescriptionWhere(subjectId, todayEnd),
+        include: {
+          ...ACTIVE_PRESCRIPTION_INCLUDE,
+        },
         orderBy: { startDate: 'desc' },
       }),
     ]);
@@ -84,7 +94,7 @@ export class PatientMedicationsService {
         ),
       );
       doseData = await this.fetchDashboardDoseData(
-        user.sub,
+        subjectId,
         todayStart,
         todayEnd,
         nextWindowEnd,
@@ -92,13 +102,120 @@ export class PatientMedicationsService {
     }
 
     return {
-      nextDoses: doseData.nextDoses.map((dose) => toMedicationDoseSummaryDto(dose)),
+      nextDoses: doseData.nextDoses.map((dose) =>
+        toMedicationDoseSummaryDto(dose),
+      ),
       todaySchedule: doseData.todaySchedule.map((dose) =>
         toMedicationScheduleEntryDto(dose),
       ),
       activePrescriptions: activePrescriptions.map((prescription) =>
-        toActivePrescriptionSummaryDto(prescription, now),
+        toActivePrescriptionSummaryDto(
+          {
+            id: prescription.id,
+            endDate: prescription.endDate,
+            startDate: prescription.startDate,
+            patientScheduleStartAt: prescription.patientScheduleStartAt,
+            scheduleConfirmedAt: prescription.scheduleConfirmedAt,
+            refillsAllowed: prescription.refillsAllowed,
+            items: prescription.items,
+          },
+          now,
+        ),
       ),
+    };
+  }
+
+  async getCalendar(
+    user: PatientJwtPayload,
+    from: Date,
+    to: Date,
+    forPatientId?: string,
+  ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+    if (to.getTime() < from.getTime()) {
+      throw new BadRequestException('`to` must be on or after `from`.');
+    }
+
+    const doses = await this.prisma.patientMedicationDoseLog.findMany({
+      where: {
+        patientId: subjectId,
+        scheduledAt: {
+          gte: from,
+          lte: to,
+        },
+      },
+      orderBy: { scheduledAt: 'asc' },
+      include: DOSE_LOG_INCLUDE,
+    });
+
+    return {
+      doses: doses.map((dose) => toMedicationScheduleEntryDto(dose)),
+    };
+  }
+
+  async getPrescriptionDoses(
+    user: PatientJwtPayload,
+    prescriptionId: string,
+    forPatientId?: string,
+  ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+
+    const prescription = await this.prisma.prescription.findFirst({
+      where: { id: prescriptionId, patientId: subjectId },
+      include: {
+        items: {
+          where: { itemType: 'DRUG' },
+          include: {
+            drug: {
+              select: { brandName: true, genericName: true, strength: true },
+            },
+            doseLogs: {
+              orderBy: { scheduledAt: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!prescription) {
+      throw new NotFoundException(`Prescription "${prescriptionId}" not found.`);
+    }
+
+    const primaryItem = prescription.items[0];
+    const doses = prescription.items.flatMap((item) =>
+      item.doseLogs.map((dose) =>
+        toMedicationScheduleEntryDto({
+          id: dose.id,
+          prescriptionItemId: dose.prescriptionItemId,
+          scheduledAt: dose.scheduledAt,
+          timeOfDay: dose.timeOfDay,
+          status: dose.status,
+          prescriptionItem: {
+            dosage: item.dosage,
+            instructions: item.instructions,
+            drug: item.drug,
+          },
+        }),
+      ),
+    );
+
+    doses.sort(
+      (a, b) =>
+        new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+    );
+
+    return {
+      prescriptionId: prescription.id,
+      displayName: primaryItem
+        ? buildDisplayName(primaryItem)
+        : 'Prescription',
+      doses,
     };
   }
 
@@ -142,7 +259,13 @@ export class PatientMedicationsService {
     user: PatientJwtPayload,
     doseId: string,
     dto?: MarkDoseTakenDto,
+    forPatientId?: string,
   ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+
     const dose = await this.prisma.patientMedicationDoseLog.findUnique({
       where: { id: doseId },
       include: {
@@ -158,7 +281,7 @@ export class PatientMedicationsService {
       throw new NotFoundException(`Dose "${doseId}" not found.`);
     }
 
-    if (dose.prescriptionItem.prescription.patientId !== user.sub) {
+    if (dose.prescriptionItem.prescription.patientId !== subjectId) {
       throw new ForbiddenException('You do not have access to this dose.');
     }
 
@@ -175,8 +298,20 @@ export class PatientMedicationsService {
       data: {
         status: PatientMedicationDoseStatus.TAKEN,
         takenAt,
+        missedAt: null,
       },
     });
+
+    const prescriptionId = await this.prisma.prescriptionItem.findUnique({
+      where: { id: dose.prescriptionItemId },
+      select: { prescriptionId: true, prescription: { select: { scheduleConfirmedAt: true } } },
+    });
+    if (prescriptionId && !prescriptionId.prescription.scheduleConfirmedAt) {
+      await this.prisma.prescription.update({
+        where: { id: prescriptionId.prescriptionId },
+        data: { scheduleConfirmedAt: takenAt },
+      });
+    }
 
     return {
       id: updated.id,
@@ -185,10 +320,160 @@ export class PatientMedicationsService {
     };
   }
 
+  async setScheduleStart(
+    user: PatientJwtPayload,
+    prescriptionId: string,
+    startAt: Date,
+    forPatientId?: string,
+  ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+    const prescription = await this.assertEditableSchedule(
+      subjectId,
+      prescriptionId,
+    );
+
+    const now = new Date();
+    if (startAt.getTime() < now.getTime() - 60 * 1000) {
+      throw new BadRequestException('Start time cannot be in the past.');
+    }
+
+    const endDate = prescription.endDate;
+    let nextEndDate = endDate;
+    if (prescription.startDate && endDate) {
+      const durationMs =
+        endDate.getTime() - prescription.startDate.getTime();
+      nextEndDate = new Date(startAt.getTime() + Math.max(durationMs, 0));
+    }
+
+    await this.prisma.prescription.update({
+      where: { id: prescriptionId },
+      data: {
+        patientScheduleStartAt: startAt,
+        scheduleConfirmedAt: now,
+        endDate: nextEndDate,
+      },
+    });
+
+    const dosesGenerated =
+      await this.doseGenerator.regenerateUpcomingDoses(prescriptionId);
+
+    const updated = await this.prisma.prescription.findUniqueOrThrow({
+      where: { id: prescriptionId },
+      select: {
+        id: true,
+        patientScheduleStartAt: true,
+        scheduleConfirmedAt: true,
+      },
+    });
+
+    return {
+      id: updated.id,
+      patientScheduleStartAt: updated.patientScheduleStartAt,
+      scheduleConfirmedAt: updated.scheduleConfirmedAt,
+      dosesGenerated,
+    };
+  }
+
+  async confirmSchedule(
+    user: PatientJwtPayload,
+    prescriptionId: string,
+    forPatientId?: string,
+  ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+    const prescription = await this.assertEditableSchedule(
+      subjectId,
+      prescriptionId,
+    );
+
+    const now = new Date();
+    await this.prisma.prescription.update({
+      where: { id: prescriptionId },
+      data: {
+        scheduleConfirmedAt: now,
+        patientScheduleStartAt:
+          prescription.patientScheduleStartAt ??
+          prescription.startDate ??
+          now,
+      },
+    });
+
+    const dosesGenerated =
+      await this.doseGenerator.generateDosesForPrescription(prescriptionId);
+
+    const updated = await this.prisma.prescription.findUniqueOrThrow({
+      where: { id: prescriptionId },
+      select: {
+        id: true,
+        patientScheduleStartAt: true,
+        scheduleConfirmedAt: true,
+      },
+    });
+
+    return {
+      id: updated.id,
+      patientScheduleStartAt: updated.patientScheduleStartAt,
+      scheduleConfirmedAt: updated.scheduleConfirmedAt,
+      dosesGenerated,
+    };
+  }
+
+  private async assertEditableSchedule(
+    subjectId: string,
+    prescriptionId: string,
+  ) {
+    const prescription = await this.prisma.prescription.findFirst({
+      where: { id: prescriptionId, patientId: subjectId },
+      include: {
+        items: {
+          where: { itemType: 'DRUG', quantityDispensed: { gt: 0 } },
+          select: {
+            id: true,
+            doseLogs: {
+              where: { status: PatientMedicationDoseStatus.TAKEN },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!prescription) {
+      throw new NotFoundException(`Prescription "${prescriptionId}" not found.`);
+    }
+
+    if (!prescription.items.length) {
+      throw new BadRequestException(
+        'Prescription has not been dispensed yet.',
+      );
+    }
+
+    const hasTaken = prescription.items.some(
+      (item) => item.doseLogs.length > 0,
+    );
+    if (hasTaken) {
+      throw new ConflictException(
+        'Cannot change schedule after a dose has been taken.',
+      );
+    }
+
+    return prescription;
+  }
+
   async listPrescriptionHistory(
     user: PatientJwtPayload,
     query: ListPrescriptionsQueryDto,
   ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
@@ -197,7 +482,7 @@ export class PatientMedicationsService {
       : DEFAULT_HISTORY_STATUSES;
 
     const where = {
-      patientId: user.sub,
+      patientId: subjectId,
       status: { in: statuses as PrescriptionStatus[] },
     };
 
@@ -224,12 +509,17 @@ export class PatientMedicationsService {
     user: PatientJwtPayload,
     prescriptionId: string,
     dto?: RefillRequestDto,
+    forPatientId?: string,
   ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const now = new Date();
     const prescription = await this.prisma.prescription.findFirst({
       where: {
         id: prescriptionId,
-        ...buildActivePrescriptionWhere(user.sub, getHospitalDayEnd(now)),
+        ...buildActivePrescriptionWhere(subjectId, getHospitalDayEnd(now)),
       },
     });
 
@@ -239,9 +529,11 @@ export class PatientMedicationsService {
         select: { patientId: true },
       });
       if (!exists) {
-        throw new NotFoundException(`Prescription "${prescriptionId}" not found.`);
+        throw new NotFoundException(
+          `Prescription "${prescriptionId}" not found.`,
+        );
       }
-      if (exists.patientId !== user.sub) {
+      if (exists.patientId !== subjectId) {
         throw new ForbiddenException(
           'You do not have access to this prescription.',
         );
@@ -267,7 +559,7 @@ export class PatientMedicationsService {
     const request = await this.prisma.prescriptionRefillRequest.create({
       data: {
         prescriptionId,
-        patientId: user.sub,
+        patientId: subjectId,
         notes: dto?.notes?.trim() || null,
       },
     });
