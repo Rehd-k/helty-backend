@@ -216,6 +216,75 @@ describe('PatientService.mergePatients', () => {
       where: { id: duplicateId },
     });
   });
+
+  it('allows Front Desk to merge one-time patient into registered survivor', async () => {
+    prisma.patient.findUnique.mockImplementation(({ where }: any) => {
+      if (where.id === survivorId) {
+        return Promise.resolve({ id: survivorId, patientId: 'HOSP001' });
+      }
+      if (where.id === duplicateId) {
+        return Promise.resolve({ id: duplicateId, patientId: null });
+      }
+      return Promise.resolve(null);
+    });
+
+    await expect(
+      service.mergePatients(survivorId, duplicateId, actorId, 'FRONT_DESK'),
+    ).resolves.toMatchObject({ id: survivorId });
+  });
+
+  it('rejects Front Desk merge when survivor has no hospital ID', async () => {
+    prisma.patient.findUnique.mockImplementation(({ where }: any) => {
+      if (where.id === survivorId) {
+        return Promise.resolve({ id: survivorId, patientId: null });
+      }
+      if (where.id === duplicateId) {
+        return Promise.resolve({ id: duplicateId, patientId: null });
+      }
+      return Promise.resolve(null);
+    });
+
+    await expect(
+      service.mergePatients(survivorId, duplicateId, actorId, 'FRONT_DESK'),
+    ).rejects.toThrow(/registered patient with a hospital ID/);
+  });
+
+  it('rejects Front Desk merge when duplicate already has hospital ID', async () => {
+    prisma.patient.findUnique.mockImplementation(({ where }: any) => {
+      if (where.id === survivorId) {
+        return Promise.resolve({ id: survivorId, patientId: 'HOSP001' });
+      }
+      if (where.id === duplicateId) {
+        return Promise.resolve({ id: duplicateId, patientId: 'HOSP002' });
+      }
+      return Promise.resolve(null);
+    });
+
+    await expect(
+      service.mergePatients(
+        survivorId,
+        duplicateId,
+        actorId,
+        'MEDICAL_RECORDS',
+      ),
+    ).rejects.toThrow(/one-time patients/);
+  });
+
+  it('allows Super Admin full merge of two registered patients', async () => {
+    prisma.patient.findUnique.mockImplementation(({ where }: any) => {
+      if (where.id === survivorId) {
+        return Promise.resolve({ id: survivorId, patientId: 'HOSP001' });
+      }
+      if (where.id === duplicateId) {
+        return Promise.resolve({ id: duplicateId, patientId: 'HOSP002' });
+      }
+      return Promise.resolve(null);
+    });
+
+    await expect(
+      service.mergePatients(survivorId, duplicateId, actorId, 'SUPER_ADMIN'),
+    ).resolves.toMatchObject({ id: survivorId });
+  });
 });
 
 describe('PatientService.update', () => {

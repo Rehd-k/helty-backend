@@ -311,13 +311,15 @@ export class PatientService {
   }
 
   /**
-   * Super-admin merge: reassign all patient FK rows from duplicate → survivor, then delete duplicate.
+   * Merge: reassign all patient FK rows from duplicate → survivor, then delete duplicate.
    * Survivor keeps unique fields (phoneNumber, patientId). Devices on the duplicate are deleted.
+   * Front Desk / Medical Records may only merge a one-time (no hospital ID) patient into a registered survivor.
    */
   async mergePatients(
     survivorId: string,
     duplicateId: string,
     actorStaffId: string,
+    actorAccountType?: string,
   ) {
     if (survivorId === duplicateId) {
       throw new BadRequestException(
@@ -344,6 +346,20 @@ export class PatientService {
     }
     if (!actor) {
       throw new NotFoundException(`Staff "${actorStaffId}" not found.`);
+    }
+
+    const restrictedAccountTypes = new Set(['FRONT_DESK', 'MEDICAL_RECORDS']);
+    if (actorAccountType && restrictedAccountTypes.has(actorAccountType)) {
+      if (!survivor.patientId) {
+        throw new BadRequestException(
+          'Survivor must be a registered patient with a hospital ID.',
+        );
+      }
+      if (duplicate.patientId) {
+        throw new BadRequestException(
+          'Only one-time patients (no hospital ID) can be linked. Use Super Admin for full merges.',
+        );
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -641,9 +657,13 @@ export class PatientService {
     sortBy?: string,
     isAscending = false,
     listStatusFilter?: string,
+    includeUnregistered = false,
   ) {
-    /** Directory listing must never include incomplete records (no hospital id). */
-    const andParts: Prisma.PatientWhereInput[] = [{ patientId: { not: null } }];
+    /** Directory listing excludes incomplete records unless includeUnregistered. */
+    const andParts: Prisma.PatientWhereInput[] = [];
+    if (!includeUnregistered) {
+      andParts.push({ patientId: { not: null } });
+    }
 
     const listFilter = listStatusFilter?.trim();
     if (
@@ -724,7 +744,11 @@ export class PatientService {
     }
 
     const where: Prisma.PatientWhereInput =
-      andParts.length === 1 ? andParts[0] : { AND: andParts };
+      andParts.length === 0
+        ? {}
+        : andParts.length === 1
+          ? andParts[0]
+          : { AND: andParts };
 
     let orderBy: Prisma.PatientOrderByWithRelationInput = {
       createdAt: Prisma.SortOrder.desc,

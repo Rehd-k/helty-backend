@@ -111,19 +111,23 @@ export class PatientController {
   }
 
   @Post('merge')
-  @AccountTypes('SUPER_ADMIN')
+  @AccountTypes('SUPER_ADMIN', 'FRONTDESK', 'FRONT_DESK', 'MEDICAL_RECORDS')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Merge duplicate patient into survivor (SUPER_ADMIN)',
+    summary: 'Merge duplicate patient into survivor',
     description:
-      'Reassigns all patient FK relations from duplicateId to survivorId, then deletes the duplicate. Survivor keeps phoneNumber and hospital patientId.',
+      'Reassigns all patient FK relations from duplicateId to survivorId, then deletes the duplicate. Survivor keeps phoneNumber and hospital patientId. Front Desk / Medical Records may only merge a one-time patient (no hospital ID) into a registered survivor.',
   })
   @ApiResponse({ status: 200, description: 'Survivor patient after merge' })
-  merge(@Body() body: MergePatientsDto, @Req() req: { user: { sub: string } }) {
+  merge(
+    @Body() body: MergePatientsDto,
+    @Req() req: { user: { sub: string; accountType?: string } },
+  ) {
     return this.patientService.mergePatients(
       body.survivorId,
       body.duplicateId,
       req.user.sub,
+      req.user.accountType,
     );
   }
 
@@ -144,7 +148,10 @@ export class PatientController {
     @Query('sortBy') sortBy: string = '',
     @Query('isAscending') isAscending: boolean = true,
     @Query('listStatusFilter') listStatusFilter?: string,
+    @Query('includeUnregistered') includeUnregistered?: string,
   ) {
+    const includeUnregisteredFlag =
+      includeUnregistered === 'true' || includeUnregistered === '1';
     return this.patientService.findAll(
       parseInt(skip),
       parseInt(take),
@@ -155,6 +162,7 @@ export class PatientController {
       sortBy,
       isAscending,
       listStatusFilter,
+      includeUnregisteredFlag,
     );
   }
 
