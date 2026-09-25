@@ -76,6 +76,23 @@ export class ActivePrescriptionSummaryDto {
   endDate!: Date | null;
 }
 
+export class MedicationStreakDto {
+  @ApiProperty()
+  currentStreak!: number;
+
+  @ApiProperty()
+  longestStreak!: number;
+
+  @ApiPropertyOptional({ nullable: true })
+  lastPerfectDate!: string | null;
+
+  @ApiProperty()
+  shieldsRemaining!: number;
+
+  @ApiProperty({ description: 'True when every actionable dose today is taken' })
+  todayCompleted!: boolean;
+}
+
 export class MedicationDashboardResponseDto {
   @ApiProperty({ type: [MedicationDoseSummaryDto] })
   nextDoses!: MedicationDoseSummaryDto[];
@@ -85,6 +102,9 @@ export class MedicationDashboardResponseDto {
 
   @ApiProperty({ type: [ActivePrescriptionSummaryDto] })
   activePrescriptions!: ActivePrescriptionSummaryDto[];
+
+  @ApiProperty({ type: MedicationStreakDto })
+  streak!: MedicationStreakDto;
 }
 
 export class MedicationCalendarResponseDto {
@@ -126,6 +146,25 @@ export class MarkDoseTakenResponseDto {
 
   @ApiProperty()
   takenAt!: Date;
+
+  @ApiProperty({ type: MedicationStreakDto })
+  streak!: MedicationStreakDto;
+
+  @ApiProperty({
+    description: 'True when this take completed all actionable doses for today',
+  })
+  dayCompleted!: boolean;
+}
+
+export class UnmarkDoseTakenResponseDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ enum: PatientMedicationDoseStatus })
+  status!: PatientMedicationDoseStatus;
+
+  @ApiProperty({ type: MedicationStreakDto })
+  streak!: MedicationStreakDto;
 }
 
 export class PrescriptionHistorySummaryDto {

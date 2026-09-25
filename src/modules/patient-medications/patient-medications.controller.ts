@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -32,6 +33,7 @@ import {
   PrescriptionHistoryListResponseDto,
   RefillRequestResponseDto,
   ScheduleUpdateResponseDto,
+  UnmarkDoseTakenResponseDto,
 } from './dto/medication-response.dto';
 import {
   FamilySubjectQueryDto,
@@ -126,6 +128,32 @@ export class PatientMedicationsController {
       req.user,
       doseId,
       dto,
+      query.forPatientId,
+    );
+  }
+
+  @Delete('medications/doses/:doseId/taken')
+  @AccountTypes(PATIENT_ACCOUNT_TYPE)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Undo mark-as-taken within the grace window',
+  })
+  @ApiResponse({ status: 200, type: UnmarkDoseTakenResponseDto })
+  @ApiResponse({ status: 404, description: 'Dose not found' })
+  @ApiResponse({
+    status: 400,
+    description: 'Undo grace window expired',
+  })
+  @ApiResponse({ status: 409, description: 'Dose is not marked as taken' })
+  unmarkDoseTaken(
+    @Request() req: { user: PatientJwtPayload },
+    @Param('doseId') doseId: string,
+    @Query() query: FamilySubjectQueryDto,
+  ) {
+    return this.patientMedicationsService.unmarkDoseTaken(
+      req.user,
+      doseId,
       query.forPatientId,
     );
   }

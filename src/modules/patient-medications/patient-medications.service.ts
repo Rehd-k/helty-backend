@@ -18,6 +18,7 @@ import {
   ListPrescriptionsQueryDto,
 } from './dto/list-prescriptions-query.dto';
 import { MarkDoseTakenDto } from './dto/mark-dose-taken.dto';
+import { MedicationStreakDto } from './dto/medication-response.dto';
 import { RefillRequestDto } from './dto/refill-request.dto';
 import {
   ACTIVE_PRESCRIPTION_INCLUDE,
@@ -27,7 +28,16 @@ import {
 import { PatientMedicationDoseGeneratorService } from './patient-medication-dose.generator';
 import { MedicationOrderPrescriptionSyncService } from './medication-order-prescription.sync';
 import {
+  buildDayVerdictMap,
+  computeStreakFromDayMap,
+  isWithinUnmarkGrace,
+  shiftHospitalDateString,
+  statusAfterUnmark,
+  streakAnchorDate,
+} from './medication-streak.helpers';
+import {
   buildDisplayName,
+  getHospitalDateString,
   getHospitalDayEnd,
   getHospitalDayStart,
   toActivePrescriptionSummaryDto,
@@ -46,6 +56,8 @@ const HISTORY_INCLUDE = {
     },
   },
 } as const;
+
+const STREAK_LOOKBACK_DAYS = 120;
 
 @Injectable()
 export class PatientMedicationsService {
@@ -122,6 +134,7 @@ export class PatientMedicationsService {
           now,
         ),
       ),
+      streak: await this.reconcileStreak(subjectId, now),
     };
   }
 
@@ -304,7 +317,10 @@ export class PatientMedicationsService {
 
     const prescriptionId = await this.prisma.prescriptionItem.findUnique({
       where: { id: dose.prescriptionItemId },
-      select: { prescriptionId: true, prescription: { select: { scheduleConfirmedAt: true } } },
+      select: {
+        prescriptionId: true,
+        prescription: { select: { scheduleConfirmedAt: true } },
+      },
     });
     if (prescriptionId && !prescriptionId.prescription.scheduleConfirmedAt) {
       await this.prisma.prescription.update({
@@ -313,10 +329,174 @@ export class PatientMedicationsService {
       });
     }
 
+    const streak = await this.reconcileStreak(subjectId, takenAt);
     return {
       id: updated.id,
       status: updated.status,
       takenAt: updated.takenAt!,
+      streak,
+      dayCompleted: streak.todayCompleted,
+    };
+  }
+
+  async unmarkDoseTaken(
+    user: PatientJwtPayload,
+    doseId: string,
+    forPatientId?: string,
+  ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
+
+    const dose = await this.prisma.patientMedicationDoseLog.findUnique({
+      where: { id: doseId },
+      include: {
+        prescriptionItem: {
+          include: {
+            prescription: { select: { patientId: true } },
+          },
+        },
+      },
+    });
+
+    if (!dose) {
+      throw new NotFoundException(`Dose "${doseId}" not found.`);
+    }
+
+    if (dose.prescriptionItem.prescription.patientId !== subjectId) {
+      throw new ForbiddenException('You do not have access to this dose.');
+    }
+
+    if (dose.status !== PatientMedicationDoseStatus.TAKEN) {
+      throw new ConflictException('Dose is not marked as taken.');
+    }
+
+    const now = new Date();
+    if (!isWithinUnmarkGrace(dose.takenAt, now)) {
+      throw new BadRequestException(
+        'Undo window has expired. Contact your care team to correct this dose.',
+      );
+    }
+
+    const nextStatus = statusAfterUnmark(dose.scheduledAt, now);
+    const updated = await this.prisma.patientMedicationDoseLog.update({
+      where: { id: doseId },
+      data: {
+        status: nextStatus,
+        takenAt: null,
+        missedAt:
+          nextStatus === PatientMedicationDoseStatus.MISSED ? now : null,
+      },
+    });
+
+    const streak = await this.reconcileStreak(subjectId, now);
+    return {
+      id: updated.id,
+      status: updated.status,
+      streak,
+    };
+  }
+
+  private async reconcileStreak(
+    patientId: string,
+    now: Date = new Date(),
+  ): Promise<MedicationStreakDto> {
+    const todayStart = getHospitalDayStart(now);
+    const lookbackStart = new Date(
+      todayStart.getTime() - STREAK_LOOKBACK_DAYS * 24 * 60 * 60 * 1000,
+    );
+
+    const [existing, doses] = await Promise.all([
+      this.prisma.patientMedicationStreak.findUnique({
+        where: { patientId },
+      }),
+      this.prisma.patientMedicationDoseLog.findMany({
+        where: {
+          patientId,
+          scheduledAt: {
+            gte: lookbackStart,
+            lt: getHospitalDayEnd(now),
+          },
+        },
+        select: { scheduledAt: true, status: true },
+      }),
+    ]);
+
+    const shieldsBudget = existing?.shieldsRemaining ?? 1;
+    const previousLongest = existing?.longestStreak ?? 0;
+    const lastShieldDate = existing?.lastShieldDate ?? null;
+    const forcedBridgeDates = lastShieldDate ? [lastShieldDate] : [];
+    const dayMap = buildDayVerdictMap(doses);
+    const todayKey = getHospitalDateString(now);
+    const todayVerdict = dayMap.get(todayKey) ?? 'empty';
+    const anchor = streakAnchorDate(todayKey, todayVerdict);
+
+    const withShields = computeStreakFromDayMap({
+      dayMap,
+      anchorDate: anchor,
+      shieldsRemaining: shieldsBudget,
+      previousLongest,
+      forcedBridgeDates,
+    });
+
+    let shieldsRemaining = shieldsBudget;
+    let nextLastShieldDate = lastShieldDate;
+
+    // Permanently consume one shield when yesterday is imperfect and bridging
+    // is what preserves the streak (idempotent per hospital date).
+    const yesterdayKey = shiftHospitalDateString(todayKey, -1);
+    if (
+      (dayMap.get(yesterdayKey) ?? 'empty') === 'imperfect' &&
+      shieldsBudget > 0 &&
+      lastShieldDate !== yesterdayKey
+    ) {
+      const withoutShields = computeStreakFromDayMap({
+        dayMap,
+        anchorDate: anchor,
+        shieldsRemaining: 0,
+        previousLongest,
+        forcedBridgeDates,
+      });
+      if (withoutShields.currentStreak < withShields.currentStreak) {
+        shieldsRemaining = shieldsBudget - 1;
+        nextLastShieldDate = yesterdayKey;
+      }
+    }
+
+    const computed = computeStreakFromDayMap({
+      dayMap,
+      anchorDate: anchor,
+      shieldsRemaining,
+      previousLongest,
+      forcedBridgeDates: nextLastShieldDate ? [nextLastShieldDate] : [],
+    });
+
+    const row = await this.prisma.patientMedicationStreak.upsert({
+      where: { patientId },
+      create: {
+        patientId,
+        currentStreak: computed.currentStreak,
+        longestStreak: computed.longestStreak,
+        lastPerfectDate: computed.lastPerfectDate,
+        shieldsRemaining,
+        lastShieldDate: nextLastShieldDate,
+      },
+      update: {
+        currentStreak: computed.currentStreak,
+        longestStreak: computed.longestStreak,
+        lastPerfectDate: computed.lastPerfectDate,
+        shieldsRemaining,
+        lastShieldDate: nextLastShieldDate,
+      },
+    });
+
+    return {
+      currentStreak: row.currentStreak,
+      longestStreak: row.longestStreak,
+      lastPerfectDate: row.lastPerfectDate,
+      shieldsRemaining: row.shieldsRemaining,
+      todayCompleted: todayVerdict === 'perfect',
     };
   }
 

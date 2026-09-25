@@ -100,6 +100,7 @@ model Patient {
   safetyIncidents           SafetyIncident[]
   infectionCases            InfectionCase[]
   medicationDoseLogs        PatientMedicationDoseLog[]
+  medicationStreak          PatientMedicationStreak?
   prescriptionRefillRequests PrescriptionRefillRequest[]
   devices                    PatientDevice[]
   childrenAsParent           PatientFamilyLink[] @relation("FamilyParent")
@@ -979,6 +980,22 @@ model PatientMedicationDoseLog {
   @@index([prescriptionItemId])
   @@index([status])
   @@index([status, scheduledAt])
+}
+
+/// Client-facing adherence streak; recomputed from dose logs with optional shields.
+model PatientMedicationStreak {
+  patientId         String   @id
+  patient           Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  currentStreak     Int      @default(0)
+  longestStreak     Int      @default(0)
+  /// Hospital-local YYYY-MM-DD of the last fully completed dose day.
+  lastPerfectDate   String?
+  /// Non-punitive freezes — each bridges one imperfect day without resetting streak.
+  shieldsRemaining  Int      @default(1)
+  /// Hospital-local date a shield was last consumed for (idempotent).
+  lastShieldDate    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model PrescriptionRefillRequest {
