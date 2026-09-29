@@ -14,7 +14,9 @@ COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 
-RUN pnpm install --frozen-lockfile
+# Tell pnpm to allow Prisma and NestJS to run their setup scripts
+RUN pnpm config set dangerouslyAllowAllBuilds true \
+  && pnpm install --frozen-lockfile
 
 COPY . .
 
