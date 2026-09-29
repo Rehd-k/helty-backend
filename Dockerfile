@@ -60,4 +60,4 @@ EXPOSE 3000
 VOLUME ["/app/uploads"]
 
 # Start the compiled NestJS application directly.
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]
