@@ -37,12 +37,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Increase Node.js heap from its default ~2 GB limit.
-# This prevents "JavaScript heap out of memory" when the
-# application or Prisma requires more memory.
+# Increase Node.js heap from the default ~2 GB limit.
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Keep prisma + ts-node available for migrate deploy and one-off seeds in Coolify.
+# Keep Prisma available for migrations and one-off commands in Coolify.
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
@@ -50,10 +48,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/views ./views
 
-COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-
-RUN chmod +x /app/docker/entrypoint.sh \
-  && mkdir -p /app/uploads \
+RUN mkdir -p /app/uploads \
   && chown -R nestjs:nestjs /app
 
 USER nestjs
@@ -62,4 +57,5 @@ EXPOSE 3000
 
 VOLUME ["/app/uploads"]
 
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+# Start the compiled NestJS application directly.
+CMD ["node", "dist/main.js"]
