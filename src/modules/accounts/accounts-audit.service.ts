@@ -7,6 +7,7 @@ import {
   CmdComplianceStatus,
   FinanceReconciliationStatus,
   InvoiceAuditAction,
+  InvoiceStatus,
   Prisma,
 } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
@@ -378,6 +379,7 @@ export class AccountsAuditService {
         where: {
           paidAt: { gte: window.start, lte: window.end },
           receivedById: { not: null },
+          invoice: { status: { not: InvoiceStatus.DELETED } },
         },
         _sum: { amount: true },
         _count: { id: true },

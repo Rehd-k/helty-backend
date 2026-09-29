@@ -3,7 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { LabOrderStatus, LabRequestStatus, Prisma } from '@prisma/client';
+import { InvoiceStatus, LabOrderStatus, LabRequestStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { parseDateRange } from '../../../common/utils/date-range';
 import { InvoiceService } from '../../invoice/invoice.service';
@@ -163,7 +163,9 @@ export class LabOrderService {
   }
 
   async findAll(query: ListOrdersQueryDto) {
-    const where: Prisma.LabOrderWhereInput = {};
+    const where: Prisma.LabOrderWhereInput = {
+      NOT: { invoiceItem: { invoice: { status: InvoiceStatus.DELETED } } },
+    };
     if (query.patientId) where.patientId = query.patientId;
     if (query.status) where.status = query.status;
     if (query.fromDate || query.toDate) {

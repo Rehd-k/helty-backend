@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RadiologyRequestStatus, AdmissionStatus } from '@prisma/client';
+import { InvoiceStatus, Prisma, RadiologyRequestStatus, AdmissionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { invoiceLinkException } from '../../common/exceptions/invoice-link.exception';
@@ -289,7 +289,13 @@ export class RadiologyRequestService {
     } = query;
     const { from, to } = parseDateRange(fromDate, toDate);
 
-    const where: Prisma.RadiologyOrderWhereInput = {};
+    const where: Prisma.RadiologyOrderWhereInput = {
+      NOT: {
+        items: {
+          some: { invoiceItem: { invoice: { status: InvoiceStatus.DELETED } } },
+        },
+      },
+    };
     if (status) {
       where.items = { some: { status } };
     }

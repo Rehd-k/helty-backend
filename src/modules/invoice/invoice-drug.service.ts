@@ -210,6 +210,7 @@ export class InvoiceDrugService {
     const q = query?.trim();
     let where: Prisma.InvoiceWhereInput = {
       updatedAt,
+      status: { not: InvoiceStatus.DELETED },
       invoiceItems: {
         some: { drugId: { not: null } },
       },

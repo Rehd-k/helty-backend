@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { SurgeryRequestStatus } from '@prisma/client';
+import { InvoiceStatus, Prisma, SurgeryRequestStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { parseDateRange } from '../../common/utils/date-range';
@@ -109,12 +109,9 @@ export class SurgeryRequestService {
   async findAll(query: ListSurgeryRequestsQueryDto) {
     const skip = query.skip ?? 0;
     const take = query.take ?? 20;
-    const where: {
-      encounterId?: string;
-      patientId?: string;
-      status?: SurgeryRequestStatus;
-      createdAt?: { gte: Date; lte: Date };
-    } = {};
+    const where: Prisma.SurgeryRequestWhereInput = {
+      NOT: { invoice: { status: InvoiceStatus.DELETED } },
+    };
 
     if (query.encounterId) where.encounterId = query.encounterId;
     if (query.patientId) where.patientId = query.patientId;

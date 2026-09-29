@@ -39,12 +39,17 @@ import {
   ListInvoicePaymentsQueryDto,
   SplitInvoiceDto,
 } from './dto/invoice.dto';
+import { SoftDeleteInvoicesDto } from './dto/soft-delete-invoices.dto';
+import { InvoiceSoftDeleteService } from './invoice-soft-delete.service';
 import { DateRangeSkipTakeDto } from '../../common/dto/date-range.dto';
 
 @ApiTags('Invoices')
 @Controller('invoices')
 export class InvoiceController {
-  constructor(private readonly invoiceService: InvoiceService) {}
+  constructor(
+    private readonly invoiceService: InvoiceService,
+    private readonly invoiceSoftDeleteService: InvoiceSoftDeleteService,
+  ) {}
 
   // ─── Invoice Endpoints ────────────────────────────────────────────────────────
 
@@ -59,6 +64,21 @@ export class InvoiceController {
   @ApiBadRequestResponse({ description: 'Validation error in request body' })
   create(@Body() dto: CreateInvoiceDto, @Req() req: any) {
     return this.invoiceService.create(dto, req);
+  }
+
+  @Post('soft-delete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Soft-delete paid invoices',
+    description:
+      'Billing head and account head only. Sets status to DELETED, removes pending department requests, credits wallet payments, and leaves the invoice for the deleted transactions list. Each id is processed separately.',
+  })
+  @ApiOkResponse({ description: 'Per-invoice deleted, skipped, and rejected results' })
+  softDelete(@Body() dto: SoftDeleteInvoicesDto, @Req() req: any) {
+    return this.invoiceSoftDeleteService.softDeleteMany(
+      dto.invoiceIds,
+      req?.user,
+    );
   }
 
   @Get()

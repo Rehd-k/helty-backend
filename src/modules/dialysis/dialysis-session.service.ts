@@ -7,6 +7,7 @@ import {
 import {
   ConsumableUsageSource,
   DialysisSessionStatus,
+  InvoiceStatus,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -100,7 +101,9 @@ export class DialysisSessionService {
   }
 
   async findAll(query: ListDialysisSessionsQueryDto) {
-    const where: Prisma.DialysisSessionWhereInput = {};
+    const where: Prisma.DialysisSessionWhereInput = {
+      NOT: { invoice: { status: InvoiceStatus.DELETED } },
+    };
     if (query.patientId) where.patientId = query.patientId;
     if (query.status) where.status = query.status;
     if (query.fromDate || query.toDate) {

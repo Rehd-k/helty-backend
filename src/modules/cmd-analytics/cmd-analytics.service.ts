@@ -4,6 +4,7 @@ import {
   BedStatus,
   ComplaintStatus,
   CmdCommunicationPriority,
+  InvoiceStatus,
   Prisma,
   SafetyIncidentSeverity,
   SafetyIncidentStatus,
@@ -275,7 +276,10 @@ export class CmdAnalyticsService {
         _sum: { totalAmount: true },
       }),
       this.prisma.invoicePayment.aggregate({
-        where: { createdAt: inRange(ctx, 'current') },
+        where: {
+          createdAt: inRange(ctx, 'current'),
+          invoice: { status: { not: InvoiceStatus.DELETED } },
+        },
         _sum: { amount: true },
       }),
       this.prisma.invoiceItem.groupBy({

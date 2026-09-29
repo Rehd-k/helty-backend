@@ -1011,6 +1011,13 @@ export class InvoiceService {
       return sum.add(unitPrice.mul(item.quantity));
     }, new Prisma.Decimal(0));
 
+    if (invoice.status === InvoiceStatus.DELETED) {
+      return tx.invoice.update({
+        where: { id: invoiceId },
+        data: { totalAmount, status: InvoiceStatus.DELETED },
+      });
+    }
+
     const amountPaid = this.asDecimal(invoice.amountPaid);
     const coveredAmount = await this.invoiceCoveredAmount(invoiceId, tx);
     let status: InvoiceStatus = InvoiceStatus.PENDING;
@@ -1171,7 +1178,7 @@ export class InvoiceService {
       ? invoiceStatuses.length === 1
         ? { status: invoiceStatuses[0] }
         : { status: { in: invoiceStatuses } }
-      : {};
+      : { status: { not: InvoiceStatus.DELETED } };
     const patientPkScope: Prisma.InvoiceWhereInput = filterPatientId?.trim()
       ? { patientId: filterPatientId.trim() }
       : {};
@@ -2892,6 +2899,9 @@ export class InvoiceService {
 
     const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
     if (!invoice) throw new NotFoundException(`Invoice ${invoiceId} not found`);
+    if (invoice.status === InvoiceStatus.DELETED) {
+      throw new BadRequestException('Deleted invoices cannot accept payments');
+    }
 
     const paymentAmount = this.asDecimal(dto.amount);
     if (paymentAmount.lte(0)) {
@@ -3044,6 +3054,9 @@ export class InvoiceService {
       });
       if (!invoice) {
         throw new NotFoundException(`Invoice ${invoiceId} not found`);
+      }
+      if (invoice.status === InvoiceStatus.DELETED) {
+        throw new BadRequestException('Deleted invoices cannot accept payments');
       }
 
       const paymentAmount = this.asDecimal(dto.amount);
@@ -3358,6 +3371,7 @@ export class InvoiceService {
       processedById,
       q,
       patientId,
+      invoiceStatus,
     } = query;
     const needle = q?.trim();
     const hasExplicitDates = Boolean(
@@ -3373,12 +3387,19 @@ export class InvoiceService {
             return { paidAt: { gte: from, lte: to } as const };
           })();
 
+    const deletedOnly =
+      invoiceStatus?.trim().toUpperCase() === InvoiceStatus.DELETED;
     const where: Prisma.InvoicePaymentWhereInput = {
       ...paidAtFilter,
       ...(source ? { source } : {}),
       ...(paymentMethod ? { method: paymentMethod } : {}),
       ...(processedById ? { receivedById: processedById } : {}),
-      ...(patientId ? { invoice: { patientId } } : {}),
+      invoice: {
+        ...(patientId ? { patientId } : {}),
+        status: deletedOnly
+          ? InvoiceStatus.DELETED
+          : { not: InvoiceStatus.DELETED },
+      },
       ...(needle ? { OR: this.buildPaymentListSearchOr(needle) } : {}),
     };
 
@@ -3395,6 +3416,15 @@ export class InvoiceService {
               invoiceID: true,
               patientId: true,
               status: true,
+              deletedAt: true,
+              deletedBy: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  staffId: true,
+                },
+              },
               patient: {
                 select: patientNameFieldsSelect,
               },
@@ -3581,7 +3611,10 @@ export class InvoiceService {
 
     const where: Prisma.InvoiceWhereInput = {
       ...dateClause,
-      ...(status ? { status } : {}),
+      status:
+        status && status !== InvoiceStatus.DELETED
+          ? status
+          : { not: InvoiceStatus.DELETED },
       invoiceItems: { some: itemMatchWhere },
       ...(andExtra.length ? { AND: andExtra } : {}),
     };

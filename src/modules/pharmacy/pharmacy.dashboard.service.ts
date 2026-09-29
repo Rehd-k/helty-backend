@@ -4,6 +4,7 @@ import {
   DispensationStatus,
   InventoryMovementType,
   InvoicePaymentSource,
+  InvoiceStatus,
   PrescriptionStatus,
   Prisma,
   PurchaseOrderStatus,
@@ -755,7 +756,10 @@ export class PharmacyDashboardService {
     for (const b of buckets) {
       const [payments, refunds] = await Promise.all([
         this.prisma.invoicePayment.findMany({
-          where: { createdAt: { gte: b.start, lte: b.end } },
+          where: {
+            createdAt: { gte: b.start, lte: b.end },
+            invoice: { status: { not: InvoiceStatus.DELETED } },
+          },
           select: { amount: true, source: true },
         }),
         this.prisma.invoiceRefund.aggregate({

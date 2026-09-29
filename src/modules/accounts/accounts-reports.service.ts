@@ -3,6 +3,7 @@ import {
   InvoiceCoverageKind,
   InvoiceCoverageStatus,
   InvoicePaymentSource,
+  InvoiceStatus,
   Prisma,
 } from '@prisma/client';
 import { parseDateRange } from '../../common/utils/date-range';
@@ -117,7 +118,10 @@ export class AccountsReportsService {
   async dailyCollections(q: AccountsDateRangeQueryDto) {
     const { from, to } = this.parseRange(q);
     const payments = await this.prisma.invoicePayment.findMany({
-      where: { paidAt: { gte: from, lte: to } },
+      where: {
+        paidAt: { gte: from, lte: to },
+        invoice: { status: { not: InvoiceStatus.DELETED } },
+      },
       select: { paidAt: true, amount: true, source: true },
     });
 
@@ -287,16 +291,25 @@ export class AccountsReportsService {
 
     const [billed, collected, refunds, payments] = await Promise.all([
       this.prisma.invoice.aggregate({
-        where: { createdAt: { gte: window.start, lte: window.end } },
+        where: {
+          createdAt: { gte: window.start, lte: window.end },
+          status: { not: InvoiceStatus.DELETED },
+        },
         _sum: { totalAmount: true },
       }),
       this.billingAnalytics.totalCashInRange(window.start, window.end),
       this.prisma.invoiceRefund.aggregate({
-        where: { refundedAt: { gte: window.start, lte: window.end } },
+        where: {
+          refundedAt: { gte: window.start, lte: window.end },
+          invoice: { status: { not: InvoiceStatus.DELETED } },
+        },
         _sum: { amount: true },
       }),
       this.prisma.invoicePayment.findMany({
-        where: { paidAt: { gte: window.start, lte: window.end } },
+        where: {
+          paidAt: { gte: window.start, lte: window.end },
+          invoice: { status: { not: InvoiceStatus.DELETED } },
+        },
         select: {
           paidAt: true,
           invoice: { select: { createdAt: true } },

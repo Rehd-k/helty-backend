@@ -6,6 +6,7 @@ import {
 import {
   FinanceReconciliationStatus,
   InvoicePaymentSource,
+  InvoiceStatus,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -56,6 +57,7 @@ export class AccountsReconciliationService {
       where: {
         source: InvoicePaymentSource.CASH,
         paidAt: { gte: dayStart, lte: dayEnd },
+        invoice: { status: { not: InvoiceStatus.DELETED } },
       },
       _sum: { amount: true },
     });
@@ -129,7 +131,10 @@ export class AccountsReconciliationService {
 
     const statementDate = new Date(dto.statementDate);
     const payments = await this.prisma.invoicePayment.aggregate({
-      where: { bankId: dto.bankId },
+      where: {
+        bankId: dto.bankId,
+        invoice: { status: { not: InvoiceStatus.DELETED } },
+      },
       _sum: { amount: true },
     });
     const bookBalance = toNumber(payments._sum.amount);

@@ -1618,6 +1618,9 @@ model Invoice {
   createdById String
   updatedBy   Staff?        @relation("InvoiceUpdatedBy", fields: [updatedById], references: [id])
   updatedById String?
+  deletedAt   DateTime?
+  deletedBy   Staff?        @relation("InvoiceDeletedBy", fields: [deletedById], references: [id])
+  deletedById String?
 
   invoiceItems    InvoiceItem[]
   payments        InvoicePayment[]
@@ -1651,6 +1654,8 @@ model Invoice {
   @@index([invoiceID])
   @@index([createdById])
   @@index([updatedById])
+  @@index([deletedById])
+  @@index([deletedAt])
   @@index([staffId])
   @@index([encounterId])
   @@index([consultingRoomId])
@@ -2089,6 +2094,7 @@ enum InvoiceStatus {
   PENDING
   PARTIALLY_PAID
   PAID
+  DELETED
 }
 
 enum WalletTransactionType {
@@ -2134,6 +2140,7 @@ enum InvoiceAuditAction {
   COVERAGE_APPLIED
   COVERAGE_REVERSED
   COVERAGE_REMITTANCE_RECORDED
+  INVOICE_DELETED
 }
 
 // Staff: department / account category (paired with StaffRole).
@@ -2628,6 +2635,7 @@ model Staff {
   serviceCategoriesUpdated ServiceCategory[] @relation("ServiceCategoryUpdatedBy")
   invoicesCreated          Invoice[]         @relation("InvoiceCreatedBy")
   invoicesUpdated          Invoice[]         @relation("InvoiceUpdatedBy")
+  invoicesDeleted          Invoice[]         @relation("InvoiceDeletedBy")
   departmentsCreated       Department[]      @relation("DepartmentCreatedBy")
   departmentsUpdated       Department[]      @relation("DepartmentUpdatedBy")
   staffCreated             Staff[]           @relation("StaffCreatedBy")

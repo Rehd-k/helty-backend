@@ -213,6 +213,15 @@ export class ListInvoicePaymentsQueryDto extends DateRangeSkipTakeDto {
   @IsOptional()
   @IsUUID()
   patientId?: string;
+
+  @ApiPropertyOptional({
+    enum: ['DELETED'],
+    description:
+      'Pass DELETED to list payments on soft-deleted invoices. Omitted lists exclude them.',
+  })
+  @IsOptional()
+  @IsString()
+  invoiceStatus?: string;
 }
 
 // ─── InvoiceItem DTOs ──────────────────────────────────────────────────────────

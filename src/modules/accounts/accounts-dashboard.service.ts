@@ -3,6 +3,7 @@ import {
   FinanceApprovalStatus,
   InvoiceCoverageKind,
   InvoiceCoverageStatus,
+  InvoiceStatus,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -58,7 +59,10 @@ export class AccountsDashboardService {
       leakCount,
     ] = await Promise.all([
       this.prisma.invoice.aggregate({
-        where: { createdAt: { gte: window.start, lte: window.end } },
+        where: {
+          createdAt: { gte: window.start, lte: window.end },
+          status: { not: InvoiceStatus.DELETED },
+        },
         _sum: { totalAmount: true },
       }),
       this.billingAnalytics.totalCashInRange(window.start, window.end),
@@ -85,7 +89,10 @@ export class AccountsDashboardService {
           })
         : Promise.resolve(0),
       this.prisma.invoicePayment.count({
-        where: { paidAt: { gte: window.start, lte: window.end } },
+        where: {
+          paidAt: { gte: window.start, lte: window.end },
+          invoice: { status: { not: InvoiceStatus.DELETED } },
+        },
       }),
       this.sumRemittancesDue(),
       this.paymentMix(window.start, window.end),
@@ -133,7 +140,10 @@ export class AccountsDashboardService {
   private async paymentMix(start: Date, end: Date) {
     const grouped = await this.prisma.invoicePayment.groupBy({
       by: ['source'],
-      where: { paidAt: { gte: start, lte: end } },
+      where: {
+        paidAt: { gte: start, lte: end },
+        invoice: { status: { not: InvoiceStatus.DELETED } },
+      },
       _sum: { amount: true },
     });
     return grouped.map((g) => ({

@@ -16,6 +16,7 @@ import { InvoiceCoverageController } from './coverage/coverage.controller';
 import { InvoiceCoverageService } from './coverage/coverage.service';
 import { InvoiceItemRefundController } from './invoice-item-refund.controller';
 import { InvoiceItemRefundService } from './invoice-item-refund.service';
+import { InvoiceSoftDeleteService } from './invoice-soft-delete.service';
 import { InvoiceConsolidationScheduler } from './invoice-consolidation.scheduler';
 
 @Module({
@@ -35,6 +36,7 @@ import { InvoiceConsolidationScheduler } from './invoice-consolidation.scheduler
     InvoicePurchaseService,
     InvoiceCoverageService,
     InvoiceItemRefundService,
+    InvoiceSoftDeleteService,
     InvoiceConsolidationScheduler,
   ],
   exports: [

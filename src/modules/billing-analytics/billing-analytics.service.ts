@@ -46,11 +46,17 @@ export class BillingAnalyticsService {
   async totalCashInRange(start: Date, end: Date): Promise<number> {
     const [ip, ir] = await Promise.all([
       this.prisma.invoicePayment.aggregate({
-        where: { createdAt: { gte: start, lte: end } },
+        where: {
+          createdAt: { gte: start, lte: end },
+          invoice: { status: { not: InvoiceStatus.DELETED } },
+        },
         _sum: { amount: true },
       }),
       this.prisma.invoiceRefund.aggregate({
-        where: { refundedAt: { gte: start, lte: end } },
+        where: {
+          refundedAt: { gte: start, lte: end },
+          invoice: { status: { not: InvoiceStatus.DELETED } },
+        },
         _sum: { amount: true },
       }),
     ]);
@@ -398,7 +404,10 @@ export class BillingAnalyticsService {
 
     const [allocRows, invoicePayments] = await Promise.all([
       this.prisma.invoiceItemPayment.findMany({
-        where: { createdAt: { gte: start, lte: end } },
+        where: {
+          createdAt: { gte: start, lte: end },
+          invoiceItem: { invoice: { status: { not: InvoiceStatus.DELETED } } },
+        },
         include: {
           invoiceItem: {
             include: {
@@ -410,7 +419,10 @@ export class BillingAnalyticsService {
         },
       }),
       this.prisma.invoicePayment.findMany({
-        where: { createdAt: { gte: start, lte: end } },
+        where: {
+          createdAt: { gte: start, lte: end },
+          invoice: { status: { not: InvoiceStatus.DELETED } },
+        },
         include: {
           invoice: {
             include: {
