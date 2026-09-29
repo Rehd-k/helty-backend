@@ -21,6 +21,7 @@ COPY . .
 RUN pnpm exec prisma generate \
   && pnpm run build
 
+
 # ── Runtime ──────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runner
 
@@ -36,6 +37,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
+# Increase Node.js heap from its default ~2 GB limit.
+# This prevents "JavaScript heap out of memory" when the
+# application or Prisma requires more memory.
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # Keep prisma + ts-node available for migrate deploy and one-off seeds in Coolify.
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=builder /app/node_modules ./node_modules
@@ -43,6 +49,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
 COPY --from=builder /app/views ./views
+
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 
 RUN chmod +x /app/docker/entrypoint.sh \
