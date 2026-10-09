@@ -1,6 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import { LabResultService } from './lab-result.service';
 
+jest.mock('nanoid', () => ({
+  customAlphabet: () => () => 'TESTID0001',
+}));
+
 describe('LabResultService', () => {
   const invoiceService = {
     assertInvoiceItemPaidOrInpatientCredit: jest.fn(),
@@ -32,9 +36,10 @@ describe('LabResultService', () => {
     },
     labOrder: {
       findUnique: jest.fn().mockResolvedValue({
-        invoiceItemId: null,
-        items: [],
+        status: 'PENDING',
+        invoiceItemId: 'item-1',
       }),
+      update: jest.fn().mockResolvedValue({}),
     },
     labRequest: {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -58,6 +63,9 @@ describe('LabResultService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    invoiceService.assertInvoiceItemPaidOrInpatientCredit.mockResolvedValue(
+      undefined,
+    );
     service = new LabResultService(prisma as any, invoiceService as any);
   });
 
@@ -99,5 +107,36 @@ describe('LabResultService', () => {
       'Payment is required before entering results for this patient.',
     );
     expect(invoiceService.settleInvoiceItemIfPresent).not.toHaveBeenCalled();
+  });
+
+  it('marks the order completed when a result is saved', async () => {
+    await service.create({
+      orderItemId: 'oi-1',
+      fieldId: 'field-1',
+      value: '5',
+      enteredBy: 'staff-1',
+    });
+
+    expect(prisma.labOrder.update).toHaveBeenCalledWith({
+      where: { id: 'ord-1' },
+      data: expect.objectContaining({ status: 'COMPLETED' }),
+    });
+    expect(prisma.labRequest.updateMany).toHaveBeenCalled();
+  });
+
+  it('does not downgrade a verified order when a result is saved', async () => {
+    prisma.labOrder.findUnique.mockResolvedValueOnce({
+      status: 'VERIFIED',
+      invoiceItemId: 'item-1',
+    });
+
+    await service.create({
+      orderItemId: 'oi-1',
+      fieldId: 'field-1',
+      value: '5',
+      enteredBy: 'staff-1',
+    });
+
+    expect(prisma.labOrder.update).not.toHaveBeenCalled();
   });
 });

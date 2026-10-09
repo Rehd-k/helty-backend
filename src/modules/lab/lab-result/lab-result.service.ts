@@ -3,7 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { LabRequestStatus, LabTestFieldType } from '@prisma/client';
+import { LabTestFieldType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InvoiceService } from '../../invoice/invoice.service';
 import { CreateLabResultDto } from './dto/create-lab-result.dto';
@@ -12,6 +12,7 @@ import {
   computeLabResultFlags,
   evaluateReferenceRange,
 } from '../lab-reference-range.util';
+import { markLabOrderCompletedOnResultSave } from '../lab-order-completion.util';
 
 type LabResultWithField = {
   value: string | null;
@@ -65,57 +66,6 @@ export class LabResultService {
         `Field "${fieldId}" does not belong to the test version of order item "${orderItemId}".`,
       );
     }
-  }
-
-  /** When every required field on every order line has a result, mark linked LabRequest COMPLETED. */
-  private async maybeCompleteLabRequestIfOrderResultsComplete(
-    orderId: string,
-  ): Promise<void> {
-    const order = await this.prisma.labOrder.findUnique({
-      where: { id: orderId },
-      select: {
-        invoiceItemId: true,
-        items: {
-          select: {
-            results: { select: { fieldId: true } },
-            testVersion: {
-              select: {
-                fields: {
-                  where: { required: true },
-                  select: { id: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-    if (!order?.invoiceItemId) return;
-
-    for (const item of order.items) {
-      const requiredIds = item.testVersion.fields.map((f) => f.id);
-      const resultFieldIds = new Set(item.results.map((r) => r.fieldId));
-      for (const req of requiredIds) {
-        if (!resultFieldIds.has(req)) return;
-      }
-    }
-
-    await this.prisma.labRequest.updateMany({
-      where: {
-        invoiceItemId: order.invoiceItemId,
-        status: { not: LabRequestStatus.CANCELLED },
-      },
-      data: { status: LabRequestStatus.COMPLETED },
-    });
-
-    const now = new Date();
-    await this.prisma.labOrder.update({
-      where: { id: orderId },
-      data: {
-        status: 'COMPLETED',
-        completedAt: now,
-      },
-    });
   }
 
   private async loadFieldForFlags(fieldId: string) {
@@ -199,7 +149,7 @@ export class LabResultService {
         },
       });
     });
-    await this.maybeCompleteLabRequestIfOrderResultsComplete(link.orderId);
+    await markLabOrderCompletedOnResultSave(this.prisma, link.orderId);
     return this.enrichResult(out);
   }
 
@@ -272,7 +222,7 @@ export class LabResultService {
         }),
       );
     });
-    await this.maybeCompleteLabRequestIfOrderResultsComplete(link.orderId);
+    await markLabOrderCompletedOnResultSave(this.prisma, link.orderId);
     return created.map((r) => this.enrichResult(r));
   }
 

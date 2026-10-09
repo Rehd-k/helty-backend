@@ -12,15 +12,27 @@ import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { patientNameFieldsSelect } from '../../../common/utils/patient-display-name.util';
 import { getPatientAdmissionContext } from '../../../common/utils/patient-admission-context.util';
+import { ChannelSendResult } from '../../../common/types/channel-send-result';
+import { MailService } from '../../mail/mail.service';
+import { SmsService } from '../../sms/sms.service';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { SendLabResultsToPatientDto } from './dto/send-lab-results-to-patient.dto';
 
 const wardSelect = { select: { id: true, name: true } } as const;
+
+const labOrderPatientSelect = {
+  ...patientNameFieldsSelect,
+  email: true,
+  phoneNumber: true,
+} as const;
 
 @Injectable()
 export class LabOrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
+    private readonly mailService: MailService,
+    private readonly smsService: SmsService,
   ) { }
 
   async create(dto: CreateLabOrderDto) {
@@ -51,7 +63,7 @@ export class LabOrderService {
 
     const orderInclude = {
       patient: {
-        select: patientNameFieldsSelect,
+        select: labOrderPatientSelect,
       },
       doctor: {
         select: { id: true, firstName: true, lastName: true, staffId: true },
@@ -184,7 +196,7 @@ export class LabOrderService {
         orderBy: { createdAt: 'desc' },
         include: {
           patient: {
-            select: patientNameFieldsSelect,
+            select: labOrderPatientSelect,
           },
           doctor: { select: { id: true, firstName: true, lastName: true } },
           ward: wardSelect,
@@ -210,7 +222,7 @@ export class LabOrderService {
       where: { id },
       include: {
         patient: {
-          select: patientNameFieldsSelect,
+          select: labOrderPatientSelect,
         },
         doctor: {
           select: { id: true, firstName: true, lastName: true, staffId: true, accountType: true },
@@ -267,7 +279,7 @@ export class LabOrderService {
       where: { id },
       data: { ...dto, ...timestamps },
       include: {
-        patient: { select: patientNameFieldsSelect },
+        patient: { select: labOrderPatientSelect },
         doctor: { select: { id: true, firstName: true, lastName: true } },
         ward: wardSelect,
         invoiceItem: {
@@ -289,6 +301,103 @@ export class LabOrderService {
       await this.syncLabRequestCompletedForInvoiceItem(updated.invoiceItemId);
     }
     return updated;
+  }
+
+  async sendToPatient(dto: SendLabResultsToPatientDto) {
+    if (!dto.sendEmail && !dto.sendSms) {
+      throw new BadRequestException('Select email, phone, or both.');
+    }
+
+    const patient = await this.prisma.patient.findUnique({
+      where: { id: dto.patientId },
+      select: {
+        email: true,
+        phoneNumber: true,
+        firstName: true,
+        surname: true,
+      },
+    });
+    if (!patient) {
+      throw new NotFoundException(`Patient "${dto.patientId}" not found.`);
+    }
+
+    const email = patient.email?.trim() ?? '';
+    const phone = patient.phoneNumber?.trim() ?? '';
+    if (dto.sendEmail && !email) {
+      throw new BadRequestException('This patient has no email on file.');
+    }
+    if (dto.sendEmail && !dto.pdfBase64?.trim()) {
+      throw new BadRequestException(
+        'Laboratory report PDF is required to send email.',
+      );
+    }
+    if (dto.sendSms && !phone) {
+      throw new BadRequestException('This patient has no phone number on file.');
+    }
+    if (dto.sendSms && !dto.smsText?.trim()) {
+      throw new BadRequestException('Result text is required to send an SMS.');
+    }
+
+    const name =
+      [patient.firstName, patient.surname].filter((part) => part?.trim()).join(' ') ||
+      'Patient';
+    const errors: string[] = [];
+
+    if (dto.sendEmail) {
+      const result = await this.mailService.sendLabResultsPdf({
+        to: email,
+        subject: `Laboratory results – ${name}`,
+        text: 'Your laboratory report is attached.',
+        pdfBase64: dto.pdfBase64!,
+        filename: 'laboratory-results.pdf',
+      });
+      const error = this.channelError('Email', result);
+      if (error) errors.push(error);
+    }
+
+    if (dto.sendSms) {
+      const result = await this.smsService.sendSms(phone, dto.smsText!.trim());
+      const error = this.channelError('SMS', result);
+      if (error) errors.push(error);
+    }
+
+    if (errors.length) {
+      throw new BadRequestException(errors.join(' '));
+    }
+
+    return {
+      email: dto.sendEmail ? 'SENT' : 'SKIPPED',
+      sms: dto.sendSms ? 'SENT' : 'SKIPPED',
+    };
+  }
+
+  async updateItemNotes(itemId: string, scientistNotes?: string | null) {
+    const item = await this.prisma.labOrderItem.findUnique({
+      where: { id: itemId },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new NotFoundException(`Lab order item "${itemId}" not found.`);
+    }
+    const trimmed = scientistNotes?.trim() ?? '';
+    return this.prisma.labOrderItem.update({
+      where: { id: itemId },
+      data: { scientistNotes: trimmed.length === 0 ? null : trimmed },
+      select: { id: true, scientistNotes: true },
+    });
+  }
+
+  private channelError(channel: string, result: ChannelSendResult): string | null {
+    switch (result.status) {
+      case 'SENT':
+        return null;
+      case 'SKIPPED_CONFIG':
+        return `${channel} could not be sent because it is not configured.`;
+      case 'SKIPPED_NO_CONTACT':
+        return `${channel} could not be sent because the contact is missing or invalid.`;
+      case 'FAILED':
+        return `${channel} failed: ${result.errorMessage}`;
+    }
   }
 
   private async syncLabRequestCompletedForInvoiceItem(

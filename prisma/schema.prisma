@@ -4062,8 +4062,10 @@ model LabOrderItem {
   testVersionId String
   status        String   @default("PENDING") // PENDING, SAMPLE_COLLECTED, PROCESSING, COMPLETED, VERIFIED
   /// When true, Antibiotic Susceptibility Testing (AST) may be recorded for this line (e.g. MCS).
-  astRequested  Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  astRequested   Boolean  @default(false)
+  /// Scientist comments printed under this test. Omitted from the report when blank.
+  scientistNotes String?  @db.Text
+  createdAt      DateTime @default(now())
 
   order       LabOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
   testVersion LabTestVersion @relation(fields: [testVersionId], references: [id], onDelete: Restrict)

@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InvoiceService } from '../../invoice/invoice.service';
 import { CreateLabAstResultBatchDto } from './dto/create-lab-ast-result-batch.dto';
+import { markLabOrderCompletedOnResultSave } from '../lab-order-completion.util';
 
 const astResultInclude = {
   antibiotic: true,
@@ -25,6 +26,7 @@ export class LabAstResultService {
       where: { id: orderItemId },
       select: {
         astRequested: true,
+        orderId: true,
         order: { select: { invoiceItemId: true, patientId: true } },
       },
     });
@@ -86,7 +88,7 @@ export class LabAstResultService {
       dto.results.map((r) => r.resultOptionId),
     );
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       const invoiceItemId = orderItem.order.invoiceItemId;
       if (invoiceItemId && orderItem.order.patientId) {
         await this.invoiceService.assertInvoiceItemPaidOrInpatientCredit(tx, {
@@ -120,6 +122,8 @@ export class LabAstResultService {
         ),
       );
     });
+    await markLabOrderCompletedOnResultSave(this.prisma, orderItem.orderId);
+    return created;
   }
 
   async findAllByOrderItemId(orderItemId: string) {

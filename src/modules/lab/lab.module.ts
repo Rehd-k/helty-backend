@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { InvoiceModule } from '../invoice/invoice.module';
+import { MailModule } from '../mail/mail.module';
+import { SmsModule } from '../sms/sms.module';
 import { LabCategoryController } from './lab-category/lab-category.controller';
 import { LabCategoryService } from './lab-category/lab-category.service';
 import { LabTestController } from './lab-test/lab-test.controller';
@@ -27,7 +29,7 @@ import { LabConfigTransferController } from './lab-config-transfer/lab-config-tr
 import { LabConfigTransferService } from './lab-config-transfer/lab-config-transfer.service';
 
 @Module({
-  imports: [PrismaModule, InvoiceModule],
+  imports: [PrismaModule, InvoiceModule, MailModule, SmsModule],
   controllers: [
     LabCategoryController,
     LabTestController,

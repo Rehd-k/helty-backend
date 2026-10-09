@@ -13,7 +13,7 @@ import { PaginationDto } from './pagination.dto';
 export class SearchBatchDto extends PaginationDto {
   @ApiPropertyOptional({
     description:
-      'Start date (ISO 8601). Filters by batch createdAt. Normalized to start-of-day. Defaults to today if omitted/empty/invalid.',
+      'Start date (ISO 8601). When set, filters by batch createdAt (receive date), normalized to start-of-day. Omitted means no start bound unless toDate is set.',
   })
   @IsOptional()
   @IsDateString()
@@ -21,7 +21,7 @@ export class SearchBatchDto extends PaginationDto {
 
   @ApiPropertyOptional({
     description:
-      'End date (ISO 8601). Filters by batch createdAt. Normalized to end-of-day. Defaults to today if omitted/empty/invalid.',
+      'End date (ISO 8601). When set, filters by batch createdAt (receive date), normalized to end-of-day. Omitted means no end bound unless fromDate is set.',
   })
   @IsOptional()
   @IsDateString()
@@ -99,6 +99,7 @@ export class SearchBatchDto extends PaginationDto {
       'expiryDate',
       'costPrice',
       'sellingPrice',
+      'quantityReceived',
       'quantityRemaining',
       'createdAt',
     ],

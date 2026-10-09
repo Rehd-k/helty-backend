@@ -20,6 +20,7 @@ const ALLOWED_SORT_FIELDS = new Set([
   'expiryDate',
   'costPrice',
   'sellingPrice',
+  'quantityReceived',
   'quantityRemaining',
   'createdAt',
 ]);
@@ -228,10 +229,12 @@ export class PharmacyBatchService {
     } = dto;
 
     const take = Math.min(Math.max(1, Number(limit) || 20), 100);
-    const { from, to } = parseDateRange(fromDate, toDate);
-    const where: Prisma.DrugBatchWhereInput = {
-      // createdAt: { gte: from, lte: to },
-    };
+    const where: Prisma.DrugBatchWhereInput = {};
+
+    if (fromDate || toDate) {
+      const { from, to } = parseDateRange(fromDate, toDate);
+      where.createdAt = { gte: from, lte: to };
+    }
 
     if (drugId) where.drugId = drugId;
     if (batchNumber) {
@@ -287,9 +290,12 @@ export class PharmacyBatchService {
     const orderByField = ALLOWED_SORT_FIELDS.has(sortBy)
       ? sortBy
       : 'expiryDate';
-    const orderBy: Prisma.DrugBatchOrderByWithRelationInput = {
-      [orderByField]: sortOrder === 'desc' ? 'desc' : 'asc',
-    };
+    const direction: Prisma.SortOrder =
+      sortOrder === 'asc' ? 'asc' : 'desc';
+    const orderBy: Prisma.DrugBatchOrderByWithRelationInput[] = [
+      { [orderByField]: direction },
+      { id: 'asc' },
+    ];
 
     const parsedSkip = Math.max(0, Number(skip) || 0);
 
@@ -303,7 +309,15 @@ export class PharmacyBatchService {
       }),
       this.prisma.drugBatch.count({ where }),
     ]);
-    return { data, total, skip: parsedSkip, take };
+    const page = take > 0 ? Math.floor(parsedSkip / take) + 1 : 1;
+    return {
+      data,
+      total,
+      skip: parsedSkip,
+      take,
+      page,
+      pageSize: take,
+    };
   }
 
   async findOne(id: string) {

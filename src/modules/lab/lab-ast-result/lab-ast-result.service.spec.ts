@@ -12,9 +12,15 @@ describe('LabAstResultService', () => {
     labAntibiotic: { findMany: jest.fn() },
     labAstResultOption: { findMany: jest.fn() },
     labAstResult: { upsert: jest.fn(), findMany: jest.fn() },
-    $transaction: jest.fn(async (cb: (tx: typeof prisma) => unknown) =>
-      cb(prisma),
-    ),
+    labOrder: {
+      findUnique: jest.fn().mockResolvedValue({
+        status: 'PENDING',
+        invoiceItemId: 'inv-item-1',
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    labRequest: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    $transaction: jest.fn(async (cb: (tx: any) => unknown) => cb(prisma)),
   };
 
   const invoiceService = {
@@ -30,6 +36,7 @@ describe('LabAstResultService', () => {
     prisma.staff.findUnique.mockResolvedValue({ id: 'staff-1' });
     prisma.labOrderItem.findUnique.mockResolvedValue({
       astRequested: true,
+      orderId: 'ord-1',
       order: { invoiceItemId: 'inv-item-1', patientId: 'patient-1' },
     });
     prisma.labAstResult.upsert.mockImplementation(({ create }) =>

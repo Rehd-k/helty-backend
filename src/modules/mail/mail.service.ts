@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ServerClient } from 'postmark';
+import { Attachment, ServerClient } from 'postmark';
 import { ChannelSendResult } from '../../common/types/channel-send-result';
 
 @Injectable()
@@ -38,6 +38,7 @@ export class MailService {
     subject: string;
     text: string;
     html?: string;
+    attachments?: Attachment[];
   }): Promise<ChannelSendResult> {
     const to = params.to?.trim();
     if (!to) {
@@ -69,6 +70,7 @@ export class MailService {
         TextBody: params.text,
         HtmlBody: params.html ?? params.text.replace(/\n/g, '<br/>'),
         MessageStream: this.messageStream(),
+        Attachments: params.attachments,
       });
 
       this.logger.log(
@@ -130,6 +132,49 @@ export class MailService {
       subject: params.subject,
       text: params.text,
       html,
+    });
+  }
+
+  /**
+   * Emails a laboratory report PDF. The recipient must already be the
+   * patient's address; this method does not look up contacts.
+   */
+  async sendLabResultsPdf(params: {
+    to: string;
+    subject: string;
+    text: string;
+    pdfBase64: string;
+    filename: string;
+  }): Promise<ChannelSendResult> {
+    const pdfBase64 = params.pdfBase64.replace(/\s/g, '');
+    const bytes = Buffer.from(pdfBase64, 'base64');
+    if (!pdfBase64 || bytes.length === 0) {
+      return {
+        status: 'FAILED',
+        errorMessage: 'Laboratory report PDF is empty.',
+      };
+    }
+    if (bytes.length > 8 * 1024 * 1024) {
+      return {
+        status: 'FAILED',
+        errorMessage: 'Laboratory report PDF is too large to email.',
+      };
+    }
+
+    const html = `<p>${params.text.replace(/\n/g, '<br/>')}</p>`;
+    return this.sendViaPostmark({
+      to: params.to,
+      subject: params.subject,
+      text: params.text,
+      html,
+      attachments: [
+        new Attachment(
+          params.filename,
+          pdfBase64,
+          'application/pdf',
+          null,
+        ),
+      ],
     });
   }
 }

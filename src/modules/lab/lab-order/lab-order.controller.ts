@@ -14,6 +14,8 @@ import { LabOrderService } from './lab-order.service';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { SendLabResultsToPatientDto } from './dto/send-lab-results-to-patient.dto';
+import { UpdateLabOrderItemNotesDto } from './dto/update-lab-order-item-notes.dto';
 
 @ApiTags('Lab – Orders')
 @Controller('lab/orders')
@@ -29,6 +31,16 @@ export class LabOrderController {
     return this.labOrderService.create(dto);
   }
 
+  @Post('send-to-patient')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Email the laboratory report PDF and/or text the results to the patient on file',
+  })
+  sendToPatient(@Body() dto: SendLabResultsToPatientDto) {
+    return this.labOrderService.sendToPatient(dto);
+  }
+
   @Get()
   @ApiOperation({ summary: 'List lab orders with optional filters' })
   findAll(@Query() query: ListOrdersQueryDto) {
@@ -39,6 +51,17 @@ export class LabOrderController {
   @ApiOperation({ summary: 'Get lab order by ID with items and fields' })
   findOne(@Param('id') id: string) {
     return this.labOrderService.findOne(id);
+  }
+
+  @Patch('items/:itemId')
+  @ApiOperation({
+    summary: 'Save scientist notes for one test on a lab order',
+  })
+  updateItemNotes(
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateLabOrderItemNotesDto,
+  ) {
+    return this.labOrderService.updateItemNotes(itemId, dto.scientistNotes);
   }
 
   @Patch(':id')

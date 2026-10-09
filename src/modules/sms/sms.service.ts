@@ -37,6 +37,14 @@ export class SmsService {
   }
 
   /**
+   * Sends a plain SMS via Termii.
+   * Skips when Termii env is missing or the phone cannot be normalized.
+   */
+  sendSms(to: string, message: string): Promise<ChannelSendResult> {
+    return this.sendAppointmentSms(to, message);
+  }
+
+  /**
    * Sends SMS via Termii (POST {TERMII_BASE_URL}/api/sms/send).
    * Skips when Termii env is missing or phone cannot be normalized.
    */
