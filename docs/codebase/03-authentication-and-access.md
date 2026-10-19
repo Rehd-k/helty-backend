@@ -144,6 +144,7 @@ Anything with `@Public()` skips JWT. The important ones:
 - `POST /auth/login`, forgot-password, reset-password
 - `POST /patient-auth/login`
 - `GET /patients` (the paginated list)
+- `GET /services` (the paginated list only; create, get-by-id, update, and delete still require auth)
 - `POST /staff`
 - `GET /` and `GET /server-time`
 - `GET /uploads/patients/:patientId/avatar.jpg`

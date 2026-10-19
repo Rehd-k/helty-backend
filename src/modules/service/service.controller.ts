@@ -24,6 +24,7 @@ import {
 } from '@nestjs/swagger';
 import { ServiceService } from './service.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
+import { Public } from 'src/common/decorators';
 
 @ApiTags('Services')
 @Controller('services')
@@ -43,11 +44,12 @@ export class ServiceController {
     return this.serviceService.create(dto, req);
   }
 
+  @Public()
   @Get()
   @ApiOperation({
     summary: 'List all hospital services (paginated)',
     description:
-      'Returns a paginated list of all services ordered by name, with category and department info.',
+      'Returns a paginated list of all services ordered by name, with category and department info. Public — no auth required.',
   })
   @ApiQuery({
     name: 'skip',
