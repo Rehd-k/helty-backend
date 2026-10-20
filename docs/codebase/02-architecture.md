@@ -2,7 +2,7 @@
 
 ## One process, many modules
 
-`AppModule` (`src/app.module.ts`) imports infrastructure once, then every feature module. There is no microservice split. A request never leaves this process except for Postgres, Redis (optional), Postmark, Termii, and Firebase.
+`AppModule` (`src/app.module.ts`) imports infrastructure once, then every feature module. There is no microservice split. A request never leaves this process except for Postgres, Redis (optional), Resend, Termii, and Firebase.
 
 ```
 Client

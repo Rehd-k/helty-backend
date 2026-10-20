@@ -36,7 +36,7 @@ Supporting reads: `/patient/appointments/dashboard`, `.../specialties`, `.../doc
 
 The date must be today or later. `REQUESTED` can be rescheduled or cancelled any time before the visit. Other upcoming statuses need more than 24 hours’ notice (`MIN_HOURS_BEFORE_CHANGE`). `COMPLETED` and `CANCELLED` cannot be changed. Staff confirm or deny on `/appointments/:id/confirm` and `.../deny`, which is not a patient route.
 
-Create, reschedule, and cancel notify through the same appointment notification service as staff bookings (FCM, Postmark, Termii).
+Create, reschedule, and cancel notify through the same appointment notification service as staff bookings (FCM, Resend, Termii).
 
 ## Billing
 

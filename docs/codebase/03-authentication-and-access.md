@@ -29,7 +29,7 @@ Password reset:
 
 - `POST /auth/forgot-password` always returns the same message, whether or not the email exists.
 - A 6-digit code is stored on `StaffPasswordReset` for 15 minutes. One unused code is active per staff member.
-- If Postmark is configured, the code is emailed. If not, it is only in the database and the server log.
+- If Resend is configured, the code is emailed. If not, it is only in the database and the server log.
 - `POST /auth/reset-password` sets a new bcrypt hash when the code matches and is unused.
 
 Staff CRUD is `src/modules/staff`, not `auth`. `POST /staff` is **public** and hashes the password. Treat that as a deployment concern: do not expose it on an open network without something in front of it. When both `accountType` and `staffRole` are sent, `validateStaffRolePairing` checks they belong together. Charge-nurse roles must be tied to a ward that matches the role (ward, ICU, emergency, OPD, O&G).

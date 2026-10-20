@@ -140,7 +140,7 @@ Change the default password before any public deploy. The route is unauthenticat
 
 Neither module has a controller.
 
-`MailService` (`src/modules/mail`) sends staff password-reset codes and appointment emails through Postmark. If `POSTMARK_SERVER_TOKEN` or `POSTMARK_FROM` is missing, it logs and returns skipped. Password reset still stores the code.
+`MailService` (`src/modules/mail`) sends staff password-reset codes, appointment emails, and laboratory report PDFs through Resend. The sender is `RESEND_FROM` (default `lab@streamtrustdiagnostics.com`). If `RESEND_API_KEY` is missing, it logs and returns skipped. Password reset still stores the code.
 
 `SmsService` (`src/modules/sms`) sends appointment SMS through Termii (`POST {TERMII_BASE_URL}/api/sms/send`). Phone numbers are normalised to `234…`. Channel defaults to `dnd`. SMS is not used for password reset or medication reminders (those are email and FCM).
 

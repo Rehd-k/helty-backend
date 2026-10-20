@@ -4,107 +4,107 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Attachment, ServerClient } from 'postmark';
+import { Resend } from 'resend';
 import { ChannelSendResult } from '../../common/types/channel-send-result';
+
+const DEFAULT_FROM = 'StreamTrust Diagnostics <lab@streamtrustdiagnostics.com>';
+
+type MailAttachment = {
+  filename: string;
+  content: string;
+  contentType: string;
+};
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private postmarkClient: ServerClient | null = null;
+  private resend: Resend | null = null;
+  private resendKey: string | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
-  private getPostmarkClient(): ServerClient | null {
-    const token = this.config.get<string>('POSTMARK_SERVER_TOKEN')?.trim();
-    if (!token) return null;
-    if (!this.postmarkClient) {
-      this.postmarkClient = new ServerClient(token);
+  private getClient(): Resend | null {
+    const key = this.config.get<string>('RESEND_API_KEY')?.trim();
+    if (!key) return null;
+    if (!this.resend || this.resendKey !== key) {
+      this.resend = new Resend(key);
+      this.resendKey = key;
     }
-    return this.postmarkClient;
+    return this.resend;
   }
 
-  private postmarkFrom(): string | null {
-    return this.config.get<string>('POSTMARK_FROM')?.trim() || null;
+  private fromAddress(): string {
+    return this.config.get<string>('RESEND_FROM')?.trim() || DEFAULT_FROM;
   }
 
-  private messageStream(): string {
-    return (
-      this.config.get<string>('POSTMARK_MESSAGE_STREAM')?.trim() || 'outbound'
-    );
-  }
-
-  private async sendViaPostmark(params: {
+  private async send(params: {
     to: string;
     subject: string;
     text: string;
     html?: string;
-    attachments?: Attachment[];
+    attachments?: MailAttachment[];
   }): Promise<ChannelSendResult> {
     const to = params.to?.trim();
     if (!to) {
       return { status: 'SKIPPED_NO_CONTACT' };
     }
 
-    const client = this.getPostmarkClient();
-    const from = this.postmarkFrom();
-
+    const client = this.getClient();
     if (!client) {
       this.logger.warn(
-        `POSTMARK_SERVER_TOKEN not set; email not sent. recipient=${to}`,
-      );
-      return { status: 'SKIPPED_CONFIG' };
-    }
-
-    if (!from) {
-      this.logger.warn(
-        'POSTMARK_FROM not set; email skipped (verify sender in Postmark).',
+        `RESEND_API_KEY not set; email not sent. recipient=${to}`,
       );
       return { status: 'SKIPPED_CONFIG' };
     }
 
     try {
-      const response = await client.sendEmail({
-        From: from,
-        To: to,
-        Subject: params.subject,
-        TextBody: params.text,
-        HtmlBody: params.html ?? params.text.replace(/\n/g, '<br/>'),
-        MessageStream: this.messageStream(),
-        Attachments: params.attachments,
+      const { data, error } = await client.emails.send({
+        from: this.fromAddress(),
+        to: [to],
+        subject: params.subject,
+        text: params.text,
+        html: params.html ?? params.text.replace(/\n/g, '<br/>'),
+        attachments: params.attachments,
       });
 
+      if (error) {
+        const errorMessage = error.message || 'Resend rejected the email';
+        this.logger.error(
+          `Resend send failed recipient=${to}: ${errorMessage}`,
+        );
+        return { status: 'FAILED', errorMessage };
+      }
+
       this.logger.log(
-        `Postmark email sent recipient=${to} messageId=${response.MessageID}`,
+        `Resend email sent recipient=${to} messageId=${data?.id ?? 'unknown'}`,
       );
       return {
         status: 'SENT',
-        provider: 'postmark',
-        providerMessageId: response.MessageID,
+        provider: 'resend',
+        providerMessageId: data?.id,
       };
     } catch (err) {
       const errorMessage =
-        err instanceof Error ? err.message : 'Unknown Postmark send error';
-      this.logger.error(
-        `Postmark send failed recipient=${to}: ${errorMessage}`,
-      );
+        err instanceof Error ? err.message : 'Unknown Resend send error';
+      this.logger.error(`Resend send failed recipient=${to}: ${errorMessage}`);
       return { status: 'FAILED', errorMessage };
     }
   }
 
   /**
-   * Sends the reset code when Postmark is configured. Otherwise skips send; the code is only in DB
-   * (and this log) for administrators to relay to staff until Postmark is connected.
+   * Sends the reset code when Resend is configured. Otherwise skips send; the code is only in DB
+   * (and this log) for administrators to relay to staff until Resend is connected.
    */
   async sendStaffPasswordResetCode(to: string, code: string): Promise<void> {
     const subject = 'Password reset code';
     const text = `Your password reset code is: ${code}\n\nThis code expires in 15 minutes. If you did not request this, you can ignore this email.`;
     const html = `<p>Your password reset code is: <strong>${code}</strong></p><p>This code expires in 15 minutes.</p><p>If you did not request this, you can ignore this email.</p>`;
 
-    const result = await this.sendViaPostmark({ to, subject, text, html });
+    const result = await this.send({ to, subject, text, html });
 
     if (result.status === 'SKIPPED_CONFIG') {
       this.logger.warn(
-        `Postmark not configured; password reset email not sent. recipient=${to}. ` +
+        `Resend not configured; password reset email not sent. recipient=${to}. ` +
           `Code is stored in StaffPasswordReset for admin to share with staff. code=${code}`,
       );
       return;
@@ -118,8 +118,8 @@ export class MailService {
   }
 
   /**
-   * Sends appointment notification email via Postmark.
-   * Returns SKIPPED_CONFIG when Postmark is not set (does not throw).
+   * Sends appointment notification email via Resend.
+   * Returns SKIPPED_CONFIG when Resend is not set (does not throw).
    */
   async sendAppointmentNotification(params: {
     to: string;
@@ -127,7 +127,7 @@ export class MailService {
     text: string;
   }): Promise<ChannelSendResult> {
     const html = `<p>${params.text.replace(/\n/g, '<br/>')}</p>`;
-    return this.sendViaPostmark({
+    return this.send({
       to: params.to,
       subject: params.subject,
       text: params.text,
@@ -162,18 +162,17 @@ export class MailService {
     }
 
     const html = `<p>${params.text.replace(/\n/g, '<br/>')}</p>`;
-    return this.sendViaPostmark({
+    return this.send({
       to: params.to,
       subject: params.subject,
       text: params.text,
       html,
       attachments: [
-        new Attachment(
-          params.filename,
-          pdfBase64,
-          'application/pdf',
-          null,
-        ),
+        {
+          filename: params.filename,
+          content: pdfBase64,
+          contentType: 'application/pdf',
+        },
       ],
     });
   }

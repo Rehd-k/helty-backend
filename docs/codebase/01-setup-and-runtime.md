@@ -17,7 +17,7 @@
 | Auth | Passport JWT (`passport-jwt`) |
 | Validation | `class-validator` + `class-transformer` |
 | Push | Firebase Admin (FCM) |
-| Email | Postmark |
+| Email | Resend |
 | SMS | Termii |
 
 BullMQ is listed in `package.json`. No module registers a queue. Scheduled work uses `@nestjs/schedule`.
@@ -94,7 +94,7 @@ Copy `.env.example` to `.env`. Do not commit `.env`. Production boot **refuses**
 | `PUBLIC_API_BASE_URL` | Absolute URLs returned for uploads |
 | `HOSPITAL_NAME` | Shown in notifications |
 | `APPOINTMENT_REMINDER_TIMEZONE` | Cron timezone. Default `Africa/Lagos` |
-| `POSTMARK_SERVER_TOKEN`, `POSTMARK_FROM`, `POSTMARK_MESSAGE_STREAM` | Email. Unset means mail is skipped and password-reset codes are only stored |
+| `RESEND_API_KEY`, `RESEND_FROM` | Email from the verified domain. Unset key means mail is skipped and password-reset codes are only stored |
 | `TERMII_API_KEY`, `TERMII_BASE_URL`, `TERMII_SENDER_ID`, `TERMII_CHANNEL`, `TERMII_TYPE` | Appointment SMS |
 | `FIREBASE_SERVICE_ACCOUNT_PATH` | FCM credentials. Default `./firebase-service-account.json`. Missing file means pushes are skipped |
 | `PATIENT_PORTAL_SYSTEM_STAFF_ID` | Staff id stored as `createdBy` when the patient app writes an appointment |
