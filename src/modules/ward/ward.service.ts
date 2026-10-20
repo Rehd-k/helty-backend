@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { AdmissionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWardDto } from './dto/create-ward.dto';
 import { UpdateWardDto } from './dto/update-ward.dto';
@@ -21,13 +22,33 @@ export class WardService {
     });
   }
 
-  findAllWards() {
-    return this.prisma.ward.findMany({
-      orderBy: { name: 'asc' },
-      include: {
-        beds: true,
-      },
-    });
+  async findAllWards() {
+    const [wards, counts] = await Promise.all([
+      this.prisma.ward.findMany({
+        orderBy: { name: 'asc' },
+        include: {
+          beds: true,
+        },
+      }),
+      this.prisma.admission.groupBy({
+        by: ['wardId'],
+        where: {
+          status: AdmissionStatus.ACTIVE,
+          wardId: { not: null },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const patientsByWard = new Map<string, number>();
+    for (const row of counts) {
+      if (row.wardId) patientsByWard.set(row.wardId, row._count._all);
+    }
+
+    return wards.map((ward) => ({
+      ...ward,
+      activePatientCount: patientsByWard.get(ward.id) ?? 0,
+    }));
   }
 
   async findWardById(id: string) {
