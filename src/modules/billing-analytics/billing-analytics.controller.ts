@@ -66,7 +66,7 @@ export class BillingAnalyticsController {
   @ApiOperation({
     summary: 'Revenue by department (invoice lines only)',
     description:
-      'InvoiceItemPayment allocations in period plus proportional split of InvoicePayment by line totals.',
+      'Each InvoicePayment in the period is counted once. Line allocations supply the department split when they exist; otherwise the payment is split across invoice line totals.',
   })
   revenueByDepartment(@Query() q: BillingAnalyticsQueryDto) {
     return this.billingAnalytics.revenueByDepartment(q.period, q.asOf);

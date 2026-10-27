@@ -1,5 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  InvoicePaymentMethod,
+  InvoicePaymentSource,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto/create-payment.dto';
@@ -160,21 +168,32 @@ export class PaymentService {
   }
 
   async updateInvoicePayment(id: string, dto: UpdateInvoicePaymentDto) {
-    await this.findInvoicePaymentById(id);
+    const existing = await this.findInvoicePaymentById(id);
 
     const data: Prisma.InvoicePaymentUpdateInput = {};
+    const accountNumber = dto.bankAccountNumber?.trim() || undefined;
+    const classification = this.resolveReclassification(dto.source, dto.method);
+
+    if (
+      classification &&
+      (this.isLockedSource(existing.source) ||
+        (existing.method != null && this.isLockedMethod(existing.method)))
+    ) {
+      throw new BadRequestException(
+        `Cannot change the method of a ${existing.source} payment. Void it and record a new payment instead.`,
+      );
+    }
 
     const hasPatch =
       dto.reference !== undefined ||
       dto.notes !== undefined ||
       dto.paidAt !== undefined ||
       dto.receivedById !== undefined ||
-      dto.bankId !== undefined;
+      dto.bankId !== undefined ||
+      classification != null ||
+      accountNumber !== undefined;
     if (!hasPatch) {
-      return this.prisma.invoicePayment.findUniqueOrThrow({
-        where: { id },
-        include: invoicePaymentDetailInclude,
-      });
+      return existing;
     }
 
     if (dto.reference !== undefined) {
@@ -202,17 +221,50 @@ export class PaymentService {
       }
     }
 
-    if (dto.bankId !== undefined) {
-      if (dto.bankId) {
-        const bank = await this.prisma.bank.findUnique({
-          where: { id: dto.bankId },
-          select: { id: true },
-        });
-        if (!bank) {
-          throw new NotFoundException(`Bank "${dto.bankId}" not found.`);
-        }
+    if (classification) {
+      data.source = classification.source;
+      data.method = classification.method;
+    }
+
+    const effectiveSource = classification?.source ?? existing.source;
+    const reclassifyingToBank =
+      classification != null &&
+      (effectiveSource === InvoicePaymentSource.CARD ||
+        effectiveSource === InvoicePaymentSource.TRANSFER);
+
+    if (classification?.source === InvoicePaymentSource.CASH) {
+      if (existing.bankId) {
+        data.bank = { disconnect: true };
+      }
+    } else if (
+      (effectiveSource === InvoicePaymentSource.CARD ||
+        effectiveSource === InvoicePaymentSource.TRANSFER) &&
+      (reclassifyingToBank || accountNumber !== undefined || dto.bankId !== undefined)
+    ) {
+      if (accountNumber) {
+        const bankId = await this.findBankIdByAccountNumber(accountNumber);
+        data.bank = { connect: { id: bankId } };
+      } else if (dto.bankId) {
+        await this.assertBankExists(dto.bankId);
         data.bank = { connect: { id: dto.bankId } };
-      } else {
+      } else if (reclassifyingToBank && !existing.bankId) {
+        throw new BadRequestException(
+          'A registered bank is required for card and transfer payments.',
+        );
+      } else if (dto.bankId === null) {
+        throw new BadRequestException(
+          'A registered bank is required for card and transfer payments.',
+        );
+      }
+    } else if (accountNumber) {
+      throw new BadRequestException(
+        'A bank account applies only to card and transfer payments.',
+      );
+    } else if (dto.bankId !== undefined) {
+      if (dto.bankId) {
+        await this.assertBankExists(dto.bankId);
+        data.bank = { connect: { id: dto.bankId } };
+      } else if (existing.bankId) {
         data.bank = { disconnect: true };
       }
     }
@@ -222,6 +274,112 @@ export class PaymentService {
       data,
       include: invoicePaymentDetailInclude,
     });
+  }
+
+  private isLockedSource(source: InvoicePaymentSource): boolean {
+    return (
+      source === InvoicePaymentSource.WALLET ||
+      source === InvoicePaymentSource.INSURANCE ||
+      source === InvoicePaymentSource.WAIVER
+    );
+  }
+
+  private isLockedMethod(method: InvoicePaymentMethod): boolean {
+    return (
+      method === InvoicePaymentMethod.WALLET ||
+      method === InvoicePaymentMethod.INSURANCE ||
+      method === InvoicePaymentMethod.WAIVER
+    );
+  }
+
+  /**
+   * Cash, card, and transfer must be stored as a matching source/method pair.
+   * Returns null when the caller is not reclassifying the payment.
+   */
+  private resolveReclassification(
+    source?: InvoicePaymentSource,
+    method?: InvoicePaymentMethod,
+  ): { source: InvoicePaymentSource; method: InvoicePaymentMethod } | null {
+    if (source === undefined && method === undefined) return null;
+
+    if (source && this.isLockedSource(source)) {
+      throw new BadRequestException(
+        `Cannot change a payment to ${source}.`,
+      );
+    }
+    if (method && this.isLockedMethod(method)) {
+      throw new BadRequestException(
+        `Cannot change a payment to ${method}.`,
+      );
+    }
+
+    const methodForSource = (
+      value: InvoicePaymentSource,
+    ): InvoicePaymentMethod => {
+      switch (value) {
+        case InvoicePaymentSource.CASH:
+          return InvoicePaymentMethod.CASH;
+        case InvoicePaymentSource.CARD:
+          return InvoicePaymentMethod.CARD;
+        case InvoicePaymentSource.TRANSFER:
+          return InvoicePaymentMethod.TRANSFER;
+        default:
+          throw new BadRequestException(
+            `Cannot change a payment to ${value}.`,
+          );
+      }
+    };
+
+    const sourceForMethod = (
+      value: InvoicePaymentMethod,
+    ): InvoicePaymentSource => {
+      switch (value) {
+        case InvoicePaymentMethod.CASH:
+          return InvoicePaymentSource.CASH;
+        case InvoicePaymentMethod.CARD:
+          return InvoicePaymentSource.CARD;
+        case InvoicePaymentMethod.TRANSFER:
+          return InvoicePaymentSource.TRANSFER;
+        default:
+          throw new BadRequestException(
+            `Cannot change a payment to ${value}.`,
+          );
+      }
+    };
+
+    const resolvedSource = source ?? sourceForMethod(method!);
+    const resolvedMethod = method ?? methodForSource(resolvedSource);
+    if (resolvedMethod !== methodForSource(resolvedSource)) {
+      throw new BadRequestException(
+        `Payment method ${resolvedMethod} does not match source ${resolvedSource}.`,
+      );
+    }
+    return { source: resolvedSource, method: resolvedMethod };
+  }
+
+  private async findBankIdByAccountNumber(
+    accountNumber: string,
+  ): Promise<string> {
+    const bank = await this.prisma.bank.findUnique({
+      where: { accountNumber },
+      select: { id: true },
+    });
+    if (!bank) {
+      throw new NotFoundException(
+        `No bank found with account number "${accountNumber}".`,
+      );
+    }
+    return bank.id;
+  }
+
+  private async assertBankExists(bankId: string): Promise<void> {
+    const bank = await this.prisma.bank.findUnique({
+      where: { id: bankId },
+      select: { id: true },
+    });
+    if (!bank) {
+      throw new NotFoundException(`Bank "${bankId}" not found.`);
+    }
   }
 
   async removeInvoicePayment(

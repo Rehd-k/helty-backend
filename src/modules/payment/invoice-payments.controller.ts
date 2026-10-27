@@ -78,8 +78,11 @@ export class InvoicePaymentsController {
   @ApiOperation({
     summary: 'Update invoice payment metadata',
     description:
-      'Safe fields only: reference, notes, paidAt, receivedById, bankId. ' +
-      'Does not change amount, source, method, or invoice. Use DELETE to void, then record again for monetary fixes.',
+      'Updates reference, notes, paidAt, receivedById, and bank. ' +
+      'Also reclassifies source and method among CASH, CARD, and TRANSFER without changing the amount. ' +
+      'CARD and TRANSFER require a registered bank (bankId or bankAccountNumber). ' +
+      'WALLET, INSURANCE, and WAIVER payments cannot be reclassified here. ' +
+      'Does not change amount, invoice, or line allocations.',
   })
   @ApiParam({ name: 'id', description: 'InvoicePayment UUID' })
   @ApiOkResponse({ description: 'Updated invoice payment' })

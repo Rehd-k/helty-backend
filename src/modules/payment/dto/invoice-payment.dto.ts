@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { InvoicePaymentMethod, InvoicePaymentSource } from '@prisma/client';
 import {
+  IsEnum,
   IsISO8601,
   IsOptional,
   IsString,
@@ -18,8 +20,9 @@ export class CreateInvoicePaymentBodyDto extends RecordInvoicePaymentDto {
 }
 
 /**
- * PATCH /invoices/payments/:id — metadata only. Does not change amount, source,
- * method, or invoice linkage (use void + re-record for monetary corrections).
+ * PATCH /invoices/payments/:id — metadata, plus reclassification among
+ * CASH, CARD, and TRANSFER. Does not change amount or invoice linkage.
+ * WALLET, INSURANCE, and WAIVER cannot be reclassified here.
  */
 export class UpdateInvoicePaymentDto {
   @ApiPropertyOptional({ description: 'Receipt / transfer reference' })
@@ -53,6 +56,33 @@ export class UpdateInvoicePaymentDto {
   @IsOptional()
   @IsUUID()
   bankId?: string | null;
+
+  @ApiPropertyOptional({
+    enum: InvoicePaymentSource,
+    description:
+      'Reclassify the payment among CASH, CARD, and TRANSFER. Does not change the amount. WALLET, INSURANCE, and WAIVER are rejected.',
+  })
+  @IsOptional()
+  @IsEnum(InvoicePaymentSource)
+  source?: InvoicePaymentSource;
+
+  @ApiPropertyOptional({
+    enum: InvoicePaymentMethod,
+    description:
+      'Finer method. When omitted, derived from `source`. Must match `source` for CASH, CARD, and TRANSFER.',
+  })
+  @IsOptional()
+  @IsEnum(InvoicePaymentMethod)
+  method?: InvoicePaymentMethod;
+
+  @ApiPropertyOptional({
+    description:
+      'Registered bank account number. Required for CARD and TRANSFER when the payment has no bank yet. Cash clears the bank.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  bankAccountNumber?: string;
 }
 
 export class VoidInvoicePaymentQueryDto {

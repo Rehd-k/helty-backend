@@ -402,41 +402,36 @@ export class BillingAnalyticsService {
     const start = w.start;
     const end = w.end;
 
-    const [allocRows, invoicePayments] = await Promise.all([
-      this.prisma.invoiceItemPayment.findMany({
-        where: {
-          createdAt: { gte: start, lte: end },
-          invoiceItem: { invoice: { status: { not: InvoiceStatus.DELETED } } },
-        },
-        include: {
-          invoiceItem: {
-            include: {
-              service: {
-                include: { department: true },
+    // A recorded payment creates both an InvoicePayment and InvoiceItemPayment
+    // rows for the same cash. Count each payment once: use line allocations
+    // when they exist, otherwise split the payment across line totals.
+    const invoicePayments = await this.prisma.invoicePayment.findMany({
+      where: {
+        createdAt: { gte: start, lte: end },
+        invoice: { status: { not: InvoiceStatus.DELETED } },
+      },
+      include: {
+        itemAllocations: {
+          include: {
+            invoiceItem: {
+              include: {
+                service: { include: { department: true } },
               },
             },
           },
         },
-      }),
-      this.prisma.invoicePayment.findMany({
-        where: {
-          createdAt: { gte: start, lte: end },
-          invoice: { status: { not: InvoiceStatus.DELETED } },
-        },
-        include: {
-          invoice: {
-            include: {
-              invoiceItems: {
-                include: {
-                  usageSegments: { orderBy: { startAt: 'asc' } },
-                  service: { include: { department: true } },
-                },
+        invoice: {
+          include: {
+            invoiceItems: {
+              include: {
+                usageSegments: { orderBy: { startAt: 'asc' } },
+                service: { include: { department: true } },
               },
             },
           },
         },
-      }),
-    ]);
+      },
+    });
 
     const byDept = new Map<string, { name: string; amount: Prisma.Decimal }>();
 
@@ -451,15 +446,17 @@ export class BillingAnalyticsService {
       }
     }
 
-    for (const row of allocRows) {
-      const amt = asDecimal(row.amount);
-      const dept = row.invoiceItem.service?.department;
-      const deptId = row.invoiceItem.service?.departmentId ?? null;
-      addDept(deptId, dept?.name ?? 'Unknown', amt);
-    }
-
     const now = anchor;
     for (const pay of invoicePayments) {
+      if (pay.itemAllocations.length > 0) {
+        for (const row of pay.itemAllocations) {
+          const dept = row.invoiceItem.service?.department;
+          const deptId = row.invoiceItem.service?.departmentId ?? null;
+          addDept(deptId, dept?.name ?? 'Unknown', asDecimal(row.amount));
+        }
+        continue;
+      }
+
       const inv = pay.invoice;
       const payAmt = asDecimal(pay.amount);
       let lineSum = new Prisma.Decimal(0);
