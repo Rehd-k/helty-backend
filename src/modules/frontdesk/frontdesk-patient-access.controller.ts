@@ -19,6 +19,7 @@ import {
 import { AccountTypes } from '../../common/decorators';
 import { LinkChildDto } from './dto/link-child.dto';
 import { ListPatientDevicesQueryDto } from './dto/list-patient-devices-query.dto';
+import { PatientAuthService } from '../patient-auth/patient-auth.service';
 import { FrontdeskFamilyService } from './frontdesk-family.service';
 import { FrontdeskPatientDeviceService } from './frontdesk-patient-device.service';
 
@@ -35,7 +36,18 @@ export class FrontdeskPatientAccessController {
   constructor(
     private readonly devices: FrontdeskPatientDeviceService,
     private readonly family: FrontdeskFamilyService,
+    private readonly patientAuth: PatientAuthService,
   ) {}
+
+  @Get('patient-login-codes')
+  @AccountTypes(...FRONTDESK_TYPES)
+  @ApiOperation({
+    summary: 'Active patient app login codes for front desk and medical records',
+  })
+  @ApiResponse({ status: 200, description: 'Unused codes that have not expired' })
+  listLoginCodes() {
+    return this.patientAuth.listLoginCodes();
+  }
 
   @Get('patient-devices')
   @AccountTypes(...FRONTDESK_TYPES)

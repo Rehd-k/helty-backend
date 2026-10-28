@@ -35,6 +35,10 @@ model Patient {
   email                 String?
   preferredLanguage     String?
   phoneNumber           String?       @unique
+  /** bcrypt hash. Null until the patient finishes app activation. */
+  password              String?
+  /** Set when the patient chooses a portal password after the one-time code. */
+  portalActivatedAt     DateTime?
   addressOfResidence    String?
   profession            String?
   nextOfKinName         String?
@@ -103,6 +107,7 @@ model Patient {
   medicationStreak          PatientMedicationStreak?
   prescriptionRefillRequests PrescriptionRefillRequest[]
   devices                    PatientDevice[]
+  portalOtps                 PatientPortalOtp[]
   childrenAsParent           PatientFamilyLink[] @relation("FamilyParent")
   parentsAsChild             PatientFamilyLink[] @relation("FamilyChild")
   cycleSettings              PatientCycleSettings?
@@ -130,12 +135,38 @@ model PatientDevice {
   approvedBy   Staff?              @relation("PatientDeviceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   approvedById String?
   lastSeenAt   DateTime?
+  /** SHA-256 of the current refresh token. Cleared on logout. */
+  refreshTokenHash      String?
+  refreshTokenExpiresAt DateTime?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 
   @@index([patientId])
   @@index([patientId, status])
   @@index([status])
+}
+
+enum PatientPortalOtpPurpose {
+  ACTIVATION
+  PASSWORD_RESET
+}
+
+/// Plain 6-digit codes so front desk can read them until SMS and WhatsApp are on.
+model PatientPortalOtp {
+  id                  String                  @id @default(uuid())
+  patient             Patient                 @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patientId           String
+  code                String
+  purpose             PatientPortalOtpPurpose
+  expiresAt           DateTime
+  usedAt              DateTime?
+  attempts            Int                     @default(0)
+  setupTokenHash      String?                 @unique
+  setupTokenExpiresAt DateTime?
+  createdAt           DateTime                @default(now())
+
+  @@index([patientId, purpose])
+  @@index([expiresAt])
 }
 
 model PatientFamilyLink {

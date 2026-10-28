@@ -45,6 +45,9 @@ export class PrismaService
   constructor() {
     super({
       log: ['error', 'warn'],
+      omit: {
+        patient: { password: true },
+      },
       adapter: new PrismaPg({
         connectionString: withLagosTimezone(process.env.DATABASE_URL),
       }),
