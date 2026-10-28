@@ -20,7 +20,7 @@ export class PatientActivateRequestDto {
   dob: string;
 }
 
-export class PatientActivateVerifyDto {
+export class PatientActivateVerifyDto extends PatientDeviceFieldsDto {
   @ApiProperty({ example: '08030000000' })
   @IsString()
   @IsNotEmpty()

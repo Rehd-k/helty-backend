@@ -88,10 +88,8 @@ export class PatientAuthService {
 
   async requestActivation(dto: PatientActivateRequestDto) {
     const patient = await this.findPatientByPhoneAndDob(dto.phoneNumber, dto.dob);
-    if (patient.password) {
-      throw new ConflictException(ALREADY_ACTIVATED_MESSAGE);
-    }
-    return this.issueOtp(patient, PatientPortalOtpPurpose.ACTIVATION);
+    const issued = await this.issueOtp(patient, PatientPortalOtpPurpose.ACTIVATION);
+    return { ...issued, hasPassword: Boolean(patient.password) };
   }
 
   async verifyActivation(dto: PatientActivateVerifyDto) {
@@ -104,6 +102,11 @@ export class PatientAuthService {
       PatientPortalOtpPurpose.ACTIVATION,
       dto.code,
     );
+    await this.upsertApprovedDevice(patient.id, dto);
+    const hasPassword = Boolean(patient.password);
+    if (hasPassword) {
+      return { hasPassword: true as const };
+    }
     const setupToken = randomBytes(32).toString('base64url');
     const setupTokenExpiresAt = new Date(Date.now() + SETUP_TTL_MS);
     await this.prisma.patientPortalOtp.update({
@@ -114,6 +117,7 @@ export class PatientAuthService {
       },
     });
     return {
+      hasPassword: false as const,
       setupToken,
       expiresInSeconds: Math.floor(SETUP_TTL_MS / 1000),
     };
@@ -181,7 +185,7 @@ export class PatientAuthService {
       throw new BadRequestException(INVALID_LOGIN_MESSAGE);
     }
 
-    const device = await this.upsertApprovedDevice(patient.id, dto);
+    const device = await this.requireVerifiedDevice(patient.id, dto);
     return this.issueSession(patient, device.id);
   }
 
@@ -228,11 +232,16 @@ export class PatientAuthService {
     const device = await this.prisma.patientDevice.findUnique({
       where: { deviceKey },
     });
+    if (!device || device.status !== PatientDeviceStatus.APPROVED) {
+      throw new UnauthorizedException({
+        message: 'This phone is no longer verified. Request a new code.',
+        code: 'DEVICE_REVOKED',
+      });
+    }
     if (
-      !device?.refreshTokenHash ||
+      !device.refreshTokenHash ||
       !device.refreshTokenExpiresAt ||
       device.refreshTokenExpiresAt.getTime() <= Date.now() ||
-      device.status !== PatientDeviceStatus.APPROVED ||
       device.refreshTokenHash !== hashToken(dto.refreshToken)
     ) {
       throw new UnauthorizedException(SESSION_EXPIRED_MESSAGE);
@@ -499,6 +508,64 @@ export class PatientAuthService {
     });
   }
 
+  private async requireVerifiedDevice(
+    patientId: string,
+    dto: PatientDeviceFieldsDto,
+  ) {
+    const deviceKey = dto.deviceKey.trim();
+    if (!deviceKey) {
+      throw new BadRequestException('deviceKey is required');
+    }
+    await this.releaseForeignFcmToken(deviceKey, dto.fcmToken);
+
+    const existing = await this.prisma.patientDevice.findUnique({
+      where: { deviceKey },
+    });
+    if (
+      !existing ||
+      existing.patientId !== patientId ||
+      existing.status !== PatientDeviceStatus.APPROVED
+    ) {
+      throw new ForbiddenException({
+        message:
+          'This phone is not verified yet. Confirm it with a code first.',
+        code: 'DEVICE_VERIFICATION_REQUIRED',
+      });
+    }
+
+    const platform = dto.platform?.trim() || null;
+    const deviceLabel = dto.deviceLabel?.trim() || null;
+    const fcmToken = dto.fcmToken?.trim() || null;
+    return this.prisma.patientDevice.update({
+      where: { id: existing.id },
+      data: {
+        platform,
+        deviceLabel,
+        ...(fcmToken ? { fcmToken } : {}),
+        lastSeenAt: new Date(),
+      },
+      select: DEVICE_SELECT,
+    });
+  }
+
+  private async releaseForeignFcmToken(
+    deviceKey: string,
+    fcmToken: string | undefined,
+  ) {
+    const token = fcmToken?.trim();
+    if (!token) return;
+    const tokenOwner = await this.prisma.patientDevice.findUnique({
+      where: { fcmToken: token },
+      select: { id: true, deviceKey: true },
+    });
+    if (tokenOwner && tokenOwner.deviceKey !== deviceKey) {
+      await this.prisma.patientDevice.update({
+        where: { id: tokenOwner.id },
+        data: { fcmToken: null },
+      });
+    }
+  }
+
   private async upsertApprovedDevice(
     patientId: string,
     dto: PatientDeviceFieldsDto,
@@ -517,18 +584,7 @@ export class PatientAuthService {
       where: { deviceKey },
     });
 
-    if (fcmToken) {
-      const tokenOwner = await this.prisma.patientDevice.findUnique({
-        where: { fcmToken },
-        select: { id: true, deviceKey: true },
-      });
-      if (tokenOwner && tokenOwner.deviceKey !== deviceKey) {
-        await this.prisma.patientDevice.update({
-          where: { id: tokenOwner.id },
-          data: { fcmToken: null },
-        });
-      }
-    }
+    await this.releaseForeignFcmToken(deviceKey, fcmToken ?? undefined);
 
     const approved = {
       status: PatientDeviceStatus.APPROVED,

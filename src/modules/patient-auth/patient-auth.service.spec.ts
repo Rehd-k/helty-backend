@@ -1,6 +1,6 @@
 import {
   BadRequestException,
-  ConflictException,
+  ForbiddenException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -96,10 +96,12 @@ describe('PatientAuthService', () => {
     ) as unknown as PrismaService['$transaction'];
   });
 
-  it('signs in with phone and password and approves the device', async () => {
+  it('signs in with phone and password when this device is already verified', async () => {
     prisma.patient.findMany = jest.fn().mockResolvedValue([patientRecord()]);
-    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
-    prisma.patientDevice.create = jest.fn().mockResolvedValue(approvedDevice);
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
+      ...approvedDevice,
+      patientId: 'uuid-1',
+    });
     prisma.patientDevice.update = jest.fn().mockResolvedValue(approvedDevice);
 
     const result = await service.login({
@@ -110,15 +112,7 @@ describe('PatientAuthService', () => {
       deviceLabel: 'Phone',
     });
 
-    expect(prisma.patientDevice.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          patientId: 'uuid-1',
-          deviceKey: 'key-1',
-          status: PatientDeviceStatus.APPROVED,
-        }),
-      }),
-    );
+    expect(prisma.patientDevice.create).not.toHaveBeenCalled();
     expect(jwtService.sign).toHaveBeenCalledWith({
       sub: 'uuid-1',
       patientId: 'AB12CD34',
@@ -131,42 +125,33 @@ describe('PatientAuthService', () => {
     expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
   });
 
-  it('moves a device onto the signing-in patient as approved', async () => {
+  it('requires a code again when the device is new or belongs to someone else', async () => {
     prisma.patient.findMany = jest.fn().mockResolvedValue([patientRecord()]);
-    prisma.patientDevice.findUnique = jest.fn().mockImplementation(({ where }) => {
-      if (where.deviceKey) {
-        return Promise.resolve({
-          id: 'device-x',
-          patientId: 'other-patient',
-          deviceKey: 'key-1',
-          status: PatientDeviceStatus.APPROVED,
-          approvedAt: new Date(),
-          approvedById: 'staff-1',
-          fcmToken: null,
-          refreshTokenHash: 'old',
-        });
-      }
-      return Promise.resolve(null);
-    });
-    prisma.patientDevice.update = jest.fn().mockResolvedValue(approvedDevice);
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
 
-    await service.login({
-      phoneNumber: '08030000000',
-      password,
-      deviceKey: 'key-1',
-    });
-
-    expect(prisma.patientDevice.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'device-x' },
-        data: expect.objectContaining({
-          patientId: 'uuid-1',
-          status: PatientDeviceStatus.APPROVED,
-          approvedById: null,
-          refreshTokenHash: null,
-        }),
+    await expect(
+      service.login({
+        phoneNumber: '08030000000',
+        password,
+        deviceKey: 'brand-new-phone',
       }),
-    );
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
+      id: 'device-x',
+      patientId: 'other-patient',
+      deviceKey: 'key-1',
+      status: PatientDeviceStatus.APPROVED,
+    });
+
+    await expect(
+      service.login({
+        phoneNumber: '08030000000',
+        password,
+        deviceKey: 'key-1',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.patientDevice.create).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown phone number', async () => {
@@ -233,15 +218,20 @@ describe('PatientAuthService', () => {
     expect(otpDelivery.deliver).not.toHaveBeenCalled();
   });
 
-  it('refuses activation when a password is already set', async () => {
+  it('issues a code for a new phone even when the account already has a password', async () => {
     prisma.patient.findMany = jest.fn().mockResolvedValue([patientRecord()]);
+    prisma.patientPortalOtp.count = jest.fn().mockResolvedValue(0);
+    prisma.patientPortalOtp.updateMany = jest.fn().mockResolvedValue({ count: 0 });
+    prisma.patientPortalOtp.create = jest.fn().mockResolvedValue({ id: 'otp-1' });
 
-    await expect(
-      service.requestActivation({
-        phoneNumber: '08030000000',
-        dob: '1990-05-15',
-      }),
-    ).rejects.toBeInstanceOf(ConflictException);
+    const result = await service.requestActivation({
+      phoneNumber: '08030000000',
+      dob: '1990-05-15',
+    });
+
+    expect(result.hasPassword).toBe(true);
+    expect(result.delivery).toBe('staff');
+    expect(otpDelivery.deliver).toHaveBeenCalled();
   });
 
   it('issues an activation code without calling Termii on the staff channel', async () => {
@@ -284,7 +274,11 @@ describe('PatientAuthService', () => {
     prisma.patientPortalOtp.update = jest.fn().mockResolvedValue({});
 
     await expect(
-      service.verifyActivation({ phoneNumber: '08030000000', code: '000000' }),
+      service.verifyActivation({
+        phoneNumber: '08030000000',
+        code: '000000',
+        deviceKey: 'key-1',
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(prisma.patientPortalOtp.update).toHaveBeenCalledWith(
@@ -305,13 +299,26 @@ describe('PatientAuthService', () => {
       attempts: 0,
     });
     prisma.patientPortalOtp.update = jest.fn().mockResolvedValue({});
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
+    prisma.patientDevice.create = jest.fn().mockResolvedValue(approvedDevice);
 
     const result = await service.verifyActivation({
       phoneNumber: '08030000000',
       code: '123456',
+      deviceKey: 'key-1',
     });
 
+    expect(result.hasPassword).toBe(false);
     expect(result.setupToken).toEqual(expect.any(String));
+    expect(prisma.patientDevice.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          patientId: 'uuid-1',
+          deviceKey: 'key-1',
+          status: PatientDeviceStatus.APPROVED,
+        }),
+      }),
+    );
     expect(prisma.patientPortalOtp.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

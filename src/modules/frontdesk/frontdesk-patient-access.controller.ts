@@ -82,7 +82,8 @@ export class FrontdeskPatientAccessController {
   @AccountTypes(...FRONTDESK_TYPES)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Reject/remove a device (patient must re-register and re-approve)',
+    summary:
+      'Revoke a patient phone. The patient must request a new code and verify it again.',
   })
   rejectDevice(@Param('id') id: string) {
     return this.devices.rejectDevice(id);
