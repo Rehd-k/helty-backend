@@ -361,12 +361,12 @@ describe('PatientAuthService', () => {
     expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
   });
 
-  it('logout clears the refresh token and keeps the device', async () => {
+  it('logout releases the phone by deleting the device', async () => {
     prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
       id: 'device-1',
       patientId: 'uuid-1',
     });
-    prisma.patientDevice.update = jest.fn().mockResolvedValue({});
+    prisma.patientDevice.delete = jest.fn().mockResolvedValue({});
 
     await service.logout({
       sub: 'uuid-1',
@@ -375,10 +375,47 @@ describe('PatientAuthService', () => {
       deviceId: 'device-1',
     });
 
-    expect(prisma.patientDevice.delete).not.toHaveBeenCalled();
-    expect(prisma.patientDevice.update).toHaveBeenCalledWith({
+    expect(prisma.patientDevice.delete).toHaveBeenCalledWith({
       where: { id: 'device-1' },
-      data: { refreshTokenHash: null, refreshTokenExpiresAt: null },
+    });
+  });
+
+  it('lookupDevice returns the locked phone for an approved device', async () => {
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
+      status: PatientDeviceStatus.APPROVED,
+      patient: { phoneNumber: '08012345678' },
+    });
+
+    await expect(
+      service.lookupDevice({ deviceKey: 'key-1' }),
+    ).resolves.toEqual({
+      verified: true,
+      phoneNumber: '08012345678',
+    });
+  });
+
+  it('lookupDevice returns unverified when the device is missing', async () => {
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
+
+    await expect(
+      service.lookupDevice({ deviceKey: 'key-1' }),
+    ).resolves.toEqual({
+      verified: false,
+      phoneNumber: null,
+    });
+  });
+
+  it('releaseDevice deletes an existing device row', async () => {
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
+      id: 'device-1',
+    });
+    prisma.patientDevice.delete = jest.fn().mockResolvedValue({});
+
+    await expect(
+      service.releaseDevice({ deviceKey: 'key-1' }),
+    ).resolves.toEqual({ released: true });
+    expect(prisma.patientDevice.delete).toHaveBeenCalledWith({
+      where: { id: 'device-1' },
     });
   });
 

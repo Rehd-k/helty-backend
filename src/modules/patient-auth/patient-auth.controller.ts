@@ -19,6 +19,7 @@ import {
   Public,
 } from '../../common/decorators';
 import { PatientActivatePasswordDto, PatientActivateRequestDto, PatientActivateVerifyDto } from './dto/patient-activate.dto';
+import { PatientDeviceKeyDto } from './dto/patient-device-key.dto';
 import { PatientForgotPasswordRequestDto, PatientForgotPasswordResetDto } from './dto/patient-forgot-password.dto';
 import { PatientLoginDto } from './dto/patient-login.dto';
 import { PatientRefreshDto } from './dto/patient-refresh.dto';
@@ -57,6 +58,33 @@ export class PatientAuthController {
   @ApiOperation({ summary: 'Set the portal password and open a session' })
   completeActivation(@Body() dto: PatientActivatePasswordDto) {
     return this.patientAuthService.completeActivation(dto);
+  }
+
+  @Public()
+  @Post('device-lookup')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Check whether this phone is already verified for a patient account',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'verified=false when the phone must request a code; verified=true with phoneNumber when login can use that locked number',
+  })
+  lookupDevice(@Body() dto: PatientDeviceKeyDto) {
+    return this.patientAuthService.lookupDevice(dto);
+  }
+
+  @Public()
+  @Post('release-device')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Log out of the phone number on this device so another account can verify it',
+  })
+  releaseDevice(@Body() dto: PatientDeviceKeyDto) {
+    return this.patientAuthService.releaseDevice(dto);
   }
 
   @Public()
@@ -117,7 +145,8 @@ export class PatientAuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'End this session. The device stays registered so the next sign-in does not wait for approval.',
+    summary:
+      'End this session and release the phone number on this device. The next person must request a new code.',
   })
   @ApiResponse({ status: 204, description: 'Logged out' })
   logout(@Request() req: { user: PatientJwtPayload }) {

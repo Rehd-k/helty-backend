@@ -328,6 +328,47 @@ export class PatientAuthService {
     };
   }
 
+  async lookupDevice(dto: { deviceKey: string }) {
+    const deviceKey = dto.deviceKey.trim();
+    if (!deviceKey) {
+      return { verified: false as const, phoneNumber: null };
+    }
+    const device = await this.prisma.patientDevice.findUnique({
+      where: { deviceKey },
+      select: {
+        status: true,
+        patient: { select: { phoneNumber: true } },
+      },
+    });
+    if (
+      !device ||
+      device.status !== PatientDeviceStatus.APPROVED ||
+      !device.patient.phoneNumber?.trim()
+    ) {
+      return { verified: false as const, phoneNumber: null };
+    }
+    return {
+      verified: true as const,
+      phoneNumber: device.patient.phoneNumber.trim(),
+    };
+  }
+
+  async releaseDevice(dto: { deviceKey: string }) {
+    const deviceKey = dto.deviceKey.trim();
+    if (!deviceKey) {
+      return { released: false as const };
+    }
+    const device = await this.prisma.patientDevice.findUnique({
+      where: { deviceKey },
+      select: { id: true },
+    });
+    if (!device) {
+      return { released: false as const };
+    }
+    await this.prisma.patientDevice.delete({ where: { id: device.id } });
+    return { released: true as const };
+  }
+
   async logout(user: PatientJwtPayload) {
     this.assertPatientToken(user);
     if (!user.deviceId) return;
@@ -337,10 +378,7 @@ export class PatientAuthService {
       select: { id: true, patientId: true },
     });
     if (device?.patientId === user.sub) {
-      await this.prisma.patientDevice.update({
-        where: { id: device.id },
-        data: { refreshTokenHash: null, refreshTokenExpiresAt: null },
-      });
+      await this.prisma.patientDevice.delete({ where: { id: device.id } });
     }
   }
 
