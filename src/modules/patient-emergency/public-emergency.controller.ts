@@ -36,10 +36,21 @@ const emergencyFilesInterceptor = FileFieldsInterceptor(
     fileFilter: (_req, file, cb) => {
       const storage = new EmergencyRequestStorageService();
       const kind = file.fieldname === 'voice' ? 'voice' : 'video';
-      if (!storage.isAllowedMime(kind, file.mimetype)) {
-        cb(new Error(`Invalid ${kind} file type`), false);
+      const mime = storage.resolveUploadMime(
+        kind,
+        file.mimetype,
+        file.originalname,
+      );
+      if (!mime) {
+        cb(
+          new BadRequestException(
+            `Invalid ${kind} file type (${file.mimetype || 'unknown'})`,
+          ),
+          false,
+        );
         return;
       }
+      file.mimetype = mime;
       cb(null, true);
     },
   },

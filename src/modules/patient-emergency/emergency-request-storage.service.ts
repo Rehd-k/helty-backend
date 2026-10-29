@@ -30,6 +30,20 @@ const VIDEO_EXT: Record<string, string> = {
   'video/quicktime': 'mov',
   'video/webm': 'webm',
   'video/3gpp': '3gp',
+  'video/3gpp2': '3gp',
+};
+
+/** When clients send application/octet-stream, infer from the filename. */
+const EXT_MIME: Record<string, { kind: EmergencyMediaKind; mime: string }> = {
+  m4a: { kind: 'voice', mime: 'audio/mp4' },
+  aac: { kind: 'voice', mime: 'audio/aac' },
+  mp3: { kind: 'voice', mime: 'audio/mpeg' },
+  wav: { kind: 'voice', mime: 'audio/wav' },
+  mp4: { kind: 'video', mime: 'video/mp4' },
+  mov: { kind: 'video', mime: 'video/quicktime' },
+  webm: { kind: 'video', mime: 'video/webm' },
+  '3gp': { kind: 'video', mime: 'video/3gpp' },
+  '3gpp': { kind: 'video', mime: 'video/3gpp' },
 };
 
 function uploadBase(): string {
@@ -63,6 +77,32 @@ export class EmergencyRequestStorageService {
     return !!map[mime.toLowerCase()];
   }
 
+  /**
+   * Resolve a usable mime for multer. Some Flutter/Android builds send
+   * `application/octet-stream` even for mp4/m4a — fall back to the filename.
+   */
+  resolveUploadMime(
+    kind: EmergencyMediaKind,
+    mime: string | undefined,
+    originalname?: string,
+  ): string | null {
+    const normalized = (mime || '').toLowerCase().trim();
+    if (normalized && this.isAllowedMime(kind, normalized)) {
+      return normalized;
+    }
+
+    const generic =
+      !normalized ||
+      normalized === 'application/octet-stream' ||
+      normalized === 'binary/octet-stream';
+    if (!generic || !originalname) return null;
+
+    const ext = originalname.split('.').pop()?.toLowerCase() || '';
+    const inferred = EXT_MIME[ext];
+    if (!inferred || inferred.kind !== kind) return null;
+    return inferred.mime;
+  }
+
   saveFile(
     requestId: string,
     kind: EmergencyMediaKind,
@@ -72,7 +112,10 @@ export class EmergencyRequestStorageService {
     if (!file?.buffer?.length) {
       throw new BadRequestException(`Missing ${kind} file`);
     }
-    const ext = this.extensionFor(kind, file.mimetype);
+    const mime =
+      this.resolveUploadMime(kind, file.mimetype, file.originalname) ||
+      file.mimetype;
+    const ext = this.extensionFor(kind, mime);
     const dir = this.dirForRequest(requestId);
     fs.mkdirSync(dir, { recursive: true });
     const filename = `${kind}-${randomUUID()}.${ext}`;
