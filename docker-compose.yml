@@ -27,16 +27,16 @@ services:
         condition: service_healthy
     ports:
       - '3000:3000'
-    environment:
-      NODE_ENV: production
-      PORT: '3000'
-      DATABASE_URL: postgresql://helty:helty@postgres:5432/helty_diagnostics
-      JWT_SECRET: local-diagnostics-dev-secret-change-me
-      HOSPITAL_NAME: Local Diagnostics Lab
-      PUBLIC_API_BASE_URL: http://localhost:3000
-      CORS_ORIGIN: '*'
-      USE_REDIS: 'false'
-      HELITY_DESKTOP_UPLOAD_PASSWORD: local-desktop-upload
+    # environment:
+    #   NODE_ENV: production
+    #   PORT: '3000'
+    #   DATABASE_URL: postgresql://helty:helty@postgres:5432/helty_diagnostics
+    #   JWT_SECRET: local-diagnostics-dev-secret-change-me
+    #   HOSPITAL_NAME: Local Diagnostics Lab
+    #   PUBLIC_API_BASE_URL: http://localhost:3000
+    #   CORS_ORIGIN: '*'
+    #   USE_REDIS: 'false'
+    #   HELITY_DESKTOP_UPLOAD_PASSWORD: local-desktop-upload
     volumes:
       - helty_uploads:/app/uploads
 
