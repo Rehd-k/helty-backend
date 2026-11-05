@@ -31,6 +31,7 @@ import { PatientCycleModule } from './modules/patient-cycle/patient-cycle.module
 import { DepartmentModule } from './modules/department/department.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LocalTimestampInterceptor } from './common/interceptors/local-timestamp.interceptor';
+import { StaffAuditInterceptor } from './common/interceptors/staff-audit.interceptor';
 import { JwtAuthGuard, AccessGuard, ApprovedDeviceGuard } from './common/guards';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -84,6 +85,7 @@ import { DbBackupModule } from './modules/db-backup/db-backup.module';
 import { DepartmentHeadModule } from './modules/department-head/department-head.module';
 import { HospitalAssetsModule } from './modules/hospital-assets/hospital-assets.module';
 import { HousekeepingModule } from './modules/housekeeping/housekeeping.module';
+import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
 
 @Module({
   imports: [
@@ -183,6 +185,7 @@ import { HousekeepingModule } from './modules/housekeeping/housekeeping.module';
     DepartmentHeadModule,
     HospitalAssetsModule,
     HousekeepingModule,
+    AdminAuditModule,
   ],
   controllers: [AppController],
   providers: [
@@ -190,6 +193,7 @@ import { HousekeepingModule } from './modules/housekeeping/housekeeping.module';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: AccessGuard },
     { provide: APP_GUARD, useClass: ApprovedDeviceGuard },
+    { provide: APP_INTERCEPTOR, useClass: StaffAuditInterceptor },
     { provide: APP_INTERCEPTOR, useClass: LocalTimestampInterceptor },
   ],
 })

@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from 'src/common/decorators';
+import type { StaffAuditRequest } from '../../common/audit/staff-audit.context';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -26,21 +27,27 @@ export class AuthController {
   @ApiOperation({ summary: 'Staff login with email or phone and password' })
   @ApiResponse({ status: 200, description: 'Returns JWT access token' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(@Body() dto: LoginDto) {
-    try {
-      const user = await this.authService.validateUser(
-        dto.emailOrPhone,
-        dto.password,
-      );
-      if (!user) {
-        throw new BadRequestException(
-          'Invalid email, phone number, or password',
-        );
-      }
-      return this.authService.login(user);
-    } catch (err) {
-      throw err;
+  async login(@Body() dto: LoginDto, @Request() req: StaffAuditRequest) {
+    const user = await this.authService.validateUser(
+      dto.emailOrPhone,
+      dto.password,
+    );
+    if (!user) {
+      await this.authService.recordLogin({
+        success: false,
+        identifier: dto.emailOrPhone,
+        req,
+      });
+      throw new BadRequestException('Invalid email, phone number, or password');
     }
+    const session = await this.authService.login(user);
+    await this.authService.recordLogin({
+      success: true,
+      identifier: dto.emailOrPhone,
+      staff: user,
+      req,
+    });
+    return session;
   }
 
   @Public()

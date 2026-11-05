@@ -1,9 +1,6 @@
-import {
-  Injectable,
-  Logger,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
 import { StaffService } from '../staff/staff.service';
@@ -14,6 +11,11 @@ import {
   normalizePasswordResetCode,
   normalizePasswordResetEmail,
 } from '../staff/staff-password-reset.query';
+import {
+  storeFromRequest,
+  type StaffAuditRequest,
+} from '../../common/audit/staff-audit.context';
+import { buildLoginAudit } from '../../common/audit/staff-audit.describe';
 
 const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
 
@@ -39,6 +41,59 @@ export class AuthService {
       }
     }
     return null;
+  }
+
+  /**
+   * Records a sign-in success or failure. Never stores the password.
+   * Failures here must not block the login response.
+   */
+  async recordLogin(input: {
+    success: boolean;
+    identifier?: string;
+    staff?: {
+      id: string;
+      staffId?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      staffRole?: string | null;
+      accountType?: string | null;
+      department?: { name?: string | null } | null;
+    };
+    req?: StaffAuditRequest;
+  }) {
+    const meta = storeFromRequest(input.req);
+    const row = buildLoginAudit({
+      success: input.success,
+      identifier: input.identifier,
+      staff: input.staff,
+      meta,
+    });
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          entity: row.entity,
+          entityId: row.entityId,
+          action: row.action,
+          summary: row.summary,
+          httpMethod: row.httpMethod,
+          route: row.route,
+          ipAddress: row.ipAddress,
+          staffRole: row.staffRole,
+          accountType: row.accountType,
+          departmentName: row.departmentName,
+          newValue: row.newValue as Prisma.InputJsonValue,
+          ...(row.performedById
+            ? { performedBy: { connect: { id: row.performedById } } }
+            : {}),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Login audit was not saved: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   async login(user: any) {

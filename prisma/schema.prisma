@@ -1237,15 +1237,27 @@ model ConsumableUsageEvent {
 }
 
 model AuditLog {
-  id            String   @id @default(uuid())
-  entity        String
-  entityId      String
-  action        String
-  oldValue      Json?
-  newValue      Json?
-  performedBy   Staff?   @relation("AuditLogPerformedBy", fields: [performedById], references: [id])
-  performedById String?
-  createdAt     DateTime @default(now())
+  id             String   @id @default(uuid())
+  entity         String
+  entityId       String
+  action         String
+  summary        String?
+  route          String?
+  httpMethod     String?
+  ipAddress      String?
+  staffRole      String?
+  accountType    String?
+  departmentName String?
+  oldValue       Json?
+  newValue       Json?
+  performedBy    Staff?   @relation("AuditLogPerformedBy", fields: [performedById], references: [id])
+  performedById  String?
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([performedById, createdAt])
+  @@index([entity, createdAt])
+  @@index([action, createdAt])
 }
 
 enum CmdCommunicationPriority {
