@@ -5,6 +5,7 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
@@ -34,6 +35,7 @@ import {
 } from './dto/ws-conversation.dto';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
+import { StaffSocketBus } from './staff-socket-bus.service';
 
 interface AuthenticatedSocket extends Socket {
   data: Socket['data'] & { user?: OnlineUserInfo };
@@ -50,6 +52,7 @@ export class ChatGateway
   implements
     OnGatewayConnection,
     OnGatewayDisconnect,
+    OnGatewayInit,
     OnModuleInit,
     OnModuleDestroy
 {
@@ -70,7 +73,12 @@ export class ChatGateway
     private readonly conversationMessages: StaffConversationMessageService,
     private readonly conversations: StaffConversationService,
     private readonly tickets: SupportTicketService,
+    private readonly staffSocket: StaffSocketBus,
   ) {}
+
+  afterInit(server: Server): void {
+    this.staffSocket.attach(server);
+  }
 
   onModuleInit(): void {
     this.presenceRefreshTimer = setInterval(() => {
@@ -231,14 +239,24 @@ export class ChatGateway
 
   handleDisconnect(client: AuthenticatedSocket): void {
     const userId = this.chatService.unregisterSocket(client.id);
-    const onlineUsers = this.chatService.getOnlineUsers();
-    this.server.emit('online_users', onlineUsers);
-    if (
-      userId &&
+    const wentOffline =
+      !!userId &&
       !userId.startsWith('guest-') &&
-      !this.chatService.hasActiveSockets(userId)
-    ) {
-      void this.emitPresenceForStaff(userId);
+      !this.chatService.hasActiveSockets(userId);
+    void this.finishDisconnect(userId, wentOffline);
+  }
+
+  /** Mark offline before broadcasting so listeners do not see a stale online status. */
+  private async finishDisconnect(
+    userId: string | null,
+    wentOffline: boolean,
+  ): Promise<void> {
+    if (wentOffline && userId) {
+      await this.presence.setOffline(userId);
+    }
+    this.server.emit('online_users', this.chatService.getOnlineUsers());
+    if (wentOffline && userId) {
+      await this.emitPresenceForStaff(userId);
     }
   }
 

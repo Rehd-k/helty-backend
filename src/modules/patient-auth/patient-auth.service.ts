@@ -18,6 +18,10 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  LOGIN_CODES_CHANGED_EVENT,
+  StaffSocketBus,
+} from '../chat/staff-socket-bus.service';
 import { PatientActivatePasswordDto, PatientActivateRequestDto, PatientActivateVerifyDto } from './dto/patient-activate.dto';
 import { PatientForgotPasswordRequestDto, PatientForgotPasswordResetDto } from './dto/patient-forgot-password.dto';
 import { PatientDeviceFieldsDto } from './dto/patient-device-fields.dto';
@@ -84,6 +88,7 @@ export class PatientAuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly otpDelivery: PatientOtpDeliveryService,
+    private readonly staffSocket: StaffSocketBus,
   ) {}
 
   async requestActivation(dto: PatientActivateRequestDto) {
@@ -164,6 +169,7 @@ export class PatientAuthService {
         data: { usedAt: now, setupTokenHash: null, setupTokenExpiresAt: null },
       }),
     ]);
+    this.notifyLoginCodesChanged();
 
     const device = await this.upsertApprovedDevice(patient.id, dto);
     return this.issueSession({ ...patient, password }, device.id);
@@ -223,6 +229,7 @@ export class PatientAuthService {
         data: { usedAt: now },
       }),
     ]);
+    this.notifyLoginCodesChanged();
     const device = await this.upsertApprovedDevice(patient.id, dto);
     return this.issueSession({ ...patient, password }, device.id);
   }
@@ -404,6 +411,7 @@ export class PatientAuthService {
         },
       }),
     ]);
+    this.notifyLoginCodesChanged();
     const delivery = await this.otpDelivery.deliver(
       patient.phoneNumber ?? '',
       code,
@@ -412,6 +420,10 @@ export class PatientAuthService {
       delivery,
       expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
     };
+  }
+
+  private notifyLoginCodesChanged(): void {
+    this.staffSocket.emit(LOGIN_CODES_CHANGED_EVENT);
   }
 
   private async assertOtpRateLimit(patientId: string) {
@@ -453,6 +465,9 @@ export class PatientAuthService {
             ...(attempts >= MAX_OTP_ATTEMPTS ? { usedAt: new Date() } : {}),
           },
         });
+        if (attempts >= MAX_OTP_ATTEMPTS) {
+          this.notifyLoginCodesChanged();
+        }
       }
       throw new BadRequestException(INVALID_CODE_MESSAGE);
     }

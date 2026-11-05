@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { ChatModule } from '../chat/chat.module';
 import { EmergencyRequestStorageService } from './emergency-request-storage.service';
 import { PatientEmergencyController } from './patient-emergency.controller';
 import { PublicEmergencyController } from './public-emergency.controller';
 import { PatientEmergencyService } from './patient-emergency.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, ChatModule],
   controllers: [PatientEmergencyController, PublicEmergencyController],
   providers: [PatientEmergencyService, EmergencyRequestStorageService],
   exports: [EmergencyRequestStorageService, PatientEmergencyService],

@@ -15,6 +15,10 @@ import {
   ListStaffEmergencyRequestQueryDto,
   UpdateEmergencyRequestDto,
 } from './dto/emergency-requests.dto';
+import {
+  EMERGENCY_REQUEST_EVENT,
+  StaffSocketBus,
+} from '../chat/staff-socket-bus.service';
 
 const STAFF_INCLUDE = {
   patient: {
@@ -65,6 +69,7 @@ export class EmergencyRequestsService {
     private readonly prisma: PrismaService,
     private readonly storage: EmergencyRequestStorageService,
     private readonly fcm: FcmService,
+    private readonly staffSocket: StaffSocketBus,
   ) {}
 
   async list(query: ListStaffEmergencyRequestQueryDto) {
@@ -154,6 +159,11 @@ export class EmergencyRequestsService {
           })
           .catch(() => undefined)
       : undefined);
+
+    this.staffSocket.emit(EMERGENCY_REQUEST_EVENT, {
+      id: updated.id,
+      status: updated.status,
+    });
 
     return updated;
   }

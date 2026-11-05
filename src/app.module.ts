@@ -86,6 +86,7 @@ import { DepartmentHeadModule } from './modules/department-head/department-head.
 import { HospitalAssetsModule } from './modules/hospital-assets/hospital-assets.module';
 import { HousekeepingModule } from './modules/housekeeping/housekeeping.module';
 import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
+import { DisplayModule } from './modules/display/display.module';
 
 @Module({
   imports: [
@@ -186,6 +187,7 @@ import { AdminAuditModule } from './modules/admin-audit/admin-audit.module';
     HospitalAssetsModule,
     HousekeepingModule,
     AdminAuditModule,
+    DisplayModule,
   ],
   controllers: [AppController],
   providers: [

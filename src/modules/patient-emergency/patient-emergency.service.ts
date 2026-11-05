@@ -13,6 +13,10 @@ import {
   ListEmergencyRequestQueryDto,
 } from './dto/patient-emergency.dto';
 import { EmergencyRequestStorageService } from './emergency-request-storage.service';
+import {
+  EMERGENCY_REQUEST_EVENT,
+  StaffSocketBus,
+} from '../chat/staff-socket-bus.service';
 import { randomUUID } from 'crypto';
 
 const PATIENT_INCLUDE = {
@@ -24,6 +28,7 @@ export class PatientEmergencyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: EmergencyRequestStorageService,
+    private readonly staffSocket: StaffSocketBus,
   ) {}
 
   async create(
@@ -99,6 +104,7 @@ export class PatientEmergencyService {
     const requestId = randomUUID();
     let voiceUrl: string | null = null;
     let videoUrl: string | null = null;
+    let created: Awaited<ReturnType<PrismaService['emergencyRequest']['create']>>;
 
     try {
       if (hasVoice && files.voice) {
@@ -108,7 +114,7 @@ export class PatientEmergencyService {
         videoUrl = this.storage.saveFile(requestId, 'video', files.video);
       }
 
-      return await this.prisma.emergencyRequest.create({
+      created = await this.prisma.emergencyRequest.create({
         data: {
           id: requestId,
           patientId: data.patientId,
@@ -128,6 +134,12 @@ export class PatientEmergencyService {
       this.storage.deleteRequestDir(requestId);
       throw err;
     }
+
+    this.staffSocket.emit(EMERGENCY_REQUEST_EVENT, {
+      id: created.id,
+      status: created.status,
+    });
+    return created;
   }
 
   async list(user: PatientJwtPayload, query: ListEmergencyRequestQueryDto) {
@@ -165,7 +177,7 @@ export class PatientEmergencyService {
       );
     }
 
-    return this.prisma.emergencyRequest.update({
+    const updated = await this.prisma.emergencyRequest.update({
       where: { id },
       data: {
         status: EmergencyRequestStatus.CANCELLED,
@@ -173,6 +185,11 @@ export class PatientEmergencyService {
       },
       include: PATIENT_INCLUDE,
     });
+    this.staffSocket.emit(EMERGENCY_REQUEST_EVENT, {
+      id: updated.id,
+      status: updated.status,
+    });
+    return updated;
   }
 
   private async findOwned(patientId: string, id: string) {

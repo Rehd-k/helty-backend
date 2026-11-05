@@ -28,6 +28,15 @@ describe('accountTypeTokenMatches department heads', () => {
     ).toBe(true);
   });
 
+  it('does not treat DISPLAY as a department token', () => {
+    expect(
+      accountTypeTokenMatches('NURSE', {
+        accountType: 'DISPLAY',
+        staffRole: 'DISPLAY_SCREEN',
+      }),
+    ).toBe(false);
+  });
+
   it('matches JANITOR account type', () => {
     expect(
       accountTypeTokenMatches('JANITOR', {

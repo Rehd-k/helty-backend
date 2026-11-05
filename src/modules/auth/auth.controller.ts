@@ -13,7 +13,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { Public } from 'src/common/decorators';
+import { AllowDisplay, Public } from 'src/common/decorators';
 import type { StaffAuditRequest } from '../../common/audit/staff-audit.context';
 
 @ApiTags('Auth')
@@ -83,6 +83,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @AllowDisplay()
   @ApiOperation({ summary: 'Get current authenticated user info' })
   @ApiResponse({ status: 200, description: 'User information' })
   async me(@Body() body: any, @Request() req: any) {

@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AccountType, Prisma, StaffRole } from '@prisma/client';
+import { AccountType, DisplayLane, Prisma, StaffRole } from '@prisma/client';
 import { activeStaffPasswordResetInclude } from './staff-password-reset.query';
 import { ListStaffQueryDto } from './dto/list-staff-query.dto';
-import { validateStaffRolePairing } from './staff-role.validation';
+import {
+  validateDisplayAssignment,
+  validateStaffRolePairing,
+} from './staff-role.validation';
 import {
   isChargeNurseRole,
   staffRoleToNursingUnit,
@@ -92,6 +95,11 @@ export class StaffService {
         wardId,
       });
       await this.validateChargeNurseWard(createData.staffRole, wardId);
+      (data as { displayLane?: DisplayLane | null }).displayLane =
+        validateDisplayAssignment({
+          accountType: createData.accountType,
+          displayLane: (data as { displayLane?: DisplayLane | null }).displayLane,
+        });
     }
 
     const newStaff = await this.prisma.staff.create({ data: data as any });
@@ -258,6 +266,7 @@ export class StaffService {
         staffRole: true,
         departmentId: true,
         wardId: true,
+        displayLane: true,
       },
     });
     if (!existing) throw new NotFoundException('Staff member not found');
@@ -287,6 +296,14 @@ export class StaffService {
 
     validateStaffRolePairing({ accountType, staffRole, departmentId, wardId });
     await this.validateChargeNurseWard(staffRole, wardId ?? undefined);
+    const incomingLane =
+      payload.displayLane !== undefined
+        ? (payload.displayLane as DisplayLane | null)
+        : existing.displayLane;
+    payload.displayLane = validateDisplayAssignment({
+      accountType,
+      displayLane: incomingLane,
+    });
 
     return this.prisma.staff.update({ where: { id }, data: payload as any });
   }

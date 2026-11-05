@@ -35,6 +35,9 @@ export class AuthService {
     if (user && user.password) {
       const match = await bcrypt.compare(pass, user.password);
       if (match) {
+        if (user.accountType === 'DISPLAY' && user.isActive === false) {
+          return null;
+        }
         // strip password before returning
         const { password, ...result } = user;
         return result;
@@ -97,6 +100,7 @@ export class AuthService {
   }
 
   async login(user: any) {
+    const isDisplay = user.accountType === 'DISPLAY';
     const payload = {
       sub: user.id,
       staffId: user.staffId,
@@ -104,9 +108,20 @@ export class AuthService {
       staffRole: user.staffRole,
       department: user.department?.name || null,
       departmentHead: user.headedDepartment ? true : false,
+      ...(isDisplay
+        ? {
+            displayLane: user.displayLane ?? null,
+            email: user.email ?? null,
+            phone: user.phone ?? null,
+            firstName: user.firstName ?? null,
+            lastName: user.lastName ?? null,
+          }
+        : {}),
     };
     return {
-      accessToken: this.jwtService.sign(payload),
+      accessToken: isDisplay
+        ? this.jwtService.sign(payload, { expiresIn: '90d' })
+        : this.jwtService.sign(payload),
       staff: user,
     };
   }

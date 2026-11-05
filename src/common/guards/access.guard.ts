@@ -6,7 +6,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { IS_PUBLIC_KEY, ROLES_KEY, ACCOUNT_TYPES_KEY } from '../decorators';
+import {
+  IS_PUBLIC_KEY,
+  ROLES_KEY,
+  ACCOUNT_TYPES_KEY,
+  DISPLAY_ROUTE_KEY,
+} from '../decorators';
 
 type JwtUser = {
   accountType?: string;
@@ -132,6 +137,18 @@ export class AccessGuard implements CanActivate {
     const user = context.switchToHttp().getRequest().user as JwtUser;
     if (!user) {
       throw new UnauthorizedException();
+    }
+
+    // A waiting-room display token can only call routes marked AllowDisplay.
+    if (user.accountType === 'DISPLAY') {
+      const displayRoute = this.reflector.getAllAndOverride<boolean>(
+        DISPLAY_ROUTE_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (!displayRoute) {
+        throw new ForbiddenException('Access denied');
+      }
+      return true;
     }
 
     // Platform-wide access: SUPER_ADMIN and CMD may call any protected endpoint.

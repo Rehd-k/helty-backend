@@ -6,7 +6,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AccountType, StaffRole } from '@prisma/client';
+import { AccountType, DisplayLane, StaffRole } from '@prisma/client';
 
 export class CreateStaffDto {
   @ApiProperty({ example: 'STAFF-001' })
@@ -28,6 +28,15 @@ export class CreateStaffDto {
   @ApiProperty({ enum: StaffRole, example: StaffRole.HMO_STAFF })
   @IsEnum(StaffRole)
   staffRole: StaffRole;
+
+  @ApiPropertyOptional({
+    enum: DisplayLane,
+    description:
+      'Required when accountType is DISPLAY. The waiting-room TV is locked to this lane.',
+  })
+  @IsOptional()
+  @IsEnum(DisplayLane)
+  displayLane?: DisplayLane;
 
   @ApiPropertyOptional({
     example: 'HMO_STAFF',

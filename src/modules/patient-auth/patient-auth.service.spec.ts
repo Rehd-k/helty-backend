@@ -6,6 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PatientDeviceStatus, PatientPortalOtpPurpose, PatientStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { StaffSocketBus } from '../chat/staff-socket-bus.service';
 import { PatientAuthService } from './patient-auth.service';
 import { PatientOtpDeliveryService } from './patient-otp-delivery.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -44,7 +45,14 @@ describe('PatientAuthService', () => {
     deliver: jest.fn().mockResolvedValue('staff'),
   } as unknown as PatientOtpDeliveryService;
 
-  const service = new PatientAuthService(prisma, jwtService, otpDelivery);
+  const staffSocket = { emit: jest.fn() } as unknown as StaffSocketBus;
+
+  const service = new PatientAuthService(
+    prisma,
+    jwtService,
+    otpDelivery,
+    staffSocket,
+  );
 
   const password = 'password12';
   let passwordHash = '';

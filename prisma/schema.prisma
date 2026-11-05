@@ -2207,6 +2207,7 @@ enum AccountType {
   THEATRE
   JANITOR
   SUPER_ADMIN
+  DISPLAY
 }
 
 /// Specific job title under an AccountType (e.g. PHYSICIAN + CONSULTANT).
@@ -2286,6 +2287,17 @@ enum StaffRole {
   // Housekeeping
   JANITOR_HEAD
   SUPER_ADMIN
+  // Waiting-room display kiosk
+  DISPLAY_SCREEN
+}
+
+enum DisplayLane {
+  TRIAGE
+  CONSULTATION
+  PHARMACY
+  RADIOLOGY
+  LAB
+  ALL
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2641,6 +2653,8 @@ model Staff {
   phone            String?
   password         String?
   isActive         Boolean           @default(true)
+  /// Set only for account type DISPLAY. The TV is locked to this lane.
+  displayLane      DisplayLane?
 
   // one-to-one relation for department head
   headedDepartment Department? @relation("DepartmentHead")
@@ -2894,6 +2908,7 @@ model Staff {
   patientAllergiesUpdated            PatientAllergy[]               @relation("PatientAllergyUpdatedBy")
   patientImmunizationsCreated        PatientImmunization[]          @relation("PatientImmunizationCreatedBy")
   patientImmunizationsUpdated        PatientImmunization[]          @relation("PatientImmunizationUpdatedBy")
+  displayVideosCreated               DisplayVideo[]                 @relation("DisplayVideoCreatedBy")
 
   @@index([wardId])
   @@index([accountType])
@@ -5770,6 +5785,22 @@ model HousekeepingShiftRoster {
 
   @@unique([workerId, shiftDate, shiftType])
   @@index([shiftDate, shiftType])
+}
+
+model DisplayVideo {
+  id          String   @id @default(uuid())
+  title       String
+  fileName    String
+  filePath    String
+  mimeType    String
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdBy   Staff    @relation("DisplayVideoCreatedBy", fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
 }
 
 model HousekeepingSupplyLog {

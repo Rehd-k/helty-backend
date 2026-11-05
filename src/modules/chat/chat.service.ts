@@ -80,9 +80,6 @@ export class ChatService {
     entry.socketIds.delete(socketId);
     if (entry.socketIds.size === 0) {
       this.userSockets.delete(userId);
-      if (!userId.startsWith('guest-')) {
-        void this.presence.setOffline(userId);
-      }
     }
     return userId;
   }

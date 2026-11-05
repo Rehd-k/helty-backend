@@ -11,11 +11,13 @@ import { StaffConversationService } from './conversation/staff-conversation.serv
 import { StaffConversationMessageService } from './message/staff-conversation-message.service';
 import { SupportTicketService } from './ticket/support-ticket.service';
 import { SupportTicketController } from './ticket/support-ticket.controller';
+import { StaffSocketBus } from './staff-socket-bus.service';
 
 @Module({
   imports: [ConfigModule, AuthModule, StaffModule, PrismaModule],
   providers: [
     ChatGateway,
+    StaffSocketBus,
     ChatService,
     PresenceService,
     StaffConversationService,
@@ -25,6 +27,7 @@ import { SupportTicketController } from './ticket/support-ticket.controller';
   controllers: [ChatController, SupportTicketController],
   exports: [
     ChatService,
+    StaffSocketBus,
     StaffConversationService,
     PresenceService,
     SupportTicketService,

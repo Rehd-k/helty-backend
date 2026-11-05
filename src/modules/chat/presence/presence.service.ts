@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from '../../../redis/redis.constants';
 import { ChatService } from '../chat.service';
+import { StaffSocketBus } from '../staff-socket-bus.service';
 
 export type PresenceStatus = 'online' | 'away' | 'offline';
 
@@ -35,6 +36,7 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @Inject(forwardRef(() => ChatService))
     private readonly chatService: ChatService,
+    private readonly staffSocket: StaffSocketBus,
   ) {
     this.awayMs =
       (Number(this.config.get('PRESENCE_AWAY_MINUTES')) || 5) * 60 * 1000;
@@ -182,9 +184,11 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
           const delta = now - lastPing;
           if (delta >= this.offlineMs) {
             await this.setOffline(id);
+            this.publishPresence(id, 'offline');
             this.logger.debug(`Presence sweep: ${id} -> offline`);
           } else if (delta >= this.awayMs) {
             await this.setAway(id);
+            this.publishPresence(id, 'away');
             this.logger.debug(`Presence sweep: ${id} -> away (inactive)`);
           }
         }
@@ -204,15 +208,21 @@ export class PresenceService implements OnModuleInit, OnModuleDestroy {
         const delta = now - lastPing;
         if (delta >= this.offlineMs) {
           await this.setOffline(id);
+          this.publishPresence(id, 'offline');
           this.logger.debug(`Presence sweep: ${id} -> offline`);
         } else if (delta >= this.awayMs) {
           await this.setAway(id);
+          this.publishPresence(id, 'away');
           this.logger.debug(`Presence sweep: ${id} -> away (inactive)`);
         }
       }
     } catch (e) {
       this.logger.warn(`Presence sweep failed: ${e}`);
     }
+  }
+
+  private publishPresence(staffId: string, status: PresenceStatus): void {
+    this.staffSocket.emit('presenceUpdate', { staffId, status });
   }
 
   unreadKey(staffId: string, conversationId: string) {
