@@ -110,7 +110,6 @@ export class AuthService {
       departmentHead: user.headedDepartment ? true : false,
       ...(isDisplay
         ? {
-            displayLane: user.displayLane ?? null,
             email: user.email ?? null,
             phone: user.phone ?? null,
             firstName: user.firstName ?? null,

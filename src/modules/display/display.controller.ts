@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Query,
   HttpStatus,
   Param,
   Patch,
@@ -76,9 +77,12 @@ export class DisplayController {
 
   @Get('board')
   @AllowDisplay()
-  @ApiOperation({ summary: 'Waiting-room board for the signed-in display account' })
-  boardFor(@Req() req: DisplayRequest) {
-    return this.board.boardForStaff(req.user?.sub ?? '');
+  @ApiOperation({
+    summary:
+      'Waiting-room board for the signed-in display account and the chosen lane',
+  })
+  boardFor(@Req() req: DisplayRequest, @Query('lane') lane?: string) {
+    return this.board.boardForStaff(req.user?.sub ?? '', lane);
   }
 
   @Get('videos')

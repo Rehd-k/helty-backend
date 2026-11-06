@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   UnauthorizedException,
@@ -26,19 +27,19 @@ const nameSelect = { firstName: true, surname: true } as const;
 export class DisplayBoardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async boardForStaff(staffId: string) {
+  async boardForStaff(staffId: string, laneRaw: string | undefined) {
     const staff = await this.prisma.staff.findUnique({
       where: { id: staffId },
-      select: { id: true, isActive: true, accountType: true, displayLane: true },
+      select: { id: true, isActive: true, accountType: true },
     });
-    if (!staff || staff.accountType !== 'DISPLAY' || !staff.displayLane) {
+    if (!staff || staff.accountType !== 'DISPLAY') {
       throw new ForbiddenException('Access denied');
     }
     if (!staff.isActive) {
       throw new UnauthorizedException('Display account is inactive');
     }
 
-    const lane = staff.displayLane;
+    const lane = this.parseLane(laneRaw);
     const rows =
       lane === DisplayLane.ALL
         ? await this.allRows()
@@ -49,6 +50,16 @@ export class DisplayBoardService {
       generatedAt: new Date().toISOString(),
       rows,
     };
+  }
+
+  private parseLane(raw: string | undefined): DisplayLane {
+    const key = (raw ?? '').trim().toUpperCase();
+    if ((Object.values(DisplayLane) as string[]).includes(key)) {
+      return key as DisplayLane;
+    }
+    throw new BadRequestException(
+      'lane is required: TRIAGE, CONSULTATION, PHARMACY, RADIOLOGY, LAB, or ALL',
+    );
   }
 
   private async allRows(): Promise<DisplayBoardRow[]> {

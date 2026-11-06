@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { AccountType, DisplayLane, StaffRole } from '@prisma/client';
+import { AccountType, StaffRole } from '@prisma/client';
 import {
   isChargeNurseRole,
   isMatronRole,
@@ -84,21 +84,6 @@ const ACCOUNT_TYPE_ALLOWED_ROLES: Record<AccountType, ReadonlySet<StaffRole>> =
     [AccountType.SUPER_ADMIN]: new Set([StaffRole.SUPER_ADMIN]),
     [AccountType.DISPLAY]: new Set([StaffRole.DISPLAY_SCREEN]),
   };
-
-export function validateDisplayAssignment(input: {
-  accountType: AccountType;
-  displayLane?: DisplayLane | null;
-}): DisplayLane | null {
-  if (input.accountType !== AccountType.DISPLAY) {
-    return null;
-  }
-  if (!input.displayLane) {
-    throw new BadRequestException(
-      'Display accounts require a displayLane (TRIAGE, CONSULTATION, PHARMACY, RADIOLOGY, LAB, or ALL).',
-    );
-  }
-  return input.displayLane;
-}
 
 export function validateStaffRolePairing(input: {
   accountType: AccountType;
