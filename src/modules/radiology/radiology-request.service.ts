@@ -400,9 +400,25 @@ export class RadiologyRequestService {
       throw new NotFoundException(`Radiology order "${id}" not found.`);
     }
 
+    const reportDoctorName =
+      dto.reportDoctorName === undefined
+        ? undefined
+        : dto.reportDoctorName.trim() || null;
+
     if (dto.status === RadiologyRequestStatus.CANCELLED) {
       if (order.status === RadiologyRequestStatus.CANCELLED) {
-        return this.findOne(id);
+        if (reportDoctorName === undefined) return this.findOne(id);
+        return this.prisma.radiologyOrder.update({
+          where: { id },
+          data: { reportDoctorName },
+          include: {
+            patient: { select: patientNameFieldsSelect },
+            requestedBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+            items: true,
+          },
+        });
       }
       for (const item of order.items) {
         this.assertRadiologyOrderItemCancellable(item);
@@ -420,7 +436,10 @@ export class RadiologyRequestService {
         });
         return tx.radiologyOrder.update({
           where: { id },
-          data: { status: RadiologyRequestStatus.CANCELLED },
+          data: {
+            status: RadiologyRequestStatus.CANCELLED,
+            ...(reportDoctorName !== undefined && { reportDoctorName }),
+          },
           include: {
             patient: { select: patientNameFieldsSelect },
             requestedBy: {
@@ -436,6 +455,7 @@ export class RadiologyRequestService {
       where: { id },
       data: {
         ...(dto.status !== undefined && { status: dto.status }),
+        ...(reportDoctorName !== undefined && { reportDoctorName }),
       },
       include: {
         patient: { select: patientNameFieldsSelect },

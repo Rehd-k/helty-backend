@@ -850,6 +850,30 @@ export class InvoiceService {
     return age;
   }
 
+  /** Doctor urgency shown on lab and radiology waiting lists. */
+  private displayUrgency(
+    raw: string | null | undefined,
+  ): 'Routine' | 'Urgent' | 'STAT' | null {
+    const value = raw?.trim().toUpperCase() ?? '';
+    if (!value) return null;
+    if (value === 'STAT' || value === 'EMERGENCY') return 'STAT';
+    if (value === 'URGENT') return 'Urgent';
+    if (value === 'ROUTINE') return 'Routine';
+    return null;
+  }
+
+  private highestUrgency(
+    values: Array<string | null | undefined>,
+  ): 'Routine' | 'Urgent' | 'STAT' {
+    const rank = { Routine: 1, Urgent: 2, STAT: 3 } as const;
+    let best: 'Routine' | 'Urgent' | 'STAT' = 'Routine';
+    for (const value of values) {
+      const label = this.displayUrgency(value);
+      if (label && rank[label] > rank[best]) best = label;
+    }
+    return best;
+  }
+
   /** Maps billing payment method to invoice payment source enum. */
   paymentMethodToInvoiceSource(
     method: InvoicePaymentMethod,
@@ -3655,6 +3679,8 @@ export class InvoiceService {
                   accountType: true,
                 },
               },
+              labRequest: { select: { priority: true } },
+              radiologyOrderItem: { select: { priority: true } },
             },
           },
         },
@@ -3669,6 +3695,12 @@ export class InvoiceService {
         ...nameFields,
         phone: p.phoneNumber ?? null,
         age: this.patientAgeYears(p.dob),
+        dob: p.dob?.toISOString() ?? null,
+        urgency: this.highestUrgency(
+          inv.invoiceItems.map(
+            (it) => it.labRequest?.priority ?? it.radiologyOrderItem?.priority,
+          ),
+        ),
         ward: p.ward?.name ?? null,
         gender: p.gender ?? null,
         date: inv.updatedAt.toISOString(),
@@ -3716,6 +3748,9 @@ export class InvoiceService {
               amountPaid: it.amountPaid.toFixed(2),
               customDescription: it.customDescription,
               requestingDoctor,
+              priority: this.displayUrgency(
+                it.labRequest?.priority ?? it.radiologyOrderItem?.priority,
+              ),
               createdBy: cb
                 ? {
                   id: cb.id,

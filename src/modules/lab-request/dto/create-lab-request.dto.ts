@@ -45,6 +45,13 @@ export class CreateLabRequestDto {
   notes?: string;
 
   @ApiPropertyOptional({
+    description: 'Doctor-entered urgency: Routine, Urgent, or STAT',
+  })
+  @IsString()
+  @IsOptional()
+  priority?: string;
+
+  @ApiPropertyOptional({
     description:
       'Laboratory service UUID — creates a pending encounter invoice line for any patient. Outpatients must pay before lab results are entered; actively admitted inpatients may receive results on credit.',
   })

@@ -77,6 +77,7 @@ export class LabRequestService {
         requestedByDoctorId,
         testType: dto.testType,
         notes: dto.notes,
+        priority: normalizeLabPriority(dto.priority),
         pregnancyId: pregnancyId ?? null,
         admissionId: admissionCtx.admissionId,
         wardId: admissionCtx.wardId,
@@ -247,4 +248,11 @@ export class LabRequestService {
       );
     }
   }
+}
+
+function normalizeLabPriority(raw?: string): string {
+  const value = raw?.trim().toUpperCase() ?? '';
+  if (value === 'STAT' || value === 'EMERGENCY') return 'STAT';
+  if (value === 'URGENT') return 'Urgent';
+  return 'Routine';
 }

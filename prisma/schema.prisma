@@ -3298,6 +3298,8 @@ model LabRequest {
   requestedByDoctorId String
   testType            String?
   notes               String?
+  /// Doctor-entered urgency: Routine, Urgent, or STAT.
+  priority            String           @default("Routine")
   status              LabRequestStatus @default(REQUESTED)
   invoice             Invoice?         @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   invoiceId           String?
@@ -4043,6 +4045,8 @@ model LabOrder {
   sampleCollectedAt DateTime?
   completedAt       DateTime?
   verifiedAt        DateTime?
+  /// Free-text name printed on the result. Not a staff link.
+  reportDoctorName  String?        @db.VarChar(200)
   createdAt         DateTime       @default(now())
 
   patient Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
@@ -4952,6 +4956,8 @@ model RadiologyOrder {
   department    Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   departmentId  String?
   status        RadiologyRequestStatus @default(PENDING)
+  /// Free-text name printed on the result. Not a staff link.
+  reportDoctorName String?             @db.VarChar(200)
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
   pregnancy     Pregnancy?             @relation(fields: [pregnancyId], references: [id], onDelete: SetNull)

@@ -267,17 +267,30 @@ export class LabOrderService {
   async update(id: string, dto: UpdateLabOrderDto) {
     await this.findOne(id);
     const now = new Date();
-    const timestamps: Prisma.LabOrderUpdateInput = {};
+    const data: Prisma.LabOrderUpdateInput = {};
     if (dto.status === LabOrderStatus.COMPLETED) {
-      timestamps.completedAt = now;
+      data.status = dto.status;
+      data.completedAt = now;
     }
     if (dto.status === LabOrderStatus.VERIFIED) {
-      timestamps.verifiedAt = now;
-      if (!timestamps.completedAt) timestamps.completedAt = now;
+      data.status = dto.status;
+      data.verifiedAt = now;
+      data.completedAt = now;
+    }
+    if (
+      dto.status !== undefined &&
+      dto.status !== LabOrderStatus.COMPLETED &&
+      dto.status !== LabOrderStatus.VERIFIED
+    ) {
+      data.status = dto.status;
+    }
+    if (dto.reportDoctorName !== undefined) {
+      const trimmed = dto.reportDoctorName.trim();
+      data.reportDoctorName = trimmed.length === 0 ? null : trimmed;
     }
     const updated = await this.prisma.labOrder.update({
       where: { id },
-      data: { ...dto, ...timestamps },
+      data,
       include: {
         patient: { select: labOrderPatientSelect },
         doctor: { select: { id: true, firstName: true, lastName: true } },
