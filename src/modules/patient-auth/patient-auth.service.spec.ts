@@ -318,6 +318,60 @@ describe('PatientAuthService', () => {
 
     expect(result.hasPassword).toBe(false);
     expect(result.setupToken).toEqual(expect.any(String));
+    expect(prisma.patientDevice.create).not.toHaveBeenCalled();
+    expect(prisma.patientPortalOtp.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          setupTokenHash: expect.any(String),
+          setupTokenExpiresAt: expect.any(Date),
+        }),
+      }),
+    );
+  });
+
+  it('returns a device proof without approving the phone when a password already exists', async () => {
+    prisma.patient.findMany = jest.fn().mockResolvedValue([patientRecord()]);
+    prisma.patientPortalOtp.findFirst = jest.fn().mockResolvedValue({
+      id: 'otp-1',
+      code: '123456',
+      attempts: 0,
+    });
+    prisma.patientPortalOtp.update = jest.fn().mockResolvedValue({});
+
+    const result = await service.verifyActivation({
+      phoneNumber: '08030000000',
+      code: '123456',
+      deviceKey: 'key-1',
+    });
+
+    expect(result.hasPassword).toBe(true);
+    if (result.hasPassword) {
+      expect(result.deviceProof).toEqual(expect.any(String));
+    }
+    expect(prisma.patientDevice.create).not.toHaveBeenCalled();
+    expect(prisma.patientDevice.update).not.toHaveBeenCalled();
+  });
+
+  it('approves the phone when the password is confirmed with a device proof', async () => {
+    prisma.patient.findMany = jest.fn().mockResolvedValue([patientRecord()]);
+    prisma.patientPortalOtp.findFirst = jest.fn().mockResolvedValue({
+      id: 'otp-1',
+      patientId: 'uuid-1',
+    });
+    prisma.patientPortalOtp.update = jest.fn().mockResolvedValue({});
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
+    prisma.patientDevice.create = jest.fn().mockResolvedValue(approvedDevice);
+    prisma.patientDevice.update = jest.fn().mockResolvedValue(approvedDevice);
+
+    const result = await service.login({
+      phoneNumber: '08030000000',
+      password,
+      deviceKey: 'key-1',
+      deviceProof: 'proof-token',
+    });
+
+    expect(result.accessToken).toBe('signed-token');
+    expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
     expect(prisma.patientDevice.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -329,12 +383,29 @@ describe('PatientAuthService', () => {
     );
     expect(prisma.patientPortalOtp.update).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { id: 'otp-1' },
         data: expect.objectContaining({
-          setupTokenHash: expect.any(String),
-          setupTokenExpiresAt: expect.any(Date),
+          usedAt: expect.any(Date),
+          setupTokenHash: null,
         }),
       }),
     );
+  });
+
+  it('rejects a device proof that does not match an open code', async () => {
+    prisma.patient.findMany = jest.fn().mockResolvedValue([patientRecord()]);
+    prisma.patientPortalOtp.findFirst = jest.fn().mockResolvedValue(null);
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
+
+    await expect(
+      service.login({
+        phoneNumber: '08030000000',
+        password,
+        deviceKey: 'key-1',
+        deviceProof: 'stale-proof',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.patientDevice.create).not.toHaveBeenCalled();
   });
 
   it('sets the password and opens a session', async () => {
@@ -369,12 +440,12 @@ describe('PatientAuthService', () => {
     expect(result.device.status).toBe(PatientDeviceStatus.APPROVED);
   });
 
-  it('logout releases the phone by deleting the device', async () => {
+  it('logout ends the session and keeps the phone verified', async () => {
     prisma.patientDevice.findUnique = jest.fn().mockResolvedValue({
       id: 'device-1',
       patientId: 'uuid-1',
     });
-    prisma.patientDevice.delete = jest.fn().mockResolvedValue({});
+    prisma.patientDevice.update = jest.fn().mockResolvedValue({});
 
     await service.logout({
       sub: 'uuid-1',
@@ -383,8 +454,14 @@ describe('PatientAuthService', () => {
       deviceId: 'device-1',
     });
 
-    expect(prisma.patientDevice.delete).toHaveBeenCalledWith({
+    expect(prisma.patientDevice.delete).not.toHaveBeenCalled();
+    expect(prisma.patientDevice.update).toHaveBeenCalledWith({
       where: { id: 'device-1' },
+      data: {
+        refreshTokenHash: null,
+        refreshTokenExpiresAt: null,
+        fcmToken: null,
+      },
     });
   });
 

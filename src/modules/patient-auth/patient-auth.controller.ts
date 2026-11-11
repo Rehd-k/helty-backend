@@ -47,7 +47,10 @@ export class PatientAuthController {
   @Public()
   @Post('activate/verify')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Check the activation code and return a short-lived setup token' })
+  @ApiOperation({
+    summary:
+      'Check the activation code. Returns a setup token for a new password, or a device proof when the account already has one. The phone is approved only after the password is saved or confirmed.',
+  })
   verifyActivation(@Body() dto: PatientActivateVerifyDto) {
     return this.patientAuthService.verifyActivation(dto);
   }
@@ -91,13 +94,15 @@ export class PatientAuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Patient login with phone number and password',
+    summary:
+      'Patient login with phone number and password. A verified phone signs in directly. An unverified phone must also send the device proof from activate/verify.',
   })
   @ApiResponse({
     status: 200,
     description: 'Returns JWT access token, refresh token, patient profile, and device',
   })
-  @ApiResponse({ status: 400, description: 'Invalid credentials or account not activated' })
+  @ApiResponse({ status: 400, description: 'Invalid credentials, expired proof, or account not activated' })
+  @ApiResponse({ status: 403, description: 'This phone still needs a verification code' })
   login(@Body() dto: PatientLoginDto) {
     return this.patientAuthService.login(dto);
   }
@@ -146,7 +151,7 @@ export class PatientAuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary:
-      'End this session and release the phone number on this device. The next person must request a new code.',
+      'End this session. The phone stays verified for this number, so the next sign-in uses the password.',
   })
   @ApiResponse({ status: 204, description: 'Logged out' })
   logout(@Request() req: { user: PatientJwtPayload }) {

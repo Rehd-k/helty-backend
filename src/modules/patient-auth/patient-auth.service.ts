@@ -70,6 +70,7 @@ const MISMATCH_MESSAGE =
 const INVALID_LOGIN_MESSAGE = 'Invalid phone number or password.';
 const NOT_ACTIVATED_MESSAGE =
   'This account is not activated yet. Activate it with your date of birth.';
+const ACCOUNT_NOT_ACTIVATED = 'ACCOUNT_NOT_ACTIVATED';
 const ALREADY_ACTIVATED_MESSAGE =
   'This account is already activated. Sign in or reset your password.';
 const INVALID_CODE_MESSAGE = 'Invalid or expired code.';
@@ -107,24 +108,18 @@ export class PatientAuthService {
       PatientPortalOtpPurpose.ACTIVATION,
       dto.code,
     );
-    await this.upsertApprovedDevice(patient.id, dto);
-    const hasPassword = Boolean(patient.password);
-    if (hasPassword) {
-      return { hasPassword: true as const };
+    const proof = await this.issueSetupProof(row.id);
+    if (patient.password) {
+      return {
+        hasPassword: true as const,
+        deviceProof: proof.token,
+        expiresInSeconds: proof.expiresInSeconds,
+      };
     }
-    const setupToken = randomBytes(32).toString('base64url');
-    const setupTokenExpiresAt = new Date(Date.now() + SETUP_TTL_MS);
-    await this.prisma.patientPortalOtp.update({
-      where: { id: row.id },
-      data: {
-        setupTokenHash: hashToken(setupToken),
-        setupTokenExpiresAt,
-      },
-    });
     return {
       hasPassword: false as const,
-      setupToken,
-      expiresInSeconds: Math.floor(SETUP_TTL_MS / 1000),
+      setupToken: proof.token,
+      expiresInSeconds: proof.expiresInSeconds,
     };
   }
 
@@ -184,21 +179,33 @@ export class PatientAuthService {
       throw new BadRequestException(INVALID_LOGIN_MESSAGE);
     }
     if (!patient.password) {
-      throw new BadRequestException(NOT_ACTIVATED_MESSAGE);
+      throw notActivatedException();
     }
     const matches = await bcrypt.compare(dto.password, patient.password);
     if (!matches) {
       throw new BadRequestException(INVALID_LOGIN_MESSAGE);
     }
 
-    const device = await this.requireVerifiedDevice(patient.id, dto);
-    return this.issueSession(patient, device.id);
+    try {
+      const device = await this.requireVerifiedDevice(patient.id, dto);
+      return this.issueSession(patient, device.id);
+    } catch (error) {
+      if (!(error instanceof ForbiddenException)) throw error;
+      const proof = dto.deviceProof?.trim();
+      if (!proof) throw error;
+      const accepted = await this.consumeDeviceProof(patient.id, proof);
+      if (!accepted) {
+        throw new BadRequestException(INVALID_CODE_MESSAGE);
+      }
+      const device = await this.upsertApprovedDevice(patient.id, dto);
+      return this.issueSession(patient, device.id);
+    }
   }
 
   async requestPasswordReset(dto: PatientForgotPasswordRequestDto) {
     const patient = await this.findPatientByPhoneAndDob(dto.phoneNumber, dto.dob);
     if (!patient.password) {
-      throw new BadRequestException(NOT_ACTIVATED_MESSAGE);
+      throw notActivatedException();
     }
     return this.issueOtp(patient, PatientPortalOtpPurpose.PASSWORD_RESET);
   }
@@ -385,8 +392,52 @@ export class PatientAuthService {
       select: { id: true, patientId: true },
     });
     if (device?.patientId === user.sub) {
-      await this.prisma.patientDevice.delete({ where: { id: device.id } });
+      await this.prisma.patientDevice.update({
+        where: { id: device.id },
+        data: {
+          refreshTokenHash: null,
+          refreshTokenExpiresAt: null,
+          fcmToken: null,
+        },
+      });
     }
+  }
+
+  private async issueSetupProof(otpId: string) {
+    const token = randomBytes(32).toString('base64url');
+    const setupTokenExpiresAt = new Date(Date.now() + SETUP_TTL_MS);
+    await this.prisma.patientPortalOtp.update({
+      where: { id: otpId },
+      data: {
+        setupTokenHash: hashToken(token),
+        setupTokenExpiresAt,
+      },
+    });
+    return {
+      token,
+      expiresInSeconds: Math.floor(SETUP_TTL_MS / 1000),
+    };
+  }
+
+  private async consumeDeviceProof(patientId: string, deviceProof: string) {
+    const now = new Date();
+    const row = await this.prisma.patientPortalOtp.findFirst({
+      where: {
+        patientId,
+        purpose: PatientPortalOtpPurpose.ACTIVATION,
+        setupTokenHash: hashToken(deviceProof),
+        usedAt: null,
+        setupTokenExpiresAt: { gt: now },
+        attempts: { lt: MAX_OTP_ATTEMPTS },
+      },
+    });
+    if (!row) return false;
+    await this.prisma.patientPortalOtp.update({
+      where: { id: row.id },
+      data: { usedAt: now, setupTokenHash: null, setupTokenExpiresAt: null },
+    });
+    this.notifyLoginCodesChanged();
+    return true;
   }
 
   private async issueOtp(
@@ -693,6 +744,13 @@ export class PatientAuthService {
       throw new ForbiddenException('Access denied');
     }
   }
+}
+
+function notActivatedException() {
+  return new BadRequestException({
+    message: NOT_ACTIVATED_MESSAGE,
+    code: ACCOUNT_NOT_ACTIVATED,
+  });
 }
 
 function toPortalPatient(patient: PatientCredentialRecord) {
