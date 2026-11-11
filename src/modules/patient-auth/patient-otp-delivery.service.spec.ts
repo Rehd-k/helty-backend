@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { SmsService } from '../sms/sms.service';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { deliveryMode, parseOtpDelivery } from './patient-otp-delivery';
 import { PatientOtpDeliveryService } from './patient-otp-delivery.service';
 
@@ -25,11 +26,19 @@ describe('PatientOtpDeliveryService', () => {
     sendWhatsApp: jest.fn().mockResolvedValue({ status: 'SENT' }),
   } as unknown as SmsService;
 
+  const whatsapp = {
+    sendOtpVerification: jest.fn().mockResolvedValue({ status: 'SENT' }),
+  } as unknown as WhatsappService;
+
   function serviceFor(raw: string | undefined) {
     const config = {
-      get: jest.fn().mockReturnValue(raw),
+      get: jest.fn((key: string) => {
+        if (key === 'PATIENT_OTP_DELIVERY') return raw;
+        if (key === 'HOSPITAL_NAME') return 'IBOM SPECIALIST HOSPITAL';
+        return undefined;
+      }),
     } as unknown as ConfigService;
-    return new PatientOtpDeliveryService(config, sms);
+    return new PatientOtpDeliveryService(config, sms, whatsapp);
   }
 
   beforeEach(() => {
@@ -40,7 +49,7 @@ describe('PatientOtpDeliveryService', () => {
     const mode = await serviceFor('staff').deliver('08030000000', '123456');
     expect(mode).toBe('staff');
     expect(sms.sendSms).not.toHaveBeenCalled();
-    expect(sms.sendWhatsApp).not.toHaveBeenCalled();
+    expect(whatsapp.sendOtpVerification).not.toHaveBeenCalled();
   });
 
   it('sends the same code by SMS and WhatsApp when both are enabled', async () => {
@@ -50,9 +59,11 @@ describe('PatientOtpDeliveryService', () => {
       '08030000000',
       expect.stringContaining('123456'),
     );
-    expect(sms.sendWhatsApp).toHaveBeenCalledWith(
+    expect(whatsapp.sendOtpVerification).toHaveBeenCalledWith(
       '08030000000',
-      expect.stringContaining('123456'),
+      '123456',
+      'IBOM SPECIALIST HOSPITAL',
     );
+    expect(sms.sendWhatsApp).not.toHaveBeenCalled();
   });
 });

@@ -34,6 +34,14 @@ function createInvoiceService(prisma: any) {
     createConsumableStockMock(),
     {} as any,
     {} as any,
+    {
+      sendPaymentReceipt: jest.fn().mockResolvedValue({ status: 'SENT' }),
+    } as any,
+    {
+      get: jest.fn((key: string) =>
+        key === 'HOSPITAL_NAME' ? 'Helty Hospital' : undefined,
+      ),
+    } as any,
   );
 }
 

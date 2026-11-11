@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -38,14 +42,33 @@ export class HealthContentService {
     };
   }
 
+  private assertHasContent(input: {
+    title?: string | null;
+    body?: string | null;
+    imageUrl?: string | null;
+  }) {
+    const title = input.title?.trim() ?? '';
+    const body = input.body?.trim() ?? '';
+    const imageUrl = input.imageUrl?.trim() ?? '';
+    if (!title && !body && !imageUrl) {
+      throw new BadRequestException(
+        'Add a title, a body, or an image. An infographic can stand alone.',
+      );
+    }
+  }
+
   // ─── Campaigns (staff) ────────────────────────────────────────────────────
 
   async createCampaign(dto: CreateHealthCampaignDto, staffId: string) {
+    const title = dto.title?.trim() ?? '';
+    const body = dto.body?.trim() ?? '';
+    const imageUrl = dto.imageUrl?.trim() || null;
+    this.assertHasContent({ title, body, imageUrl });
     return this.prisma.healthCampaign.create({
       data: {
-        title: dto.title,
-        body: dto.body,
-        imageUrl: dto.imageUrl,
+        title,
+        body,
+        imageUrl,
         publishedAt: dto.publishedAt
           ? new Date(dto.publishedAt)
           : dto.isPublished
@@ -95,13 +118,20 @@ export class HealthContentService {
     dto: UpdateHealthCampaignDto,
     staffId: string,
   ) {
-    await this.getCampaign(id);
+    const existing = await this.getCampaign(id);
+    const title =
+      dto.title === undefined ? existing.title : (dto.title?.trim() ?? '');
+    const body =
+      dto.body === undefined ? existing.body : (dto.body?.trim() ?? '');
+    const imageUrl =
+      dto.imageUrl !== undefined ? dto.imageUrl : existing.imageUrl;
+    this.assertHasContent({ title, body, imageUrl });
     const data: Prisma.HealthCampaignUpdateInput = {
       updatedBy: { connect: { id: staffId } },
+      title,
+      body,
+      imageUrl,
     };
-    if (dto.title !== undefined) data.title = dto.title;
-    if (dto.body !== undefined) data.body = dto.body;
-    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl;
     if (dto.expiresAt !== undefined) {
       data.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     }
@@ -110,14 +140,8 @@ export class HealthContentService {
     }
     if (dto.isPublished !== undefined) {
       data.isPublished = dto.isPublished;
-      if (dto.isPublished && dto.publishedAt === undefined) {
-        const existing = await this.prisma.healthCampaign.findUnique({
-          where: { id },
-          select: { publishedAt: true },
-        });
-        if (!existing?.publishedAt) {
-          data.publishedAt = new Date();
-        }
+      if (dto.isPublished && dto.publishedAt === undefined && !existing.publishedAt) {
+        data.publishedAt = new Date();
       }
     }
     return this.prisma.healthCampaign.update({
@@ -136,11 +160,15 @@ export class HealthContentService {
   // ─── News (staff) ─────────────────────────────────────────────────────────
 
   async createNews(dto: CreateHealthNewsArticleDto, staffId: string) {
+    const title = dto.title?.trim() ?? '';
+    const body = dto.body?.trim() ?? '';
+    const imageUrl = dto.imageUrl?.trim() || null;
+    this.assertHasContent({ title, body, imageUrl });
     return this.prisma.healthNewsArticle.create({
       data: {
-        title: dto.title,
-        body: dto.body,
-        imageUrl: dto.imageUrl,
+        title,
+        body,
+        imageUrl,
         publishedAt: dto.publishedAt
           ? new Date(dto.publishedAt)
           : dto.isPublished
@@ -190,13 +218,20 @@ export class HealthContentService {
     dto: UpdateHealthNewsArticleDto,
     staffId: string,
   ) {
-    await this.getNews(id);
+    const existing = await this.getNews(id);
+    const title =
+      dto.title === undefined ? existing.title : (dto.title?.trim() ?? '');
+    const body =
+      dto.body === undefined ? existing.body : (dto.body?.trim() ?? '');
+    const imageUrl =
+      dto.imageUrl !== undefined ? dto.imageUrl : existing.imageUrl;
+    this.assertHasContent({ title, body, imageUrl });
     const data: Prisma.HealthNewsArticleUpdateInput = {
       updatedBy: { connect: { id: staffId } },
+      title,
+      body,
+      imageUrl,
     };
-    if (dto.title !== undefined) data.title = dto.title;
-    if (dto.body !== undefined) data.body = dto.body;
-    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl;
     if (dto.expiresAt !== undefined) {
       data.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     }
@@ -205,14 +240,8 @@ export class HealthContentService {
     }
     if (dto.isPublished !== undefined) {
       data.isPublished = dto.isPublished;
-      if (dto.isPublished && dto.publishedAt === undefined) {
-        const existing = await this.prisma.healthNewsArticle.findUnique({
-          where: { id },
-          select: { publishedAt: true },
-        });
-        if (!existing?.publishedAt) {
-          data.publishedAt = new Date();
-        }
+      if (dto.isPublished && dto.publishedAt === undefined && !existing.publishedAt) {
+        data.publishedAt = new Date();
       }
     }
     return this.prisma.healthNewsArticle.update({

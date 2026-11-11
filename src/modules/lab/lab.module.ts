@@ -3,6 +3,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { InvoiceModule } from '../invoice/invoice.module';
 import { MailModule } from '../mail/mail.module';
 import { SmsModule } from '../sms/sms.module';
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { LabCategoryController } from './lab-category/lab-category.controller';
 import { LabCategoryService } from './lab-category/lab-category.service';
 import { LabTestController } from './lab-test/lab-test.controller';
@@ -13,6 +14,9 @@ import { LabTestFieldController } from './lab-test-field/lab-test-field.controll
 import { LabTestFieldService } from './lab-test-field/lab-test-field.service';
 import { LabOrderController } from './lab-order/lab-order.controller';
 import { LabOrderService } from './lab-order/lab-order.service';
+import { LabReportFileController } from './lab-order/lab-report-file.controller';
+import { LabReportStorageService } from './lab-order/lab-report-storage.service';
+import { LabSendJobService } from './lab-order/lab-send-job.service';
 import { LabSampleController } from './lab-sample/lab-sample.controller';
 import { LabSampleService } from './lab-sample/lab-sample.service';
 import { LabResultController } from './lab-result/lab-result.controller';
@@ -29,13 +33,14 @@ import { LabConfigTransferController } from './lab-config-transfer/lab-config-tr
 import { LabConfigTransferService } from './lab-config-transfer/lab-config-transfer.service';
 
 @Module({
-  imports: [PrismaModule, InvoiceModule, MailModule, SmsModule],
+  imports: [PrismaModule, InvoiceModule, MailModule, SmsModule, WhatsappModule],
   controllers: [
     LabCategoryController,
     LabTestController,
     LabTestVersionController,
     LabTestFieldController,
     LabOrderController,
+    LabReportFileController,
     LabSampleController,
     LabResultController,
     LabAntibioticController,
@@ -50,6 +55,8 @@ import { LabConfigTransferService } from './lab-config-transfer/lab-config-trans
     LabTestVersionService,
     LabTestFieldService,
     LabOrderService,
+    LabReportStorageService,
+    LabSendJobService,
     LabSampleService,
     LabResultService,
     LabAntibioticService,

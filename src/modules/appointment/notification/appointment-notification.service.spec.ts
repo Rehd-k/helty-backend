@@ -28,6 +28,10 @@ describe('AppointmentNotificationService', () => {
     sendToPatient: jest.fn(),
   };
 
+  const whatsappService: any = {
+    sendAppointmentScheduled: jest.fn().mockResolvedValue({ status: 'SENT' }),
+  };
+
   const config = {
     get: jest.fn((key: string) => {
       if (key === 'HOSPITAL_NAME') return 'Helty Hospital';
@@ -44,6 +48,7 @@ describe('AppointmentNotificationService', () => {
       mailService,
       smsService,
       fcmService,
+      whatsappService,
       config,
     );
   });

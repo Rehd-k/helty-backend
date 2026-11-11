@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -15,8 +16,16 @@ import { getPatientAdmissionContext } from '../../../common/utils/patient-admiss
 import { ChannelSendResult } from '../../../common/types/channel-send-result';
 import { MailService } from '../../mail/mail.service';
 import { SmsService } from '../../sms/sms.service';
+import { WhatsappService } from '../../whatsapp/whatsapp.service';
+import { ConfigService } from '@nestjs/config';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { SendLabResultsToPatientDto } from './dto/send-lab-results-to-patient.dto';
+import { LabReportStorageService } from './lab-report-storage.service';
+import { LabSendJobService } from './lab-send-job.service';
+import {
+  LAB_SEND_STAGE_LABELS,
+  LabSendJobStatus,
+} from './lab-send-progress.types';
 
 const wardSelect = { select: { id: true, name: true } } as const;
 
@@ -28,12 +37,43 @@ const labOrderPatientSelect = {
 
 @Injectable()
 export class LabOrderService {
+  private readonly logger = new Logger(LabOrderService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly invoiceService: InvoiceService,
     private readonly mailService: MailService,
     private readonly smsService: SmsService,
+    private readonly whatsappService: WhatsappService,
+    private readonly config: ConfigService,
+    private readonly labReportStorage: LabReportStorageService,
+    private readonly labSendJobs: LabSendJobService,
   ) { }
+
+  private hospitalName(): string {
+    return (
+      this.config.get<string>('HOSPITAL_NAME')?.trim() || 'Helty Hospital'
+    );
+  }
+
+  private formatLabDate(date: Date = new Date()): string {
+    return new Intl.DateTimeFormat('en-NG', {
+      timeZone: 'Africa/Lagos',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(date);
+  }
+
+  private formatLabTime(date: Date = new Date()): string {
+    return new Intl.DateTimeFormat('en-NG', {
+      timeZone: 'Africa/Lagos',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date);
+  }
 
   async create(dto: CreateLabOrderDto) {
     const patient = await this.prisma.patient.findUnique({
@@ -316,7 +356,13 @@ export class LabOrderService {
     return updated;
   }
 
-  async sendToPatient(dto: SendLabResultsToPatientDto) {
+  /**
+   * Starts an async send job (email and/or WhatsApp phone delivery).
+   * Poll GET /lab/orders/send-jobs/:jobId for granular progress.
+   */
+  async sendToPatient(
+    dto: SendLabResultsToPatientDto,
+  ): Promise<{ jobId: string }> {
     if (!dto.sendEmail && !dto.sendSms) {
       throw new BadRequestException('Select email, phone, or both.');
     }
@@ -339,49 +385,202 @@ export class LabOrderService {
     if (dto.sendEmail && !email) {
       throw new BadRequestException('This patient has no email on file.');
     }
-    if (dto.sendEmail && !dto.pdfBase64?.trim()) {
-      throw new BadRequestException(
-        'Laboratory report PDF is required to send email.',
-      );
-    }
     if (dto.sendSms && !phone) {
       throw new BadRequestException('This patient has no phone number on file.');
     }
-    if (dto.sendSms && !dto.smsText?.trim()) {
-      throw new BadRequestException('Result text is required to send an SMS.');
+    if (!dto.pdfBase64?.trim()) {
+      throw new BadRequestException(
+        'Laboratory report PDF is required to send results.',
+      );
     }
 
+    const job = this.labSendJobs.createQueued();
     const name =
       [patient.firstName, patient.surname].filter((part) => part?.trim()).join(' ') ||
       'Patient';
-    const errors: string[] = [];
+
+    void this.runSendToPatientJob(job.jobId, {
+      dto,
+      patientName: name,
+      email,
+      phone,
+    }).catch((err) => {
+      const message =
+        err instanceof Error ? err.message : 'Unknown lab send failure';
+      this.logger.error(`Lab send job crashed jobId=${job.jobId}: ${message}`);
+      try {
+        this.labSendJobs.fail(job.jobId, message);
+      } catch {
+        /* job may already be gone */
+      }
+    });
+
+    return { jobId: job.jobId };
+  }
+
+  getSendJob(jobId: string): LabSendJobStatus {
+    return this.labSendJobs.get(jobId);
+  }
+
+  private async runSendToPatientJob(
+    jobId: string,
+    ctx: {
+      dto: SendLabResultsToPatientDto;
+      patientName: string;
+      email: string;
+      phone: string;
+    },
+  ): Promise<void> {
+    const { dto, patientName, email, phone } = ctx;
+    const sendWhatsApp = dto.sendSms;
+    const totalSteps = sendWhatsApp ? 3 : null;
+
+    this.labSendJobs.update(jobId, {
+      stage: 'GENERATING_PDF',
+      message: LAB_SEND_STAGE_LABELS.GENERATING_PDF,
+      step: sendWhatsApp ? 1 : null,
+      totalSteps,
+    });
+
+    const pdfBuffer = this.decodePdfBase64(dto.pdfBase64!);
+    if (!pdfBuffer) {
+      this.labSendJobs.fail(
+        jobId,
+        'Failed to compile laboratory report PDF (invalid or empty payload).',
+      );
+      return;
+    }
+
+    let pdfUrl: string | undefined;
+    let emailStatus: 'SENT' | 'SKIPPED' | 'FAILED' = dto.sendEmail
+      ? 'FAILED'
+      : 'SKIPPED';
+    let smsStatus: 'SENT' | 'SKIPPED' | 'FAILED' = 'SKIPPED';
+    let whatsappStatus: 'SENT' | 'SKIPPED' | 'FAILED' = sendWhatsApp
+      ? 'FAILED'
+      : 'SKIPPED';
+
+    if (sendWhatsApp) {
+      this.labSendJobs.update(jobId, {
+        stage: 'UPLOADING_FILE',
+        message: LAB_SEND_STAGE_LABELS.UPLOADING_FILE,
+        step: 2,
+        totalSteps,
+      });
+      try {
+        const stored = await this.labReportStorage.savePdf(pdfBuffer);
+        pdfUrl = stored.pdfUrl;
+      } catch (err) {
+        this.labSendJobs.fail(
+          jobId,
+          err instanceof Error
+            ? err.message
+            : 'Failed to store laboratory report PDF.',
+        );
+        return;
+      }
+    }
 
     if (dto.sendEmail) {
+      this.labSendJobs.update(jobId, {
+        stage: 'SENDING_EMAIL',
+        message: LAB_SEND_STAGE_LABELS.SENDING_EMAIL,
+        step: sendWhatsApp ? 2 : null,
+        totalSteps,
+      });
       const result = await this.mailService.sendLabResultsPdf({
         to: email,
-        subject: `Laboratory results – ${name}`,
+        subject: `Laboratory results – ${patientName}`,
         text: 'Your laboratory report is attached.',
         pdfBase64: dto.pdfBase64!,
         filename: 'laboratory-results.pdf',
       });
       const error = this.channelError('Email', result);
-      if (error) errors.push(error);
+      if (error) {
+        this.labSendJobs.fail(jobId, error);
+        return;
+      }
+      emailStatus = 'SENT';
     }
 
-    if (dto.sendSms) {
-      const result = await this.smsService.sendSms(phone, dto.smsText!.trim());
-      const error = this.channelError('SMS', result);
-      if (error) errors.push(error);
+    if (sendWhatsApp) {
+      this.labSendJobs.update(jobId, {
+        stage: 'SENDING_WHATSAPP',
+        message: LAB_SEND_STAGE_LABELS.SENDING_WHATSAPP,
+        step: 3,
+        totalSteps,
+      });
+
+      const now = new Date();
+      const whatsappResult = await this.whatsappService.sendLabResults({
+        phone,
+        patientName,
+        orgName: this.hospitalName(),
+        date: this.formatLabDate(now),
+        time: this.formatLabTime(now),
+        pdfUrl: pdfUrl!,
+      });
+      const whatsappError = this.channelError('WhatsApp', whatsappResult);
+      if (whatsappError) {
+        this.labSendJobs.fail(jobId, whatsappError);
+        return;
+      }
+      whatsappStatus = 'SENT';
+
+      if (dto.smsText?.trim()) {
+        const smsResult = await this.smsService.sendSms(
+          phone,
+          dto.smsText.trim(),
+        );
+        if (smsResult.status === 'SENT') {
+          smsStatus = 'SENT';
+        } else if (
+          smsResult.status === 'SKIPPED_CONFIG' ||
+          smsResult.status === 'SKIPPED_NO_CONTACT'
+        ) {
+          smsStatus = 'SKIPPED';
+        } else {
+          smsStatus = 'FAILED';
+          const smsError = this.channelError('SMS', smsResult);
+          if (smsError) {
+            this.logger.warn(
+              `WhatsApp sent but SMS failed jobId=${jobId}: ${smsError}`,
+            );
+          }
+        }
+      }
     }
 
-    if (errors.length) {
-      throw new BadRequestException(errors.join(' '));
-    }
+    this.labSendJobs.update(jobId, {
+      stage: 'SENT',
+      message: sendWhatsApp
+        ? LAB_SEND_STAGE_LABELS.SENT
+        : 'Results delivered successfully',
+      step: sendWhatsApp ? 3 : null,
+      totalSteps,
+      result: {
+        email: emailStatus,
+        sms: smsStatus,
+        whatsapp: whatsappStatus,
+        ...(pdfUrl ? { pdfUrl } : {}),
+      },
+    });
+  }
 
-    return {
-      email: dto.sendEmail ? 'SENT' : 'SKIPPED',
-      sms: dto.sendSms ? 'SENT' : 'SKIPPED',
-    };
+  private decodePdfBase64(pdfBase64: string): Buffer | null {
+    const trimmed = pdfBase64.trim();
+    if (!trimmed) return null;
+    const raw = trimmed.includes(',')
+      ? trimmed.slice(trimmed.indexOf(',') + 1)
+      : trimmed;
+    try {
+      const buffer = Buffer.from(raw, 'base64');
+      if (!buffer.length) return null;
+      if (!buffer.subarray(0, 4).equals(Buffer.from('%PDF'))) return null;
+      return buffer;
+    } catch {
+      return null;
+    }
   }
 
   async updateItemNotes(itemId: string, scientistNotes?: string | null) {

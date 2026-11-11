@@ -32,13 +32,22 @@ export class LabOrderController {
   }
 
   @Post('send-to-patient')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
     summary:
-      'Email the laboratory report PDF and/or text the results to the patient on file',
+      'Start email and/or WhatsApp delivery of laboratory results (returns jobId for progress polling)',
   })
   sendToPatient(@Body() dto: SendLabResultsToPatientDto) {
     return this.labOrderService.sendToPatient(dto);
+  }
+
+  @Get('send-jobs/:jobId')
+  @ApiOperation({
+    summary:
+      'Poll granular progress for a lab send-to-patient job (GENERATING_PDF → UPLOADING_FILE → SENDING_WHATSAPP → SENT/FAILED)',
+  })
+  getSendJob(@Param('jobId') jobId: string) {
+    return this.labOrderService.getSendJob(jobId);
   }
 
   @Get()

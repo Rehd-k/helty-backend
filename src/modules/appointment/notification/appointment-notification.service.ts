@@ -11,8 +11,10 @@ import { patientNameFieldsSelect } from '../../../common/utils/patient-display-n
 import { MailService } from '../../mail/mail.service';
 import { SmsService } from '../../sms/sms.service';
 import { FcmService } from '../../fcm/fcm.service';
+import { WhatsappService } from '../../whatsapp/whatsapp.service';
 import {
   AppointmentNotificationContext,
+  APPOINTMENT_REMINDER_TIMEZONE,
   PersistedNotificationAttempt,
 } from './appointment-notification.types';
 import { ChannelSendResult } from '../../../common/types/channel-send-result';
@@ -35,6 +37,7 @@ export class AppointmentNotificationService {
     private readonly mailService: MailService,
     private readonly smsService: SmsService,
     private readonly fcmService: FcmService,
+    private readonly whatsappService: WhatsappService,
     private readonly config: ConfigService,
   ) {}
 
@@ -42,6 +45,33 @@ export class AppointmentNotificationService {
     return (
       this.config.get<string>('HOSPITAL_NAME')?.trim() || 'Helty Hospital'
     );
+  }
+
+  private hospitalContactPhone(): string {
+    return (
+      this.config.get<string>('HOSPITAL_CONTACT_PHONE')?.trim() ||
+      this.config.get<string>('HOSPITAL_PHONE')?.trim() ||
+      ''
+    );
+  }
+
+  private formatAppointmentDate(date: Date): string {
+    return new Intl.DateTimeFormat('en-NG', {
+      timeZone: APPOINTMENT_REMINDER_TIMEZONE,
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(date);
+  }
+
+  private formatAppointmentTime(date: Date): string {
+    return new Intl.DateTimeFormat('en-NG', {
+      timeZone: APPOINTMENT_REMINDER_TIMEZONE,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date);
   }
 
   async notifyCreated(appointmentId: string): Promise<void> {
@@ -155,6 +185,13 @@ export class AppointmentNotificationService {
             phoneNumber: true,
           },
         },
+        staff: {
+          select: {
+            phone: true,
+            medicalSpecialty: true,
+            department: { select: { name: true } },
+          },
+        },
       },
     });
 
@@ -172,6 +209,13 @@ export class AppointmentNotificationService {
         previousDate: options.previousDate,
         email: appointment.patient.email,
         phoneNumber: appointment.patient.phoneNumber,
+        contactDept:
+          appointment.specialty?.trim() ||
+          appointment.staff?.department?.name?.trim() ||
+          appointment.staff?.medicalSpecialty?.trim() ||
+          'Appointments',
+        contactPhone:
+          this.hospitalContactPhone() || appointment.staff?.phone?.trim() || '',
       },
       kind,
       options,
@@ -256,6 +300,26 @@ export class AppointmentNotificationService {
       } catch (err) {
         this.logger.error(
           `Notification dispatch failed appointment=${ctx.appointmentId} kind=${kind} channel=${channel}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    if (kind === 'CREATED') {
+      try {
+        await this.whatsappService.sendAppointmentScheduled(
+          ctx.phoneNumber ?? '',
+          ctx.patientName,
+          this.hospitalName(),
+          this.formatAppointmentDate(ctx.appointmentDate),
+          this.formatAppointmentTime(ctx.appointmentDate),
+          ctx.contactDept?.trim() || 'Appointments',
+          ctx.contactPhone?.trim() || this.hospitalContactPhone() || 'N/A',
+        );
+      } catch (err) {
+        this.logger.error(
+          `WhatsApp appointment scheduled failed appointment=${ctx.appointmentId}: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );

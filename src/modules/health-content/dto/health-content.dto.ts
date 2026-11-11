@@ -4,13 +4,15 @@ import {
   IsBoolean,
   IsDateString,
   IsInt,
-  IsNotEmpty,
   IsOptional,
   IsString,
-  IsUrl,
   Max,
   Min,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
+import { isAllowedHealthImageUrl } from '../health-content-image.storage';
 
 function toOptionalBoolean({ value }: { value: unknown }): boolean | undefined {
   if (value === undefined || value === null || value === '') return undefined;
@@ -19,22 +21,51 @@ function toOptionalBoolean({ value }: { value: unknown }): boolean | undefined {
   return undefined;
 }
 
+function trimToString({ value }: { value: unknown }): unknown {
+  return typeof value === 'string' ? value.trim() : value;
+}
+
+function trimToNullable({ value }: { value: unknown }): unknown {
+  if (value == null) return value;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+@ValidatorConstraint({ name: 'isHealthImageUrl', async: false })
+class IsHealthImageUrlConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    if (value == null || value === '') return true;
+    return typeof value === 'string' && isAllowedHealthImageUrl(value);
+  }
+
+  defaultMessage(): string {
+    return 'Image must be an http(s) URL or an uploaded infographic.';
+  }
+}
+
 export class CreateHealthCampaignDto {
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  title!: string;
-
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  body!: string;
-
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: 'Optional when an image carries the message',
+  })
+  @Transform(trimToString)
   @IsOptional()
   @IsString()
-  @IsUrl({ require_tld: false })
-  imageUrl?: string;
+  title?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional when an image carries the message',
+  })
+  @Transform(trimToString)
+  @IsOptional()
+  @IsString()
+  body?: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  @Transform(trimToNullable)
+  @IsOptional()
+  @Validate(IsHealthImageUrlConstraint)
+  imageUrl?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -57,21 +88,27 @@ export class UpdateHealthCampaignDto extends PartialType(
 ) {}
 
 export class CreateHealthNewsArticleDto {
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  title!: string;
-
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  body!: string;
-
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description: 'Optional when an image carries the message',
+  })
+  @Transform(trimToString)
   @IsOptional()
   @IsString()
-  @IsUrl({ require_tld: false })
-  imageUrl?: string;
+  title?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional when an image carries the message',
+  })
+  @Transform(trimToString)
+  @IsOptional()
+  @IsString()
+  body?: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  @Transform(trimToNullable)
+  @IsOptional()
+  @Validate(IsHealthImageUrlConstraint)
+  imageUrl?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

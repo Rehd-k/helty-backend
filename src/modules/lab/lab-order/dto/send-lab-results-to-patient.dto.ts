@@ -18,19 +18,24 @@ export class SendLabResultsToPatientDto {
   @IsBoolean()
   sendEmail: boolean;
 
-  @ApiProperty({ description: 'Text the laboratory results to the patient.' })
+  @ApiProperty({
+    description:
+      'Send laboratory results to the patient phone (WhatsApp template; optional SMS text).',
+  })
   @IsBoolean()
   sendSms: boolean;
 
   @ApiPropertyOptional({
-    description: 'Base64 PDF of the laboratory report, required when sendEmail is true.',
+    description:
+      'Base64 PDF of the laboratory report, required when sendEmail or sendSms is true.',
   })
   @IsOptional()
   @IsString()
   pdfBase64?: string;
 
   @ApiPropertyOptional({
-    description: 'Plain-text results, required when sendSms is true.',
+    description:
+      'Optional plain-text SMS alongside WhatsApp when sendSms is true.',
   })
   @IsOptional()
   @IsString()

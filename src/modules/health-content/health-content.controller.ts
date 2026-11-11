@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,13 +11,26 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
+import * as fs from 'fs';
 import { AccountTypes } from '../../common/decorators';
+import {
+  HEALTH_CONTENT_IMAGE_MAX_BYTES,
+  HEALTH_CONTENT_UPLOAD_DIR,
+  healthContentImageFilename,
+  isHealthContentImage,
+} from './health-content-image.storage';
 import {
   CreateHealthCampaignDto,
   CreateHealthNewsArticleDto,
@@ -33,12 +47,54 @@ const HEALTH_CONTENT_STAFF = [
   'CMAC',
 ] as const;
 
+const imageUpload = FileInterceptor('file', {
+  storage: diskStorage({
+    destination: (_req, _file, cb) => {
+      fs.mkdirSync(HEALTH_CONTENT_UPLOAD_DIR, { recursive: true });
+      cb(null, HEALTH_CONTENT_UPLOAD_DIR);
+    },
+    filename: (_req, file, cb) => {
+      cb(
+        null,
+        healthContentImageFilename(file.originalname || '', file.mimetype || ''),
+      );
+    },
+  }),
+  limits: { fileSize: HEALTH_CONTENT_IMAGE_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!isHealthContentImage(file.mimetype || '', file.originalname || '')) {
+      return cb(new Error('File must be a JPG, PNG, WebP, or GIF image.'), false);
+    }
+    cb(null, true);
+  },
+});
+
 @ApiTags('Health content')
 @ApiBearerAuth()
 @Controller('health-content')
 @AccountTypes(...HEALTH_CONTENT_STAFF)
 export class HealthContentController {
   constructor(private readonly service: HealthContentService) {}
+
+  @Post('images')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(imageUpload)
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOperation({
+    summary: 'Upload an infographic for a campaign or news article',
+  })
+  uploadImage(@UploadedFile() file?: Express.Multer.File) {
+    if (!file?.filename) {
+      throw new BadRequestException('Image file is required.');
+    }
+    return { imageUrl: `/uploads/health-content/${file.filename}` };
+  }
 
   // ─── Campaigns ────────────────────────────────────────────────────────────
 

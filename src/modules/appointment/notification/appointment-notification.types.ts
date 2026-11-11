@@ -12,6 +12,8 @@ export interface AppointmentNotificationContext {
   previousDate?: Date;
   email?: string | null;
   phoneNumber?: string | null;
+  contactDept?: string | null;
+  contactPhone?: string | null;
 }
 
 export interface PersistedNotificationAttempt {
