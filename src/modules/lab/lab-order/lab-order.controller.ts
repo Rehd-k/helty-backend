@@ -15,6 +15,7 @@ import { CreateLabOrderDto } from './dto/create-lab-order.dto';
 import { UpdateLabOrderDto } from './dto/update-lab-order.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { SendLabResultsToPatientDto } from './dto/send-lab-results-to-patient.dto';
+import { LabReportCacheQueryDto } from './dto/lab-report-cache-query.dto';
 import { UpdateLabOrderItemNotesDto } from './dto/update-lab-order-item-notes.dto';
 
 @ApiTags('Lab – Orders')
@@ -29,6 +30,18 @@ export class LabOrderController {
   })
   create(@Body() dto: CreateLabOrderDto) {
     return this.labOrderService.create(dto);
+  }
+
+  @Get('report-cache')
+  @ApiOperation({
+    summary:
+      'Check whether a laboratory report PDF is already stored for these patient results',
+  })
+  lookupReportCache(@Query() query: LabReportCacheQueryDto) {
+    return this.labOrderService.lookupReportCache(
+      query.patientId,
+      query.orderItemIds,
+    );
   }
 
   @Post('send-to-patient')

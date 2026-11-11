@@ -1,6 +1,7 @@
 export type LabSendStage =
   | 'QUEUED'
   | 'GENERATING_PDF'
+  | 'REUSING_CACHED_PDF'
   | 'UPLOADING_FILE'
   | 'SENDING_EMAIL'
   | 'SENDING_WHATSAPP'
@@ -20,12 +21,14 @@ export type LabSendJobStatus = {
     sms: 'SENT' | 'SKIPPED' | 'FAILED';
     whatsapp: 'SENT' | 'SKIPPED' | 'FAILED';
     pdfUrl?: string;
+    cachedPdf?: boolean;
   };
 };
 
 export const LAB_SEND_STAGE_LABELS: Record<LabSendStage, string> = {
   QUEUED: 'Queued…',
   GENERATING_PDF: 'Generating lab result PDF…',
+  REUSING_CACHED_PDF: 'Using previously stored laboratory report…',
   UPLOADING_FILE: 'Storing document & generating link…',
   SENDING_EMAIL: 'Sending email…',
   SENDING_WHATSAPP: 'Transmitting document via WhatsApp Cloud API…',

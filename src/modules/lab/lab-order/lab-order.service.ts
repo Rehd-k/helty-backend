@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { InvoiceStatus, LabOrderStatus, LabRequestStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { parseDateRange } from '../../../common/utils/date-range';
@@ -357,8 +358,25 @@ export class LabOrderService {
   }
 
   /**
+   * Returns a cached public PDF URL when the same patient + item set +
+   * current result fingerprint was already stored.
+   */
+  async lookupReportCache(patientId: string, orderItemIds: string[]) {
+    const resolved = await this.resolveReportCache(patientId, orderItemIds);
+    if (!resolved.cached) {
+      return { hit: false as const };
+    }
+    return {
+      hit: true as const,
+      pdfUrl: resolved.cached.pdfUrl,
+      cacheKey: resolved.cacheKey,
+    };
+  }
+
+  /**
    * Starts an async send job (email and/or WhatsApp phone delivery).
    * Poll GET /lab/orders/send-jobs/:jobId for granular progress.
+   * Reuses a stored PDF when the same results were already uploaded.
    */
   async sendToPatient(
     dto: SendLabResultsToPatientDto,
@@ -388,9 +406,14 @@ export class LabOrderService {
     if (dto.sendSms && !phone) {
       throw new BadRequestException('This patient has no phone number on file.');
     }
-    if (!dto.pdfBase64?.trim()) {
+
+    const cache = await this.resolveReportCache(
+      dto.patientId,
+      dto.orderItemIds,
+    );
+    if (!cache.cached && !dto.pdfBase64?.trim()) {
       throw new BadRequestException(
-        'Laboratory report PDF is required to send results.',
+        'Laboratory report PDF is required when no cached report exists for these results.',
       );
     }
 
@@ -404,6 +427,8 @@ export class LabOrderService {
       patientName: name,
       email,
       phone,
+      cacheKey: cache.cacheKey,
+      cached: cache.cached,
     }).catch((err) => {
       const message =
         err instanceof Error ? err.message : 'Unknown lab send failure';
@@ -422,6 +447,110 @@ export class LabOrderService {
     return this.labSendJobs.get(jobId);
   }
 
+  private async resolveReportCache(
+    patientId: string,
+    orderItemIds: string[],
+  ): Promise<{
+    cacheKey: string;
+    cached: { filename: string; pdfUrl: string; filePath: string } | null;
+  }> {
+    const uniqueIds = [...new Set(orderItemIds.map((id) => id.trim()).filter(Boolean))];
+    if (!uniqueIds.length) {
+      throw new BadRequestException('At least one order item id is required.');
+    }
+
+    const items = await this.prisma.labOrderItem.findMany({
+      where: { id: { in: uniqueIds } },
+      select: {
+        id: true,
+        status: true,
+        scientistNotes: true,
+        order: { select: { patientId: true } },
+        results: {
+          select: {
+            fieldId: true,
+            value: true,
+            updatedAt: true,
+            abnormalFlag: true,
+            isCritical: true,
+          },
+        },
+        astResults: {
+          select: {
+            antibioticId: true,
+            resultOptionId: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    if (items.length !== uniqueIds.length) {
+      throw new BadRequestException(
+        'One or more laboratory order items were not found.',
+      );
+    }
+    for (const item of items) {
+      if (item.order.patientId !== patientId) {
+        throw new BadRequestException(
+          'Laboratory order items must belong to the selected patient.',
+        );
+      }
+    }
+
+    const fingerprint = this.buildResultsFingerprint(items);
+    const cacheKey = this.labReportStorage.buildCacheKey(
+      patientId,
+      uniqueIds,
+      fingerprint,
+    );
+    return {
+      cacheKey,
+      cached: this.labReportStorage.findCached(cacheKey),
+    };
+  }
+
+  private buildResultsFingerprint(
+    items: Array<{
+      id: string;
+      status: string;
+      scientistNotes: string | null;
+      results: Array<{
+        fieldId: string;
+        value: string | null;
+        updatedAt: Date;
+        abnormalFlag: string | null;
+        isCritical: boolean;
+      }>;
+      astResults: Array<{
+        antibioticId: string;
+        resultOptionId: string;
+        updatedAt: Date;
+      }>;
+    }>,
+  ): string {
+    const parts = [...items]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((item) => {
+        const results = [...item.results]
+          .sort((a, b) => a.fieldId.localeCompare(b.fieldId))
+          .map(
+            (r) =>
+              `${r.fieldId}:${r.value ?? ''}:${r.abnormalFlag ?? ''}:${r.isCritical ? 1 : 0}:${r.updatedAt.toISOString()}`,
+          )
+          .join('|');
+        const ast = [...item.astResults]
+          .sort((a, b) => a.antibioticId.localeCompare(b.antibioticId))
+          .map(
+            (r) =>
+              `${r.antibioticId}:${r.resultOptionId}:${r.updatedAt.toISOString()}`,
+          )
+          .join('|');
+        return `${item.id}:${item.status}:${item.scientistNotes ?? ''}:${results}:${ast}`;
+      });
+    return createHash('sha256').update(parts.join('\n')).digest('hex');
+  }
+
   private async runSendToPatientJob(
     jobId: string,
     ctx: {
@@ -429,46 +558,66 @@ export class LabOrderService {
       patientName: string;
       email: string;
       phone: string;
+      cacheKey: string;
+      cached: { filename: string; pdfUrl: string; filePath: string } | null;
     },
   ): Promise<void> {
-    const { dto, patientName, email, phone } = ctx;
+    const { dto, patientName, email, phone, cacheKey, cached } = ctx;
     const sendWhatsApp = dto.sendSms;
-    const totalSteps = sendWhatsApp ? 3 : null;
+    const usedCache = Boolean(cached);
+    const totalSteps = sendWhatsApp ? (usedCache ? 2 : 3) : null;
 
-    this.labSendJobs.update(jobId, {
-      stage: 'GENERATING_PDF',
-      message: LAB_SEND_STAGE_LABELS.GENERATING_PDF,
-      step: sendWhatsApp ? 1 : null,
-      totalSteps,
-    });
+    let pdfUrl = cached?.pdfUrl;
+    let pdfBuffer: Buffer | null = null;
+    let emailPdfBase64 = dto.pdfBase64?.trim() || '';
 
-    const pdfBuffer = this.decodePdfBase64(dto.pdfBase64!);
-    if (!pdfBuffer) {
-      this.labSendJobs.fail(
-        jobId,
-        'Failed to compile laboratory report PDF (invalid or empty payload).',
-      );
-      return;
-    }
+    if (usedCache) {
+      this.labSendJobs.update(jobId, {
+        stage: 'REUSING_CACHED_PDF',
+        message: LAB_SEND_STAGE_LABELS.REUSING_CACHED_PDF,
+        step: sendWhatsApp ? 1 : null,
+        totalSteps,
+      });
+      pdfBuffer = await this.labReportStorage.readCachedBuffer(cacheKey);
+      if (!pdfBuffer) {
+        this.labSendJobs.fail(
+          jobId,
+          'Cached laboratory report could not be read. Please rebuild and send again.',
+        );
+        return;
+      }
+      if (!emailPdfBase64) {
+        emailPdfBase64 = pdfBuffer.toString('base64');
+      }
+    } else {
+      this.labSendJobs.update(jobId, {
+        stage: 'GENERATING_PDF',
+        message: LAB_SEND_STAGE_LABELS.GENERATING_PDF,
+        step: sendWhatsApp ? 1 : null,
+        totalSteps,
+      });
 
-    let pdfUrl: string | undefined;
-    let emailStatus: 'SENT' | 'SKIPPED' | 'FAILED' = dto.sendEmail
-      ? 'FAILED'
-      : 'SKIPPED';
-    let smsStatus: 'SENT' | 'SKIPPED' | 'FAILED' = 'SKIPPED';
-    let whatsappStatus: 'SENT' | 'SKIPPED' | 'FAILED' = sendWhatsApp
-      ? 'FAILED'
-      : 'SKIPPED';
+      pdfBuffer = this.decodePdfBase64(dto.pdfBase64!);
+      if (!pdfBuffer) {
+        this.labSendJobs.fail(
+          jobId,
+          'Failed to compile laboratory report PDF (invalid or empty payload).',
+        );
+        return;
+      }
+      emailPdfBase64 = dto.pdfBase64!.trim();
 
-    if (sendWhatsApp) {
       this.labSendJobs.update(jobId, {
         stage: 'UPLOADING_FILE',
         message: LAB_SEND_STAGE_LABELS.UPLOADING_FILE,
-        step: 2,
+        step: sendWhatsApp ? 2 : null,
         totalSteps,
       });
       try {
-        const stored = await this.labReportStorage.savePdf(pdfBuffer);
+        const stored = await this.labReportStorage.savePdfForCacheKey(
+          cacheKey,
+          pdfBuffer,
+        );
         pdfUrl = stored.pdfUrl;
       } catch (err) {
         this.labSendJobs.fail(
@@ -481,18 +630,26 @@ export class LabOrderService {
       }
     }
 
+    let emailStatus: 'SENT' | 'SKIPPED' | 'FAILED' = dto.sendEmail
+      ? 'FAILED'
+      : 'SKIPPED';
+    let smsStatus: 'SENT' | 'SKIPPED' | 'FAILED' = 'SKIPPED';
+    let whatsappStatus: 'SENT' | 'SKIPPED' | 'FAILED' = sendWhatsApp
+      ? 'FAILED'
+      : 'SKIPPED';
+
     if (dto.sendEmail) {
       this.labSendJobs.update(jobId, {
         stage: 'SENDING_EMAIL',
         message: LAB_SEND_STAGE_LABELS.SENDING_EMAIL,
-        step: sendWhatsApp ? 2 : null,
+        step: sendWhatsApp ? (usedCache ? 1 : 2) : null,
         totalSteps,
       });
       const result = await this.mailService.sendLabResultsPdf({
         to: email,
         subject: `Laboratory results – ${patientName}`,
         text: 'Your laboratory report is attached.',
-        pdfBase64: dto.pdfBase64!,
+        pdfBase64: emailPdfBase64,
         filename: 'laboratory-results.pdf',
       });
       const error = this.channelError('Email', result);
@@ -507,7 +664,7 @@ export class LabOrderService {
       this.labSendJobs.update(jobId, {
         stage: 'SENDING_WHATSAPP',
         message: LAB_SEND_STAGE_LABELS.SENDING_WHATSAPP,
-        step: 3,
+        step: usedCache ? 2 : 3,
         totalSteps,
       });
 
@@ -556,12 +713,13 @@ export class LabOrderService {
       message: sendWhatsApp
         ? LAB_SEND_STAGE_LABELS.SENT
         : 'Results delivered successfully',
-      step: sendWhatsApp ? 3 : null,
+      step: sendWhatsApp ? (usedCache ? 2 : 3) : null,
       totalSteps,
       result: {
         email: emailStatus,
         sms: smsStatus,
         whatsapp: whatsappStatus,
+        cachedPdf: usedCache,
         ...(pdfUrl ? { pdfUrl } : {}),
       },
     });

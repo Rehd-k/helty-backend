@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsNotEmpty,
   IsOptional,
@@ -14,6 +16,16 @@ export class SendLabResultsToPatientDto {
   @IsNotEmpty()
   patientId: string;
 
+  @ApiProperty({
+    description:
+      'Lab order item UUIDs included in this report (used to reuse a cached PDF).',
+    type: [String],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  orderItemIds: string[];
+
   @ApiProperty({ description: 'Email the laboratory report PDF to the patient.' })
   @IsBoolean()
   sendEmail: boolean;
@@ -27,7 +39,7 @@ export class SendLabResultsToPatientDto {
 
   @ApiPropertyOptional({
     description:
-      'Base64 PDF of the laboratory report, required when sendEmail or sendSms is true.',
+      'Base64 PDF of the laboratory report. Required when no cached report exists for these items.',
   })
   @IsOptional()
   @IsString()
