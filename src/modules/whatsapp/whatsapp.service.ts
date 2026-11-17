@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { outboundMessagingIsOff } from '../../common/messaging/outbound-messaging';
 import { ChannelSendResult } from '../../common/types/channel-send-result';
 import { normalizePhoneForTermii } from '../sms/termii-phone.util';
 
@@ -186,6 +187,10 @@ export class WhatsappService {
   ): Promise<ChannelSendResult> {
     if (!phone?.trim()) {
       return { status: 'SKIPPED_NO_CONTACT' };
+    }
+
+    if (outboundMessagingIsOff(this.config, this.logger, 'WhatsApp')) {
+      return { status: 'SKIPPED_CONFIG' };
     }
 
     const credentials = this.readCredentials();

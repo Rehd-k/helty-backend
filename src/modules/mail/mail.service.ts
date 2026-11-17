@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import { outboundMessagingIsOff } from '../../common/messaging/outbound-messaging';
 import { ChannelSendResult } from '../../common/types/channel-send-result';
 
 const DEFAULT_FROM = 'StreamTrust Diagnostics <lab@streamtrustdiagnostics.com>';
@@ -47,6 +48,10 @@ export class MailService {
     const to = params.to?.trim();
     if (!to) {
       return { status: 'SKIPPED_NO_CONTACT' };
+    }
+
+    if (outboundMessagingIsOff(this.config, this.logger, 'email')) {
+      return { status: 'SKIPPED_CONFIG' };
     }
 
     const client = this.getClient();

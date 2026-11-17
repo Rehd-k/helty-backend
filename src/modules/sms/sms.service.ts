@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { outboundMessagingIsOff } from '../../common/messaging/outbound-messaging';
 import { ChannelSendResult } from '../../common/types/channel-send-result';
 import { normalizePhoneForTermii } from './termii-phone.util';
 
@@ -59,6 +60,10 @@ export class SmsService {
   ): Promise<ChannelSendResult> {
     if (!to?.trim()) {
       return { status: 'SKIPPED_NO_CONTACT' };
+    }
+
+    if (outboundMessagingIsOff(this.config, this.logger, options.label)) {
+      return { status: 'SKIPPED_CONFIG' };
     }
 
     const apiKey = this.config.get<string>('TERMII_API_KEY')?.trim();

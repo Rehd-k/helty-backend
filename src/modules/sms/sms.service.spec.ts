@@ -38,6 +38,30 @@ describe('SmsService (Termii)', () => {
     expect(result).toEqual({ status: 'SKIPPED_NO_CONTACT' });
   });
 
+  it('skips the provider when outbound messaging is off', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        const values: Record<string, string> = {
+          OUTBOUND_MESSAGING_ENABLED: 'false',
+          TERMII_API_KEY: 'test-key',
+          TERMII_BASE_URL: 'https://v3.api.termii.com',
+          TERMII_SENDER_ID: 'Helty',
+        };
+        return values[key];
+      }),
+    } as unknown as ConfigService;
+
+    const fetchMock = jest.spyOn(global, 'fetch');
+    const service = new SmsService(config);
+    const result = await service.sendAppointmentSms(
+      '08030000000',
+      'Appointment reminder',
+    );
+
+    expect(result).toEqual({ status: 'SKIPPED_CONFIG' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('sends via Termii API and returns message_id on success', async () => {
     const config = {
       get: jest.fn((key: string) => {
