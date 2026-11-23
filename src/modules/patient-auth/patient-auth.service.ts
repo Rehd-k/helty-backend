@@ -108,14 +108,19 @@ export class PatientAuthService {
       PatientPortalOtpPurpose.ACTIVATION,
       dto.code,
     );
-    const proof = await this.issueSetupProof(row.id);
+    // Existing accounts: a correct code verifies this phone immediately so a
+    // later password sign-in does not bounce back to "device not verified"
+    // if the short-lived proof is lost between screens.
     if (patient.password) {
+      await this.upsertApprovedDevice(patient.id, dto);
+      const proof = await this.issueSetupProof(row.id);
       return {
         hasPassword: true as const,
         deviceProof: proof.token,
         expiresInSeconds: proof.expiresInSeconds,
       };
     }
+    const proof = await this.issueSetupProof(row.id);
     return {
       hasPassword: false as const,
       setupToken: proof.token,

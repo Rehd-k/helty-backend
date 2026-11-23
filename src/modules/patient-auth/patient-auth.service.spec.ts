@@ -329,7 +329,7 @@ describe('PatientAuthService', () => {
     );
   });
 
-  it('returns a device proof without approving the phone when a password already exists', async () => {
+  it('approves the phone and returns a device proof when a password already exists', async () => {
     prisma.patient.findMany = jest.fn().mockResolvedValue([patientRecord()]);
     prisma.patientPortalOtp.findFirst = jest.fn().mockResolvedValue({
       id: 'otp-1',
@@ -337,6 +337,8 @@ describe('PatientAuthService', () => {
       attempts: 0,
     });
     prisma.patientPortalOtp.update = jest.fn().mockResolvedValue({});
+    prisma.patientDevice.findUnique = jest.fn().mockResolvedValue(null);
+    prisma.patientDevice.create = jest.fn().mockResolvedValue(approvedDevice);
 
     const result = await service.verifyActivation({
       phoneNumber: '08030000000',
@@ -348,8 +350,15 @@ describe('PatientAuthService', () => {
     if (result.hasPassword) {
       expect(result.deviceProof).toEqual(expect.any(String));
     }
-    expect(prisma.patientDevice.create).not.toHaveBeenCalled();
-    expect(prisma.patientDevice.update).not.toHaveBeenCalled();
+    expect(prisma.patientDevice.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          patientId: 'uuid-1',
+          deviceKey: 'key-1',
+          status: PatientDeviceStatus.APPROVED,
+        }),
+      }),
+    );
   });
 
   it('approves the phone when the password is confirmed with a device proof', async () => {

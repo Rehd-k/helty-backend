@@ -49,7 +49,7 @@ export class PatientAuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Check the activation code. Returns a setup token for a new password, or a device proof when the account already has one. The phone is approved only after the password is saved or confirmed.',
+      'Check the activation code. For accounts that already have a password, a correct code approves this phone and returns a device proof. New accounts get a setup token and are approved when the password is saved.',
   })
   verifyActivation(@Body() dto: PatientActivateVerifyDto) {
     return this.patientAuthService.verifyActivation(dto);
