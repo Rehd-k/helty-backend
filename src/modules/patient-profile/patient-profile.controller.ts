@@ -31,6 +31,27 @@ export class PatientProfileController {
     return this.patientProfileService.getProfile(req.user);
   }
 
+  @Get('health-card')
+  @AccountTypes(PATIENT_ACCOUNT_TYPE)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Get the patient health card payload (IDs, allergies, blood type, QR data)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Health card fields and qrPayload (hospital patient ID)',
+  })
+  @ApiResponse({ status: 401, description: 'Missing or invalid token' })
+  @ApiResponse({
+    status: 403,
+    description: 'Staff token cannot access patient routes',
+  })
+  @ApiResponse({ status: 404, description: 'Patient not found' })
+  getHealthCard(@Request() req: { user: PatientJwtPayload }) {
+    return this.patientProfileService.getHealthCard(req.user);
+  }
+
   @Put('profile')
   @AccountTypes(PATIENT_ACCOUNT_TYPE)
   @ApiBearerAuth()
