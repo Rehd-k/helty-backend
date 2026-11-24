@@ -99,7 +99,7 @@ describe('SmsService (Termii)', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://v3.api.termii.com/api/sms/number/send',
+      'https://v4.api.termii.com/api/sms/number/send',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -146,7 +146,7 @@ describe('SmsService (Termii)', () => {
       providerMessageId: 'abc',
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://v3.api.termii.com/api/sms/number/send',
+      'https://v4.api.termii.com/api/sms/number/send',
       expect.objectContaining({ method: 'POST' }),
     );
     const body = JSON.parse(

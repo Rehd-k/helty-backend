@@ -142,7 +142,7 @@ export class WhatsappService {
     orgName: string,
   ): Promise<ChannelSendResult> {
     return this.sendTemplate(phone, 'auth_verification_code', [
-      this.bodyComponent([otpCode, orgName]),
+      this.bodyComponent([otpCode]),
     ]);
   }
 
