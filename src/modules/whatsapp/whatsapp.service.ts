@@ -28,6 +28,8 @@ export type SendLabResultsParams = {
   pdfUrl: string;
 };
 
+type TemplateTextParameter = { type: 'text'; text: string };
+
 type TemplateComponent =
   | {
       type: 'header';
@@ -38,7 +40,13 @@ type TemplateComponent =
     }
   | {
       type: 'body';
-      parameters: Array<{ type: 'text'; text: string }>;
+      parameters: TemplateTextParameter[];
+    }
+  | {
+      type: 'button';
+      sub_type: 'url';
+      index: '0';
+      parameters: TemplateTextParameter[];
     };
 
 @Injectable()
@@ -133,16 +141,27 @@ export class WhatsappService {
   }
 
   /**
-   * Template: auth_verification_code (2 body text variables).
+   * Template: auth_verification_code.
+   * The body variable and the copy-code URL button both need the raw OTP.
    * Trigger when the patient app requests an OTP.
    */
   sendOtpVerification(
     phone: string,
     otpCode: string,
-    orgName: string,
+    _orgName: string,
   ): Promise<ChannelSendResult> {
+    const code = otpCode.trim();
     return this.sendTemplate(phone, 'auth_verification_code', [
-      this.bodyComponent([otpCode]),
+      {
+        type: 'body',
+        parameters: [{ type: 'text', text: code }],
+      },
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: code }],
+      },
     ]);
   }
 
