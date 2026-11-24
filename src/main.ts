@@ -6,6 +6,8 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { HttpExceptionShapeFilter } from './common/filters/http-exception-shape.filter';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { assertProductionJwtSecretConfigured } from './common/security/jwt-secret';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { RedisIoAdapter } from './redis/redis-io.adapter';
@@ -38,11 +40,16 @@ async function bootstrap() {
 
   app.enableCors({});
 
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  app.useGlobalInterceptors(new LoggingInterceptor());
+  app.useGlobalFilters(new AllExceptionsFilter());
+  // Nest runs the last registered filter first. Keep the specific filters
+  // after the catch-all so their response bodies stay unchanged.
   app.useGlobalFilters(
     new HttpExceptionShapeFilter(),
     new PrismaExceptionFilter(),
   );
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   // Swagger
   const config = new DocumentBuilder()
@@ -60,10 +67,14 @@ async function bootstrap() {
   const uploadTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS) || 0;
   server.setTimeout(uploadTimeoutMs);
   // Node 18+: IncomingMessage requestTimeout defaults to 300_000 ms.
-  if (typeof (server as { requestTimeout?: number }).requestTimeout === 'number') {
+  if (
+    typeof (server as { requestTimeout?: number }).requestTimeout === 'number'
+  ) {
     (server as { requestTimeout: number }).requestTimeout = uploadTimeoutMs;
   }
-  if (typeof (server as { headersTimeout?: number }).headersTimeout === 'number') {
+  if (
+    typeof (server as { headersTimeout?: number }).headersTimeout === 'number'
+  ) {
     // Must stay >= requestTimeout when requestTimeout is non-zero.
     (server as { headersTimeout: number }).headersTimeout =
       uploadTimeoutMs === 0 ? 0 : Math.max(uploadTimeoutMs + 60_000, 120_000);

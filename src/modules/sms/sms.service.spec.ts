@@ -1,3 +1,4 @@
+import { BadGatewayException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SmsService } from './sms.service';
 
@@ -98,7 +99,7 @@ describe('SmsService (Termii)', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://v3.api.termii.com/api/sms/send',
+      'https://v3.api.termii.com/api/sms/number/send',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,5 +117,92 @@ describe('SmsService (Termii)', () => {
       channel: 'dnd',
       to: '2348030000000',
     });
+  });
+
+  it('defaults sender to N-Alert and base URL when they are unset', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        const values: Record<string, string> = {
+          TERMII_API_KEY: 'test-key',
+        };
+        return values[key];
+      }),
+    } as unknown as ConfigService;
+
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ code: 'ok', message_id: 'abc' }),
+    } as Response);
+
+    const service = new SmsService(config);
+    const result = await service.sendAppointmentSms(
+      '08012345678',
+      'Appointment reminder',
+    );
+
+    expect(result).toEqual({
+      status: 'SENT',
+      provider: 'termii',
+      providerMessageId: 'abc',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://v3.api.termii.com/api/sms/number/send',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body).toEqual({
+      api_key: 'test-key',
+      to: '2348012345678',
+      from: 'N-Alert',
+      sms: 'Appointment reminder',
+      type: 'plain',
+      channel: 'dnd',
+    });
+  });
+
+  it('throws BadGatewayException on OTP provider failure without logging the code', async () => {
+    const config = {
+      get: jest.fn((key: string) => {
+        const values: Record<string, string> = {
+          TERMII_API_KEY: 'test-key',
+        };
+        return values[key];
+      }),
+    } as unknown as ConfigService;
+
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 400,
+      text: async () =>
+        JSON.stringify({
+          code: 'error',
+          message: 'Sender ID not approved',
+        }),
+    } as Response);
+
+    const errorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    const service = new SmsService(config);
+    const otp = '847291';
+
+    await expect(
+      service.sendOtpSms(
+        '08012345678',
+        `Your Helty Hospital verification code is ${otp}. Valid for 10 minutes. Do not share this code.`,
+      ),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const logged = errorSpy.mock.calls
+      .map((call) => String(call[0]))
+      .join('\n');
+    expect(logged).toContain('status=400');
+    expect(logged).toContain('2348012345678');
+    expect(logged).toContain('Sender ID not approved');
+    expect(logged).not.toContain(otp);
   });
 });

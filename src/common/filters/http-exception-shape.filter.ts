@@ -4,14 +4,19 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
+import { logException } from './http-exception.filter';
 
 @Catch(HttpException)
 export class HttpExceptionShapeFilter implements ExceptionFilter {
+  private readonly logger = new Logger('Exceptions');
+
   catch(exception: HttpException, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const res = ctx.getResponse();
     const status = exception.getStatus();
+    logException(this.logger, host, exception, status);
     const payload = exception.getResponse();
 
     if (
@@ -28,8 +33,13 @@ export class HttpExceptionShapeFilter implements ExceptionFilter {
           : Array.isArray(msg)
             ? msg.join(', ')
             : String(msg ?? exception.message);
-      const { statusCode: _sc, error: _err, code: _code, message: _msg, ...extra } =
-        p;
+      const {
+        statusCode: _sc,
+        error: _err,
+        code: _code,
+        message: _msg,
+        ...extra
+      } = p;
       return res.status(status).json({
         statusCode: status,
         error:

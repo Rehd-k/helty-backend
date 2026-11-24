@@ -16,7 +16,11 @@ export class AppController {
   }
 
   @Get('server-time')
-  serverTime(): { iso: string; unixMs: number } {
+  serverTime(): {
+    iso: string;
+    unixMs: number;
+    minAppVersion?: string;
+  } {
     return this.appService.getServerDateTime();
   }
 

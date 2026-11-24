@@ -23,6 +23,7 @@ describe('parseOtpDelivery', () => {
 describe('PatientOtpDeliveryService', () => {
   const sms = {
     sendSms: jest.fn().mockResolvedValue({ status: 'SENT' }),
+    sendOtpSms: jest.fn().mockResolvedValue({ status: 'SENT' }),
     sendWhatsApp: jest.fn().mockResolvedValue({ status: 'SENT' }),
   } as unknown as SmsService;
 
@@ -48,16 +49,19 @@ describe('PatientOtpDeliveryService', () => {
   it('does not call Termii when only staff can see the code', async () => {
     const mode = await serviceFor('staff').deliver('08030000000', '123456');
     expect(mode).toBe('staff');
-    expect(sms.sendSms).not.toHaveBeenCalled();
+    expect(sms.sendOtpSms).not.toHaveBeenCalled();
     expect(whatsapp.sendOtpVerification).not.toHaveBeenCalled();
   });
 
   it('sends the same code by SMS and WhatsApp when both are enabled', async () => {
-    const mode = await serviceFor('sms,whatsapp').deliver('08030000000', '123456');
-    expect(mode).toBe('phone');
-    expect(sms.sendSms).toHaveBeenCalledWith(
+    const mode = await serviceFor('sms,whatsapp').deliver(
       '08030000000',
-      expect.stringContaining('123456'),
+      '123456',
+    );
+    expect(mode).toBe('phone');
+    expect(sms.sendOtpSms).toHaveBeenCalledWith(
+      '08030000000',
+      'Your IBOM SPECIALIST HOSPITAL verification code is 123456. Valid for 10 minutes. Do not share this code.',
     );
     expect(whatsapp.sendOtpVerification).toHaveBeenCalledWith(
       '08030000000',
@@ -65,5 +69,21 @@ describe('PatientOtpDeliveryService', () => {
       'IBOM SPECIALIST HOSPITAL',
     );
     expect(sms.sendWhatsApp).not.toHaveBeenCalled();
+  });
+
+  it('still sends WhatsApp when the OTP SMS provider fails', async () => {
+    (sms.sendOtpSms as jest.Mock).mockRejectedValueOnce(
+      new Error('SMS provider failed'),
+    );
+
+    await expect(
+      serviceFor('sms,whatsapp').deliver('08030000000', '123456'),
+    ).rejects.toThrow('SMS provider failed');
+
+    expect(whatsapp.sendOtpVerification).toHaveBeenCalledWith(
+      '08030000000',
+      '123456',
+      'IBOM SPECIALIST HOSPITAL',
+    );
   });
 });
