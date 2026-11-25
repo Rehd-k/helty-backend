@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { ListInvoicesQueryDto } from './dto/list-invoices-query.dto';
 import { ListPaymentsQueryDto } from './dto/list-payments-query.dto';
 import {
@@ -59,12 +60,19 @@ type PaymentListPayload = Prisma.InvoicePaymentGetPayload<{
 
 @Injectable()
 export class PatientBillingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly family: PatientFamilyService,
+  ) {}
 
-  async getBillingSummary(user: PatientJwtPayload) {
+  async getBillingSummary(user: PatientJwtPayload, forPatientId?: string) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const unpaidInvoices = await this.prisma.invoice.findMany({
       where: {
-        patientId: user.sub,
+        patientId: subjectId,
         status: { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID] },
       },
       select: {
@@ -79,11 +87,15 @@ export class PatientBillingService {
   }
 
   async listInvoices(user: PatientJwtPayload, query: ListInvoicesQueryDto) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.InvoiceWhereInput = { patientId: user.sub };
+    const where: Prisma.InvoiceWhereInput = { patientId: subjectId };
     if (query.status === 'UNPAID') {
       where.status = { in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIALLY_PAID] };
     } else if (query.status) {
@@ -111,9 +123,17 @@ export class PatientBillingService {
     };
   }
 
-  async getInvoice(user: PatientJwtPayload, id: string) {
+  async getInvoice(
+    user: PatientJwtPayload,
+    id: string,
+    forPatientId?: string,
+  ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id, patientId: user.sub },
+      where: { id, patientId: subjectId },
       include: INVOICE_DETAIL_INCLUDE,
     });
 
@@ -125,12 +145,16 @@ export class PatientBillingService {
   }
 
   async listPayments(user: PatientJwtPayload, query: ListPaymentsQueryDto) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      query.forPatientId,
+    );
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
     const where: Prisma.InvoicePaymentWhereInput = {
-      invoice: { patientId: user.sub },
+      invoice: { patientId: subjectId },
     };
 
     const [payments, total] = await Promise.all([
@@ -154,11 +178,19 @@ export class PatientBillingService {
     };
   }
 
-  async getReceipt(user: PatientJwtPayload, paymentId: string) {
+  async getReceipt(
+    user: PatientJwtPayload,
+    paymentId: string,
+    forPatientId?: string,
+  ) {
+    const subjectId = await this.family.resolveSubjectPatientId(
+      user,
+      forPatientId,
+    );
     const payment = await this.prisma.invoicePayment.findFirst({
       where: {
         id: paymentId,
-        invoice: { patientId: user.sub },
+        invoice: { patientId: subjectId },
       },
       include: {
         invoice: { select: { invoiceID: true } },

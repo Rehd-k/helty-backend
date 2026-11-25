@@ -44,7 +44,8 @@ export class PatientFamilyService {
 
   /**
    * Resolves which patient UUID portal reads should use.
-   * `forPatientId` may be self or a linked child.
+   * `forPatientId` may be self or a linked dependent.
+   * Only the logged-in primary may open a dependent, never the reverse.
    */
   async resolveSubjectPatientId(
     user: PatientJwtPayload,
@@ -66,7 +67,7 @@ export class PatientFamilyService {
     });
     if (!link) {
       throw new ForbiddenException({
-        message: 'Not authorized to access this family member',
+        message: 'Not authorized to view this patient',
         code: 'FAMILY_ACCESS_DENIED',
       });
     }

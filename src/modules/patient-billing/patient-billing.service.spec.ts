@@ -3,6 +3,7 @@ import { InvoicePaymentMethod, InvoiceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PatientJwtPayload } from '../patient-auth/patient-auth.service';
 import { PatientBillType } from './patient-billing.constants';
+import { PatientFamilyService } from '../patient-family/patient-family.service';
 import { PatientBillingService } from './patient-billing.service';
 
 describe('PatientBillingService', () => {
@@ -19,7 +20,14 @@ describe('PatientBillingService', () => {
     },
   } as unknown as PrismaService;
 
-  const service = new PatientBillingService(prisma);
+  const family = {
+    resolveSubjectPatientId: jest.fn(
+      async (user: PatientJwtPayload, forPatientId?: string | null) =>
+        forPatientId?.trim() || user.sub,
+    ),
+  } as unknown as PatientFamilyService;
+
+  const service = new PatientBillingService(prisma, family);
 
   const patientUser: PatientJwtPayload = {
     sub: 'patient-uuid-1',

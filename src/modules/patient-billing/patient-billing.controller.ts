@@ -35,8 +35,14 @@ export class PatientBillingController {
     status: 403,
     description: 'Staff token cannot access patient routes',
   })
-  getBillingSummary(@Request() req: { user: PatientJwtPayload }) {
-    return this.patientBillingService.getBillingSummary(req.user);
+  getBillingSummary(
+    @Request() req: { user: PatientJwtPayload },
+    @Query('forPatientId') forPatientId?: string,
+  ) {
+    return this.patientBillingService.getBillingSummary(
+      req.user,
+      forPatientId,
+    );
   }
 
   @Get('invoices')
@@ -70,8 +76,9 @@ export class PatientBillingController {
   getInvoice(
     @Request() req: { user: PatientJwtPayload },
     @Param('id') id: string,
+    @Query('forPatientId') forPatientId?: string,
   ) {
-    return this.patientBillingService.getInvoice(req.user, id);
+    return this.patientBillingService.getInvoice(req.user, id, forPatientId);
   }
 
   @Get('payments')
@@ -103,7 +110,12 @@ export class PatientBillingController {
   getReceipt(
     @Request() req: { user: PatientJwtPayload },
     @Param('paymentId') paymentId: string,
+    @Query('forPatientId') forPatientId?: string,
   ) {
-    return this.patientBillingService.getReceipt(req.user, paymentId);
+    return this.patientBillingService.getReceipt(
+      req.user,
+      paymentId,
+      forPatientId,
+    );
   }
 }

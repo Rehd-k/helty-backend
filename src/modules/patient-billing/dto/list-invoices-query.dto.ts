@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { InvoiceStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 const INVOICE_STATUS_FILTER = [
   ...Object.values(InvoiceStatus),
@@ -31,4 +31,12 @@ export class ListInvoicesQueryDto {
   @IsOptional()
   @IsIn(INVOICE_STATUS_FILTER)
   status?: InvoiceStatus | 'UNPAID';
+
+  @ApiPropertyOptional({
+    description:
+      'View bills for a linked dependent. Only the logged-in primary may pass this.',
+  })
+  @IsOptional()
+  @IsUUID()
+  forPatientId?: string;
 }

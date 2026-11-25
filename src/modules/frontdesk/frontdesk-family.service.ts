@@ -54,7 +54,7 @@ export class FrontdeskFamilyService {
     staffId: string,
   ) {
     if (parentPatientId === dto.childPatientId) {
-      throw new BadRequestException('Cannot link a patient as their own child');
+      throw new BadRequestException('Cannot link a patient to themselves');
     }
 
     await this.assertPatientExists(parentPatientId);
@@ -70,7 +70,7 @@ export class FrontdeskFamilyService {
     });
     if (reverse) {
       throw new BadRequestException(
-        'Cannot create a circular parent-child relationship',
+        'Cannot link these patients in both directions',
       );
     }
 
@@ -123,7 +123,9 @@ export class FrontdeskFamilyService {
         'code' in err &&
         (err as { code: string }).code === 'P2002'
       ) {
-        throw new ConflictException('Child is already linked to this parent');
+        throw new ConflictException(
+          'This dependent is already linked to this primary',
+        );
       }
       throw err;
     }
