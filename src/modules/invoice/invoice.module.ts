@@ -1,11 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { StoreModule } from '../store/store.module';
 import { PurchasesModule } from '../purchases/purchases.module';
 import { DrugStockModule } from '../pharmacy/drug-stock.module';
 import { PatientMedicationsModule } from '../patient-medications/patient-medications.module';
-import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { InvoiceController } from './invoice.controller';
 import { InvoiceService } from './invoice.service';
 import { InvoiceDrugController } from './invoice-drug.controller';
@@ -24,12 +22,10 @@ import { InvoiceConsolidationScheduler } from './invoice-consolidation.scheduler
 @Module({
   imports: [
     PrismaModule,
-    ConfigModule,
     StoreModule,
     PurchasesModule,
     DrugStockModule,
     PatientMedicationsModule,
-    WhatsappModule,
   ],
   controllers: [
     InvoiceController,

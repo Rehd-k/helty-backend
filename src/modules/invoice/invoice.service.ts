@@ -6,7 +6,6 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   AdmissionStatus,
   InvoiceAuditAction,
@@ -20,11 +19,9 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  formatPatientDisplayName,
   patientNameFieldsSelect,
   toPatientNameWithLegacyKey,
 } from '../../common/utils/patient-display-name.util';
-import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { buildPatientNameSearchWhere } from '../../common/utils/patient-name-search.util';
 import {
   AddInvoiceItemDto,
@@ -96,51 +93,7 @@ export class InvoiceService {
     private readonly purchaseItemStock: PurchaseItemStockService,
     @Inject(forwardRef(() => InvoiceItemRefundService))
     private readonly itemRefundService: InvoiceItemRefundService,
-    private readonly whatsappService: WhatsappService,
-    private readonly config: ConfigService,
   ) { }
-
-  private hospitalName(): string {
-    return (
-      this.config.get<string>('HOSPITAL_NAME')?.trim() || 'Helty Hospital'
-    );
-  }
-
-  private async notifyPaymentReceipt(params: {
-    patientId?: string | null;
-    amount: Prisma.Decimal | string | number;
-  }): Promise<void> {
-    try {
-      if (!params.patientId) return;
-      const patient = await this.prisma.patient.findUnique({
-        where: { id: params.patientId },
-        select: {
-          ...patientNameFieldsSelect,
-          phoneNumber: true,
-        },
-      });
-      const phone = patient?.phoneNumber?.trim() ?? '';
-      if (!phone) return;
-
-      const amount =
-        typeof params.amount === 'object' && params.amount !== null && 'toFixed' in params.amount
-          ? (params.amount as Prisma.Decimal).toFixed(2)
-          : Number(params.amount).toFixed(2);
-
-      await this.whatsappService.sendPaymentReceipt(
-        phone,
-        formatPatientDisplayName(patient ?? {}),
-        amount,
-        this.hospitalName(),
-      );
-    } catch (err) {
-      this.logger.error(
-        `WhatsApp payment receipt failed patient=${params.patientId}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-  }
 
   /** At most one open bill per patient: PENDING or PARTIALLY_PAID (not PAID). */
   private async findOpenInvoiceForPatient(
@@ -3080,10 +3033,6 @@ export class InvoiceService {
       const result = await this.prisma.$transaction((tx) =>
         this.recordPaymentWithTx(tx, invoiceId, dto, createdByStaffId),
       );
-      void this.notifyPaymentReceipt({
-        patientId: result.invoice.patientId,
-        amount: result.payment.amount,
-      });
       return result;
     } catch (error) {
       throw error;
@@ -3304,10 +3253,6 @@ export class InvoiceService {
       };
     });
 
-    void this.notifyPaymentReceipt({
-      patientId: result.invoice.patientId,
-      amount: result.invoicePayment.amount,
-    });
     return result;
   }
 

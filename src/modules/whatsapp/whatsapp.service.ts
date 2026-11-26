@@ -97,27 +97,15 @@ export class WhatsappService {
   }
 
   /**
-   * Template: payment_confirmation_receipt (3 body text variables).
-   * Trigger on successful payment.
-   */
-  sendPaymentReceipt(
-    phone: string,
-    clientName: string,
-    amount: string | number,
-    orgName: string,
-  ): Promise<ChannelSendResult> {
-    return this.sendTemplate(phone, 'payment_confirmation_receipt', [
-      this.bodyComponent([clientName, amount, orgName]),
-    ]);
-  }
-
-  /**
-   * Template: lab_results_ready (document header + 4 body text variables).
+   * Template: lab_results_ready (document header + 5 body text variables).
    * Trigger when staff clicks "Send to Phone" at the lab.
    *
+   * Body: patient name, org, date, time, HOSPITAL_CONTACT_PHONE.
    * `pdfUrl` must be a publicly reachable HTTPS link for Meta to fetch.
    */
   sendLabResults(params: SendLabResultsParams): Promise<ChannelSendResult> {
+    const contactPhone =
+      this.config.get<string>('HOSPITAL_CONTACT_PHONE')?.trim() || '-';
     return this.sendTemplate(params.phone, 'lab_results_ready', [
       {
         type: 'header',
@@ -136,6 +124,7 @@ export class WhatsappService {
         params.orgName,
         params.date,
         params.time,
+        contactPhone,
       ]),
     ]);
   }
